@@ -1,0 +1,276 @@
+/* plain paper: light background, ordinary fonts, no decoration for its own sake */
+
+:root {
+  --ink: #1a1a1a;
+  --muted: #666;
+  --rule: #ddd;
+  --paper: #ffffff;
+  --accent: #1a5fb4; /* links + the single accent, nothing else */
+  --hi: #f4f4f2;     /* light fill for value=1 chips */
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 18px;
+  line-height: 1.55;
+}
+
+main {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 3rem 1.25rem 5rem;
+}
+
+h1 {
+  font-size: 1.7rem;
+  line-height: 1.25;
+  font-weight: normal;
+  margin: 0 0 0.4rem;
+}
+
+h2 {
+  font-size: 1.15rem;
+  font-weight: bold;
+  margin: 2.6rem 0 0.6rem;
+}
+
+.byline {
+  color: var(--muted);
+  font-style: italic;
+  margin: 0 0 2rem;
+}
+.byline .author { font-style: normal; }
+.byline.tight { margin-bottom: 0; }
+
+a { color: var(--accent); }
+
+code {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  background: var(--hi);
+  padding: 0.05em 0.25em;
+}
+
+/* figures */
+figure { margin: 2rem 0; }
+
+figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--rule);
+  cursor: zoom-in;
+}
+
+
+.figure-placeholder {
+  border: 1px dashed #bbb;
+  height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--muted);
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+}
+
+figcaption {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+}
+
+/* simulators */
+.sim {
+  border: 1px solid var(--rule);
+  padding: 1.25rem;
+  margin: 1.5rem 0;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  /* fast clicking on inputs must not select widget text */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.sim button {
+  font: inherit;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  padding: 0.3rem 0.9rem;
+  cursor: pointer;
+}
+
+.sim button:hover { background: var(--hi); }
+
+.sim .controls {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.sim .cycle-label { color: var(--muted); margin-left: 0.5rem; }
+
+/* nand gate svg */
+.nand-svg { display: block; margin: 0 auto; max-width: 100%; height: auto; }
+.nand-svg .pin { cursor: pointer; }
+.nand-svg .pin:hover rect { fill: var(--hi); }
+.nand-svg text {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 15px;
+  fill: var(--ink);
+}
+.nand-svg .hint {
+  font-size: 11px;
+  fill: var(--muted);
+}
+.nand-svg .body { fill: none; stroke: var(--ink); stroke-width: 2; }
+.nand-svg .wire { stroke: var(--ink); stroke-width: 2; }
+.nand-svg .wire.on { stroke: var(--accent); }
+.nand-svg .val-box { fill: var(--paper); stroke: var(--ink); }
+.nand-svg .val-box.on { fill: var(--hi); stroke: var(--accent); }
+
+/* wide layout for the /c/ circuit viewer */
+main.wide { max-width: none; }
+
+/* full-circuit schematic */
+.schematic { display: block; width: 100%; height: auto; margin: 0.5rem 0 0; }
+
+.schematic-holder { overflow-x: auto; }
+
+.schematic.natural { width: auto; max-width: none; margin: 0.5rem auto 0; }
+/* taller-than-wide circuits: cap height, keep ratio, center */
+.schematic.tall { width: auto; max-width: 100%; max-height: min(72vh, 620px); margin: 0.5rem auto 0; }
+.zoom-controls { text-align: right; margin-top: 0.5rem; user-select: none; }
+.zoom-controls button {
+  font-family: ui-monospace, Menlo, monospace; font-size: 1rem; line-height: 1;
+  width: 2rem; height: 2rem; margin-left: 0.35rem; cursor: pointer;
+  padding: 0; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--paper); border: 1px solid var(--muted); color: var(--ink);
+}
+.zoom-controls button:hover { background: var(--hi); }
+
+.schematic text {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 12px;
+  fill: var(--ink);
+}
+
+.schematic .hint { font-size: 10px; fill: var(--muted); }
+/* natural-mode schematics render 1:1 (no upscaling), so their hints need a
+   bigger font to visually match the scaled-up nand widget's hints */
+.schematic.natural .hint { font-size: 17px; }
+.schematic.natural .hint.under-caption { font-size: 15px; }
+.schematic .netname { font-size: 9px; fill: var(--muted); }
+.schematic .netval { font-size: 10px; fill: var(--muted); }
+.schematic .netval.on { fill: var(--accent); font-weight: bold; }
+
+.schematic .body { fill: #fff; stroke: var(--ink); stroke-width: 1.5; }
+
+.schematic .wire {
+  fill: none;
+  stroke: #ccc;
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+}
+
+.schematic .wire.on { stroke: var(--accent); stroke-width: 1.6; }
+
+.schematic .chip-box { fill: var(--paper); stroke: var(--muted); }
+.schematic .chip-box.state { stroke-dasharray: none; stroke-width: 2; }
+.schematic .chip-box.input { stroke: var(--ink); }
+.schematic g.on .chip-box, .schematic .chip-box.on { fill: var(--hi); stroke: var(--accent); }
+.schematic .pin { cursor: pointer; }
+.schematic .pin:hover .chip-box { fill: var(--hi); }
+
+.simnote {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-style: italic;
+  margin: 0.75rem 0 1rem;
+}
+
+.sim .cycle-label {
+  margin: 0 0.75rem 0 0;
+  font-weight: bold;
+}
+
+/* trace table */
+.trace { overflow-x: auto; }
+
+.trace table {
+  border-collapse: collapse;
+  font: inherit;
+}
+
+.trace th, .trace td {
+  border: 1px solid var(--rule);
+  padding: 0.2rem 0.5rem;
+  text-align: center;
+  min-width: 1.9rem;
+}
+
+.trace th {
+  font-weight: normal;
+  color: var(--muted);
+}
+
+.trace td.on { background: var(--hi); color: var(--accent); font-weight: bold; }
+.trace th.row-name, .trace td.row-name { text-align: left; color: var(--ink); }
+
+details.netlist { margin-top: 1rem; }
+details.netlist summary { cursor: pointer; color: var(--muted); }
+details.netlist pre {
+  margin: 0.5rem 0 0;
+  padding: 0.75rem;
+  background: var(--hi);
+  overflow-x: auto;
+  font-size: 0.8rem;
+}
+
+footer {
+  margin-top: 4rem;
+  border-top: 1px solid var(--rule);
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+/* fact-skeleton bullets awaiting greg's prose rewrite */
+ul.draft-bullets, .md ul {
+  margin: 0.75rem 0 1.25rem;
+  padding-left: 1.2rem;
+}
+ul.draft-bullets li, .md li { margin: 0.3rem 0; }
+
+/* /c/ results + replay — same box as the circuit widget (.sim) */
+#model-results {
+  border: 1px solid var(--rule);
+  padding: 1.25rem;
+  margin: 1.5rem 0;
+}
+#model-results h2 { margin-top: 0; }
+#model-results .attempt-row { display: flex; align-items: center; gap: 0.4rem;
+  margin: 0.35rem 0; font-family: ui-monospace, Menlo, monospace; font-size: 0.8rem; }
+#model-results .mname { min-width: 9.5rem; }
+#model-results .chip { font: inherit; border: 1px solid var(--rule); background: var(--paper);
+  padding: 0.15rem 0.5rem; cursor: pointer; }
+#model-results .chip[disabled] { cursor: default; color: var(--muted); }
+#model-results .chip.exact { border-color: #0a7a0a; color: #0a7a0a; }
+#model-results .chip.partial { border-color: #c25e00; color: #c25e00; }
+#model-results .chip.lim, #model-results .chip.malformed { color: var(--muted); }
+#model-results .chip.refused { color: var(--muted); text-decoration: line-through; }
+#model-results .chip.sel { background: var(--hi); border-color: var(--accent); }
+#model-results .replay-verdict { font-size: 0.9rem; }
+#model-results td.wrong { background: #fbe9e7; color: #c0392b; font-weight: bold; }
+#model-results td.wrong .truth { font-size: 0.65em; color: var(--muted); vertical-align: super; }
+#model-results td.after { color: #ccc; }
+
+#circuit-select { font: inherit; font-size: 1.2rem; padding: 0.15rem 0.4rem; }
+#model-results .tlink { font-size: 0.7rem; margin-right: 0.35rem; }

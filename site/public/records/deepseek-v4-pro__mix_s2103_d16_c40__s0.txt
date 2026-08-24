@@ -1,0 +1,4770 @@
+model: deepseek/deepseek-v4-pro
+circuit: mix_s2103_d16_c40
+score: {'status': 'ok', 'prefix_cycles': 40, 'pointwise': 1.0, 'exact': True}
+
+=== reasoning ===
+We need to simulate a sequential circuit consisting of NAND gates and D flip-flops. The circuit has 16 DFFs (q0..q15) with initial states given. There are two inputs in0, in1, and outputs: q0, q10, q12, q13, q6, q8.
+
+Each cycle: inputs updated, combinational logic evaluates, output nets recorded, then DFFs update. The DFFs update at clock edge: q = d (value before edge). So for each cycle t, we record the outputs BEFORE the DFFs load the new values.
+
+We need to simulate for 40 cycles. The circuit is large: 16 flip-flops, 16 groups of gates c0..c15 each with 5 NAND gates (cX_0 to cX_4). These gates form a combinational network computing the next state for each flip-flop: d of qX = cX_4. The network is acyclic; gates are nested NANDs. We need to compute boolean functions for each cycle.
+
+Since I cannot run code, I must manually simulate? 40 cycles is a lot. There must be a pattern or we can derive the equations, or maybe I can write a quick reasoning and then produce the output trace. But the problem says: "Work through the simulation carefully, cycle by cycle. You cannot run code; do it by reasoning." This is tricky. I need to compute 40 cycles of 6 outputs manually? That's 240 bits.
+
+Maybe there's a way to deduce the function? It's a specific circuit with known structure. The DFFs are initialized with some values. Input traces are given. I can attempt to simulate step by step, perhaps reducing the logic. I could try to encode the logic in my head, but 40 cycles is large.
+
+Let's see if I can find a systematic approach. The gates are all NANDs. I can compute the values for each net in each cycle. I have to keep track of 16 state bits. Input traces are provided. I will attempt to simulate in a table-like fashion mentally, or write down intermediate values. Since I'm an AI, I can't actually run code but I can simulate step by step by writing down the evaluations. 40 cycles might be feasible if I'm systematic.
+
+I will create an internal simulation. But I have to produce the final JSON with output lists. I need to be accurate.
+
+Let me parse the circuit:
+
+DFFs: q0..q15 with init:
+q0:1
+q1:0
+q2:0
+q3:1
+q4:1
+q5:1
+q6:1
+q7:1
+q8:1
+q9:0
+q10:0
+q11:1
+q12:0
+q13:1
+q14:0
+q15:0
+
+Inputs:
+in0: [1,0,1,1,1,0,0,0,0,0,1,0,0,1,1,1,1,0,1,0,0,0,0,1,0,0,1,1,0,0,1,1,0,1,0,0,1,0,1,0]
+in1: [0,0,1,1,0,1,1,1,0,0,1,0,1,1,0,1,0,1,0,1,0,1,1,1,0,0,0,0,0,0,0,0,0,0,1,1,0,0,1,1]
+
+Outputs: q0, q10, q12, q13, q6, q8. So we just need the values of these DFF outputs at each cycle BEFORE they update? Wait: "outputs" are these q nets. According to semantics: step 3: the value of every net in outputs is recorded. This is the observed trace for cycle t. Step 4: clock edge: dffs load. So output is the state at the beginning of the cycle? Actually: at step 1, input nets take trace values, DFF q nets hold their current state. Step 2: gates settle. Step 3: outputs recorded. Step 4: DFFs update. So the recorded outputs are the state AFTER gates settle, which is the combinational output driven by the current state and inputs. But wait: outputs are q0, q10, etc. Those are DFF q outputs. Are they directly connected to outputs? Yes, the output list is ["q0", "q10", "q12", "q13", "q6", "q8"]. These are the nets driven by the DFFs. So their values during step 3 are the current state values (since DFFs haven't updated yet). So we just need the state of those specific flip-flops at each cycle before the update. But wait: "every net in `outputs` is recorded. this is the observed trace for cycle t." The nets are q0, etc. Their values are whatever they are in step 3. They are driven by DFF outputs, which are the current state. So it's simply the state bits at the beginning of each cycle? Let's check the semantics carefully:
+
+At the start of cycle t:
+- input nets take their trace values for cycle t.
+- DFF q nets hold their current state (at t=0, their init values).
+- Gates settle.
+- Outputs recorded.
+- DFFs load.
+
+So during step 3, the q nets are still holding the state from previous cycle (or init). So the recorded output trace is exactly the state of those flip-flops at the start of each cycle (or init for cycle 0). But wait: what if some output is a combinational net? Here outputs are all DFF q nets. So it's just the state. Thus the output trace is the sequence of states for those 6 flip-flops over cycles 0..39 (at the time step 3). But we must compute the states for all cycles? Actually, the state evolves each cycle. The output for cycle t is the state at the beginning of that cycle. And after recording, state updates to next state. So output[0] = init state. Output[1] = state after cycle 0 update, etc.
+
+Thus we just need the state sequence for the 6 flip-flops.
+
+So I need to compute the next state logic for each of the 16 flip-flops.
+
+Let's derive the Boolean equations for next state dX = cX_4. Each cX_4 is a NAND of some signals. There are 16 DFFs. Each d is computed by a chain of 5 NANDs.
+
+Let NAND(a,b) = NOT(a AND b) = 1 - a*b.
+
+Let's list each cX_4 equation in terms of state bits q and inputs.
+
+First, identify all nets. Inputs: in0, in1. States: q0..q15.
+
+We'll need to evaluate for each cycle. Doing 40 cycles by hand is tedious but possible if I simplify.
+
+I can write a small table. But I'm an AI, I can simulate by writing down each step in text. I must be careful with boolean logic.
+
+Let me list the equations:
+
+c0_0 = NAND(q2, in0)
+c0_1 = NAND(c0_0, q10)
+c0_2 = NAND(c0_1, q1)
+c0_3 = NAND(c0_2, q13)
+c0_4 = NAND(c0_3, q1)
+
+c1_0 = NAND(q13, q2)
+c1_1 = NAND(c1_0, q15)
+c1_2 = NAND(c1_1, q15)
+c1_3 = NAND(c1_2, q7)
+c1_4 = NAND(c1_3, q4)
+
+c2_0 = NAND(q0, q3)
+c2_1 = NAND(c2_0, q14)
+c2_2 = NAND(c2_1, q15)
+c2_3 = NAND(c2_2, q12)
+c2_4 = NAND(c2_3, q9)
+
+c3_0 = NAND(in0, q13)
+c3_1 = NAND(c3_0, q12)
+c3_2 = NAND(c3_1, q6)
+c3_3 = NAND(c3_2, q0)
+c3_4 = NAND(c3_3, q0)
+
+c4_0 = NAND(q13, q8)
+c4_1 = NAND(c4_0, q2)
+c4_2 = NAND(c4_1, in1)
+c4_3 = NAND(c4_2, q8)
+c4_4 = NAND(c4_3, in0)
+
+c5_0 = NAND(q15, q4)
+c5_1 = NAND(c5_0, q1)
+c5_2 = NAND(c5_1, q13)
+c5_3 = NAND(c5_2, in1)
+c5_4 = NAND(c5_3, q4)
+
+c6_0 = NAND(q10, q2)
+c6_1 = NAND(c6_0, q0)
+c6_2 = NAND(c6_1, q3)
+c6_3 = NAND(c6_2, q12)
+c6_4 = NAND(c6_3, q13)
+
+c7_0 = NAND(q14, q2)
+c7_1 = NAND(c7_0, q12)
+c7_2 = NAND(c7_1, q9)
+c7_3 = NAND(c7_2, q3)
+c7_4 = NAND(c7_3, q9)
+
+c8_0 = NAND(q6, in1)
+c8_1 = NAND(c8_0, q5)
+c8_2 = NAND(c8_1, q12)
+c8_3 = NAND(c8_2, q13)
+c8_4 = NAND(c8_3, q9)
+
+c9_0 = NAND(q2, q9)
+c9_1 = NAND(c9_0, q11)
+c9_2 = NAND(c9_1, q1)
+c9_3 = NAND(c9_2, q15)
+c9_4 = NAND(c9_3, q3)
+
+c10_0 = NAND(q12, q15)
+c10_1 = NAND(c10_0, q4)
+c10_2 = NAND(c10_1, q6)
+c10_3 = NAND(c10_2, q5)
+c10_4 = NAND(c10_3, q1)
+
+c11_0 = NAND(q3, in0)
+c11_1 = NAND(c11_0, q1)
+c11_2 = NAND(c11_1, q12)
+c11_3 = NAND(c11_2, q12)
+c11_4 = NAND(c11_3, in0)
+
+c12_0 = NAND(q9, q13)
+c12_1 = NAND(c12_0, q15)
+c12_2 = NAND(c12_1, q0)
+c12_3 = NAND(c12_2, q0)
+c12_4 = NAND(c12_3, q12)
+
+c13_0 = NAND(q0, q13)
+c13_1 = NAND(c13_0, q0)
+c13_2 = NAND(c13_1, q10)
+c13_3 = NAND(c13_2, q10)
+c13_4 = NAND(c13_3, q1)
+
+c14_0 = NAND(q1, q11)
+c14_1 = NAND(c14_0, in1)
+c14_2 = NAND(c14_1, q10)
+c14_3 = NAND(c14_2, q0)
+c14_4 = NAND(c14_3, in1)
+
+c15_0 = NAND(q2, q1)
+c15_1 = NAND(c15_0, in1)
+c15_2 = NAND(c15_1, q14)
+c15_3 = NAND(c15_2, q7)
+c15_4 = NAND(c15_3, q10)
+
+Next state: qX' = dX = cX_4.
+
+We need to compute for each cycle t=0..39, given initial state, then update.
+
+Let's write initial state (cycle 0, before any update, this is the state at start of cycle 0, which will be output for cycle 0):
+q0=1, q1=0, q2=0, q3=1, q4=1, q5=1, q6=1, q7=1, q8=1, q9=0, q10=0, q11=1, q12=0, q13=1, q14=0, q15=0.
+
+Outputs at cycle 0: q0=1, q10=0, q12=0, q13=1, q6=1, q8=1.
+
+Now compute next state for cycle 0:
+
+Inputs: in0=1, in1=0.
+
+Compute intermediate gates for all 16 sets. Let's do them one by one.
+
+NAND truth table:
+0 NAND 0 = 1
+0 NAND 1 = 1
+1 NAND 0 = 1
+1 NAND 1 = 0
+
+We'll compute gate values.
+
+State: q0=1, q1=0, q2=0, q3=1, q4=1, q5=1, q6=1, q7=1, q8=1, q9=0, q10=0, q11=1, q12=0, q13=1, q14=0, q15=0.
+in0=1, in1=0.
+
+c0_0 = NAND(q2=0, in0=1) = NAND(0,1) = 1.
+c0_1 = NAND(1, q10=0) = NAND(1,0) = 1.
+c0_2 = NAND(1, q1=0) = 1.
+c0_3 = NAND(1, q13=1) = NAND(1,1) = 0.
+c0_4 = NAND(0, q1=0) = NAND(0,0) = 1.
+=> q0' = 1.
+
+c1_0 = NAND(q13=1, q2=0) = 1.
+c1_1 = NAND(1, q15=0) = 1.
+c1_2 = NAND(1, q15=0) = 1.
+c1_3 = NAND(1, q7=1) = NAND(1,1) = 0.
+c1_4 = NAND(0, q4=1) = NAND(0,1) = 1.
+=> q1' = 1.
+
+c2_0 = NAND(q0=1, q3=1) = 0.
+c2_1 = NAND(0, q14=0) = NAND(0,0) = 1.
+c2_2 = NAND(1, q15=0) = 1.
+c2_3 = NAND(1, q12=0) = 1.
+c2_4 = NAND(1, q9=0) = 1.
+=> q2' = 1.
+
+c3_0 = NAND(in0=1, q13=1) = 0.
+c3_1 = NAND(0, q12=0) = 1.
+c3_2 = NAND(1, q6=1) = 0.
+c3_3 = NAND(0, q0=1) = 1.
+c3_4 = NAND(1, q0=1) = 0.
+=> q3' = 0.
+
+c4_0 = NAND(q13=1, q8=1) = 0.
+c4_1 = NAND(0, q2=0) = 1.
+c4_2 = NAND(1, in1=0) = 1.
+c4_3 = NAND(1, q8=1) = 0.
+c4_4 = NAND(0, in0=1) = 1.
+=> q4' = 1.
+
+c5_0 = NAND(q15=0, q4=1) = 1.
+c5_1 = NAND(1, q1=0) = 1.
+c5_2 = NAND(1, q13=1) = 0.
+c5_3 = NAND(0, in1=0) = 1.
+c5_4 = NAND(1, q4=1) = 0.
+=> q5' = 0.
+
+c6_0 = NAND(q10=0, q2=0) = 1.
+c6_1 = NAND(1, q0=1) = 0.
+c6_2 = NAND(0, q3=1) = 1.
+c6_3 = NAND(1, q12=0) = 1.
+c6_4 = NAND(1, q13=1) = 0.
+=> q6' = 0.
+
+c7_0 = NAND(q14=0, q2=0) = 1.
+c7_1 = NAND(1, q12=0) = 1.
+c7_2 = NAND(1, q9=0) = 1.
+c7_3 = NAND(1, q3=1) = 0.
+c7_4 = NAND(0, q9=0) = 1.
+=> q7' = 1.
+
+c8_0 = NAND(q6=1, in1=0) = 1.
+c8_1 = NAND(1, q5=1) = 0.
+c8_2 = NAND(0, q12=0) = 1.
+c8_3 = NAND(1, q13=1) = 0.
+c8_4 = NAND(0, q9=0) = 1.
+=> q8' = 1.
+
+c9_0 = NAND(q2=0, q9=0) = 1.
+c9_1 = NAND(1, q11=1) = 0.
+c9_2 = NAND(0, q1=0) = 1.
+c9_3 = NAND(1, q15=0) = 1.
+c9_4 = NAND(1, q3=1) = 0.
+=> q9' = 0.
+
+c10_0 = NAND(q12=0, q15=0) = 1.
+c10_1 = NAND(1, q4=1) = 0.
+c10_2 = NAND(0, q6=1) = 1.
+c10_3 = NAND(1, q5=1) = 0.
+c10_4 = NAND(0, q1=0) = 1.
+=> q10' = 1.
+
+c11_0 = NAND(q3=1, in0=1) = 0.
+c11_1 = NAND(0, q1=0) = 1.
+c11_2 = NAND(1, q12=0) = 1.
+c11_3 = NAND(1, q12=0) = 1.
+c11_4 = NAND(1, in0=1) = 0.
+=> q11' = 0.
+
+c12_0 = NAND(q9=0, q13=1) = 1.
+c12_1 = NAND(1, q15=0) = 1.
+c12_2 = NAND(1, q0=1) = 0.
+c12_3 = NAND(0, q0=1) = 1.
+c12_4 = NAND(1, q12=0) = 1.
+=> q12' = 1.
+
+c13_0 = NAND(q0=1, q13=1) = 0.
+c13_1 = NAND(0, q0=1) = 1.
+c13_2 = NAND(1, q10=0) = 1.
+c13_3 = NAND(1, q10=0) = 1.
+c13_4 = NAND(1, q1=0) = 1.
+=> q13' = 1.
+
+c14_0 = NAND(q1=0, q11=1) = 1.
+c14_1 = NAND(1, in1=0) = 1.
+c14_2 = NAND(1, q10=0) = 1.
+c14_3 = NAND(1, q0=1) = 0.
+c14_4 = NAND(0, in1=0) = 1.
+=> q14' = 1.
+
+c15_0 = NAND(q2=0, q1=0) = 1.
+c15_1 = NAND(1, in1=0) = 1.
+c15_2 = NAND(1, q14=0) = 1.
+c15_3 = NAND(1, q7=1) = 0.
+c15_4 = NAND(0, q10=0) = 1.
+=> q15' = 1.
+
+So after cycle 0, state becomes:
+q0=1, q1=1, q2=1, q3=0, q4=1, q5=0, q6=0, q7=1, q8=1, q9=0, q10=1, q11=0, q12=1, q13=1, q14=1, q15=1.
+
+Output at cycle 1 (before update, i.e., this new state):
+q0=1, q10=1, q12=1, q13=1, q6=0, q8=1.
+
+Now cycle 1: in0=0, in1=0.
+State: q0=1, q1=1, q2=1, q3=0, q4=1, q5=0, q6=0, q7=1, q8=1, q9=0, q10=1, q11=0, q12=1, q13=1, q14=1, q15=1.
+
+Compute next state:
+
+c0_0 = NAND(q2=1, in0=0) = 1.
+c0_1 = NAND(1, q10=1) = 0.
+c0_2 = NAND(0, q1=1) = 1.
+c0_3 = NAND(1, q13=1) = 0.
+c0_4 = NAND(0, q1=1) = 1. => q0'=1.
+
+c1_0 = NAND(q13=1, q2=1) = 0.
+c1_1 = NAND(0, q15=1) = 1.
+c1_2 = NAND(1, q15=1) = 0.
+c1_3 = NAND(0, q7=1) = 1.
+c1_4 = NAND(1, q4=1) = 0. => q1'=0.
+
+c2_0 = NAND(q0=1, q3=0) = 1.
+c2_1 = NAND(1, q14=1) = 0.
+c2_2 = NAND(0, q15=1) = 1.
+c2_3 = NAND(1, q12=1) = 0.
+c2_4 = NAND(0, q9=0) = 1. => q2'=1.
+
+c3_0 = NAND(in0=0, q13=1) = 1.
+c3_1 = NAND(1, q12=1) = 0.
+c3_2 = NAND(0, q6=0) = 1.
+c3_3 = NAND(1, q0=1) = 0.
+c3_4 = NAND(0, q0=1) = 1. => q3'=1.
+
+c4_0 = NAND(q13=1, q8=1) = 0.
+c4_1 = NAND(0, q2=1) = 1.
+c4_2 = NAND(1, in1=0) = 1.
+c4_3 = NAND(1, q8=1) = 0.
+c4_4 = NAND(0, in0=0) = 1. => q4'=1.
+
+c5_0 = NAND(q15=1, q4=1) = 0.
+c5_1 = NAND(0, q1=1) = 1.
+c5_2 = NAND(1, q13=1) = 0.
+c5_3 = NAND(0, in1=0) = 1.
+c5_4 = NAND(1, q4=1) = 0. => q5'=0.
+
+c6_0 = NAND(q10=1, q2=1) = 0.
+c6_1 = NAND(0, q0=1) = 1.
+c6_2 = NAND(1, q3=0) = 1.
+c6_3 = NAND(1, q12=1) = 0.
+c6_4 = NAND(0, q13=1) = 1. => q6'=1.
+
+c7_0 = NAND(q14=1, q2=1) = 0.
+c7_1 = NAND(0, q12=1) = 1.
+c7_2 = NAND(1, q9=0) = 1.
+c7_3 = NAND(1, q3=0) = 1.
+c7_4 = NAND(1, q9=0) = 1. => q7'=1.
+
+c8_0 = NAND(q6=0, in1=0) = 1.
+c8_1 = NAND(1, q5=0) = 1.
+c8_2 = NAND(1, q12=1) = 0.
+c8_3 = NAND(0, q13=1) = 1.
+c8_4 = NAND(1, q9=0) = 1. => q8'=1.
+
+c9_0 = NAND(q2=1, q9=0) = 1.
+c9_1 = NAND(1, q11=0) = 1.
+c9_2 = NAND(1, q1=1) = 0.
+c9_3 = NAND(0, q15=1) = 1.
+c9_4 = NAND(1, q3=0) = 1. => q9'=1.
+
+c10_0 = NAND(q12=1, q15=1) = 0.
+c10_1 = NAND(0, q4=1) = 1.
+c10_2 = NAND(1, q6=0) = 1.
+c10_3 = NAND(1, q5=0) = 1.
+c10_4 = NAND(1, q1=1) = 0. => q10'=0.
+
+c11_0 = NAND(q3=0, in0=0) = 1.
+c11_1 = NAND(1, q1=1) = 0.
+c11_2 = NAND(0, q12=1) = 1.
+c11_3 = NAND(1, q12=1) = 0.
+c11_4 = NAND(0, in0=0) = 1. => q11'=1.
+
+c12_0 = NAND(q9=0, q13=1) = 1.
+c12_1 = NAND(1, q15=1) = 0.
+c12_2 = NAND(0, q0=1) = 1.
+c12_3 = NAND(1, q0=1) = 0.
+c12_4 = NAND(0, q12=1) = 1. => q12'=1.
+
+c13_0 = NAND(q0=1, q13=1) = 0.
+c13_1 = NAND(0, q0=1) = 1.
+c13_2 = NAND(1, q10=1) = 0.
+c13_3 = NAND(0, q10=1) = 1.
+c13_4 = NAND(1, q1=1) = 0. => q13'=0.
+
+c14_0 = NAND(q1=1, q11=0) = 1.
+c14_1 = NAND(1, in1=0) = 1.
+c14_2 = NAND(1, q10=1) = 0.
+c14_3 = NAND(0, q0=1) = 1.
+c14_4 = NAND(1, in1=0) = 1. => q14'=1.
+
+c15_0 = NAND(q2=1, q1=1) = 0.
+c15_1 = NAND(0, in1=0) = 1.
+c15_2 = NAND(1, q14=1) = 0.
+c15_3 = NAND(0, q7=1) = 1.
+c15_4 = NAND(1, q10=1) = 0. => q15'=0.
+
+After cycle 1 state:
+q0=1, q1=0, q2=1, q3=1, q4=1, q5=0, q6=1, q7=1, q8=1, q9=1, q10=0, q11=1, q12=1, q13=0, q14=1, q15=0.
+
+Output cycle 2: q0=1, q10=0, q12=1, q13=0, q6=1, q8=1.
+
+Cycle 2: in0=1, in1=1.
+State: q0=1, q1=0, q2=1, q3=1, q4=1, q5=0, q6=1, q7=1, q8=1, q9=1, q10=0, q11=1, q12=1, q13=0, q14=1, q15=0.
+
+c0_0 = NAND(q2=1, in0=1) = 0.
+c0_1 = NAND(0, q10=0) = 1.
+c0_2 = NAND(1, q1=0) = 1.
+c0_3 = NAND(1, q13=0) = 1.
+c0_4 = NAND(1, q1=0) = 1. => q0'=1.
+
+c1_0 = NAND(q13=0, q2=1) = 1.
+c1_1 = NAND(1, q15=0) = 1.
+c1_2 = NAND(1, q15=0) = 1.
+c1_3 = NAND(1, q7=1) = 0.
+c1_4 = NAND(0, q4=1) = 1. => q1'=1.
+
+c2_0 = NAND(q0=1, q3=1) = 0.
+c2_1 = NAND(0, q14=1) = 1.
+c2_2 = NAND(1, q15=0) = 1.
+c2_3 = NAND(1, q12=1) = 0.
+c2_4 = NAND(0, q9=1) = 1. => q2'=1.
+
+c3_0 = NAND(in0=1, q13=0) = 1.
+c3_1 = NAND(1, q12=1) = 0.
+c3_2 = NAND(0, q6=1) = 1.
+c3_3 = NAND(1, q0=1) = 0.
+c3_4 = NAND(0, q0=1) = 1. => q3'=1.
+
+c4_0 = NAND(q13=0, q8=1) = 1.
+c4_1 = NAND(1, q2=1) = 0.
+c4_2 = NAND(0, in1=1) = 1.
+c4_3 = NAND(1, q8=1) = 0.
+c4_4 = NAND(0, in0=1) = 1. => q4'=1.
+
+c5_0 = NAND(q15=0, q4=1) = 1.
+c5_1 = NAND(1, q1=0) = 1.
+c5_2 = NAND(1, q13=0) = 1.
+c5_3 = NAND(1, in1=1) = 0.
+c5_4 = NAND(0, q4=1) = 1. => q5'=1.
+
+c6_0 = NAND(q10=0, q2=1) = 1.
+c6_1 = NAND(1, q0=1) = 0.
+c6_2 = NAND(0, q3=1) = 1.
+c6_3 = NAND(1, q12=1) = 0.
+c6_4 = NAND(0, q13=0) = 1. => q6'=1.
+
+c7_0 = NAND(q14=1, q2=1) = 0.
+c7_1 = NAND(0, q12=1) = 1.
+c7_2 = NAND(1, q9=1) = 0.
+c7_3 = NAND(0, q3=1) = 1.
+c7_4 = NAND(1, q9=1) = 0. => q7'=0.
+
+c8_0 = NAND(q6=1, in1=1) = 0.
+c8_1 = NAND(0, q5=0) = 1.
+c8_2 = NAND(1, q12=1) = 0.
+c8_3 = NAND(0, q13=0) = 1.
+c8_4 = NAND(1, q9=1) = 0. => q8'=0.
+
+c9_0 = NAND(q2=1, q9=1) = 0.
+c9_1 = NAND(0, q11=1) = 1.
+c9_2 = NAND(1, q1=0) = 1.
+c9_3 = NAND(1, q15=0) = 1.
+c9_4 = NAND(1, q3=1) = 0. => q9'=0.
+
+c10_0 = NAND(q12=1, q15=0) = 1.
+c10_1 = NAND(1, q4=1) = 0.
+c10_2 = NAND(0, q6=1) = 1.
+c10_3 = NAND(1, q5=0) = 1.
+c10_4 = NAND(1, q1=0) = 1. => q10'=1.
+
+c11_0 = NAND(q3=1, in0=1) = 0.
+c11_1 = NAND(0, q1=0) = 1.
+c11_2 = NAND(1, q12=1) = 0.
+c11_3 = NAND(0, q12=1) = 1.
+c11_4 = NAND(1, in0=1) = 0. => q11'=0.
+
+c12_0 = NAND(q9=1, q13=0) = 1.
+c12_1 = NAND(1, q15=0) = 1.
+c12_2 = NAND(1, q0=1) = 0.
+c12_3 = NAND(0, q0=1) = 1.
+c12_4 = NAND(1, q12=1) = 0. => q12'=0.
+
+c13_0 = NAND(q0=1, q13=0) = 1.
+c13_1 = NAND(1, q0=1) = 0.
+c13_2 = NAND(0, q10=0) = 1.
+c13_3 = NAND(1, q10=0) = 1.
+c13_4 = NAND(1, q1=0) = 1. => q13'=1.
+
+c14_0 = NAND(q1=0, q11=1) = 1.
+c14_1 = NAND(1, in1=1) = 0.
+c14_2 = NAND(0, q10=0) = 1.
+c14_3 = NAND(1, q0=1) = 0.
+c14_4 = NAND(0, in1=1) = 1. => q14'=1.
+
+c15_0 = NAND(q2=1, q1=0) = 1.
+c15_1 = NAND(1, in1=1) = 0.
+c15_2 = NAND(0, q14=1) = 1.
+c15_3 = NAND(1, q7=1) = 0.
+c15_4 = NAND(0, q10=0) = 1. => q15'=1.
+
+After cycle 2 state:
+q0=1, q1=1, q2=1, q3=1, q4=1, q5=1, q6=1, q7=0, q8=0, q9=0, q10=1, q11=0, q12=0, q13=1, q14=1, q15=1.
+
+Output cycle 3: q0=1, q10=1, q12=0, q13=1, q6=1, q8=0.
+
+This is very tedious. Doing 40 cycles by hand will take forever and I'll likely make mistakes. I need a different approach. Maybe I can deduce the circuit's function? It might be a linear feedback shift register (LFSR) or some counter? The structure has 16 DFFs and NAND gates. NAND gates are universal, so it could be anything. But many netlist problems like this are LFSRs or similar. However, the gates are all NAND, not XOR, so it's not a standard LFSR (which uses XOR). It's a random logic circuit. 
+
+Maybe I can write a quick Python script in my mind? No, I can't run code. But I can try to find a pattern or do the simulation in a more systematic way, perhaps by writing a table. Since I'm an AI, I can output the reasoning, but the final answer must be provided. Is it reasonable to simulate 40 cycles manually? 16 gates × 5 NANDs = 80 NAND evaluations per cycle. 40 cycles = 3200 evaluations. That's too many for a human-like manual process. But I am an AI, I can try to simulate step by step in my "mind" by writing down the state after each cycle. I could do it iteratively. I have to be careful but it's possible if I create a table and update it. I'll do it in this reasoning block.
+
+Let's create a table for each cycle's state and inputs, compute next state, record outputs.
+
+But wait, the output trace is just the state bits q0, q10, q12, q13, q6, q8 at the beginning of each cycle (i.e., the state before the update). So I need the state sequence.
+
+Cycle 0 state: (1,0,0,1,1,1,1,1,1,0,0,1,0,1,0,0) for q0..q15. Outputs: q0=1, q10=0, q12=0, q13=1, q6=1, q8=1.
+
+I'll continue the simulation. Maybe I can compress the logic by noting that NANDs can be evaluated. I'll just keep a list of the 16 state bits and compute.
+
+Let's list the equations in a more compact form for mental evaluation:
+Let & = AND, NAND = ~(a&b) = 1 - a&b.
+
+Define functions:
+f0(q, in) = NAND(NAND(NAND(NAND(NAND(q2,in0), q10), q1), q13), q1)
+Wait, c0_0 = NAND(q2,in0)
+c0_1 = NAND(c0_0, q10)
+c0_2 = NAND(c0_1, q1)
+c0_3 = NAND(c0_2, q13)
+c0_4 = NAND(c0_3, q1)
+
+We can simplify using boolean algebra? NAND chains can be simplified. NAND(a,b) = NOT(a AND b). So a chain of NANDs is like alternating AND/OR with inversions. Actually, we can push inversions. But maybe it's easier to just compute numerically each cycle.
+
+I'll do it step by step, writing the state each cycle. I'll need 40 cycles. I'll keep a running state vector.
+
+Let S = [q0,q1,q2,q3,q4,q5,q6,q7,q8,q9,q10,q11,q12,q13,q14,q15]
+
+Cycle 0: S0 = [1,0,0,1,1,1,1,1,1,0,0,1,0,1,0,0]
+Inputs: in0=1, in1=0.
+We computed S1 = [1,1,1,0,1,0,0,1,1,0,1,0,1,1,1,1]
+
+Cycle 1: S1 = [1,1,1,0,1,0,0,1,1,0,1,0,1,1,1,1]? Wait, I had q9=0 in S1? Let's check cycle 1 output: q9'=0? Yes, c9_4=0 => q9'=0. So q9 stays 0. Wait, cycle 0: q9=0, c9_4=0, so q9'=0. Cycle 1: q9=0? But in my cycle 1 state I wrote q9=0? Let's re-check cycle 0 next state:
+c9_4 = NAND(NAND(NAND(NAND(NAND(q2,q9), q11), q1), q15), q3)
+Cycle 0: q2=0, q9=0 => NAND=1; NAND with q11=1 => 0; NAND with q1=0 => 1; NAND with q15=0 => 1; NAND with q3=1 => 0. So q9'=0.
+So q9 remains 0.
+Cycle 1 state: q0=1, q1=1, q2=1, q3=0, q4=1, q5=0, q6=0, q7=1, q8=1, q9=0, q10=1, q11=0, q12=1, q13=1, q14=1, q15=1.
+Wait, I had q6'=0? c6_4 = NAND(NAND(NAND(NAND(NAND(q10,q2), q0), q3), q12), q13)
+Cycle 0: q10=0, q2=0 => NAND=1; NAND with q0=1 => 0; NAND with q3=1 => 1; NAND with q12=0 => 1; NAND with q13=1 => 0 => q6'=0. Correct.
+q6 was 1 in cycle 0, becomes 0 in cycle 1.
+But in cycle 1 output, I need q6 at start of cycle 1, which is 0. Correct.
+
+Let's re-list S1 correctly:
+q0=1
+q1=1
+q2=1
+q3=0
+q4=1
+q5=0
+q6=0
+q7=1
+q8=1
+q9=0
+q10=1
+q11=0
+q12=1
+q13=1
+q14=1
+q15=1
+
+Inputs cycle 1: in0=0, in1=0.
+We computed S2:
+c0_4 = 1 => q0'=1
+c1_4 = 0 => q1'=0
+c2_4 = 1 => q2'=1
+c3_4 = 1 => q3'=1
+c4_4 = 1 => q4'=1
+c5_4 = 0 => q5'=0
+c6_4 = 1 => q6'=1
+c7_4 = 1 => q7'=1
+c8_4 = 1 => q8'=1
+c9_4 = 1 => q9'=1
+c10_4 = 0 => q10'=0
+c11_4 = 1 => q11'=1
+c12_4 = 1 => q12'=1
+c13_4 = 0 => q13'=0
+c14_4 = 1 => q14'=1
+c15_4 = 0 => q15'=0
+
+S2 = [1,0,1,1,1,0,1,1,1,1,0,1,1,0,1,0]
+Output cycle 2: q0=1, q10=0, q12=1, q13=0, q6=1, q8=1.
+
+Cycle 2: S2 = [1,0,1,1,1,0,1,1,1,1,0,1,1,0,1,0]
+Inputs: in0=1, in1=1.
+We computed S3:
+c0_4=1=>q0=1
+c1_4=1=>q1=1
+c2_4=1=>q2=1
+c3_4=1=>q3=1
+c4_4=1=>q4=1
+c5_4=1=>q5=1
+c6_4=1=>q6=1
+c7_4=0=>q7=0
+c8_4=0=>q8=0
+c9_4=0=>q9=0
+c10_4=1=>q10=1
+c11_4=0=>q11=0
+c12_4=0=>q12=0
+c13_4=1=>q13=1
+c14_4=1=>q14=1
+c15_4=1=>q15=1
+
+S3 = [1,1,1,1,1,1,1,0,0,0,1,0,0,1,1,1]
+Output cycle 3: q0=1, q10=1, q12=0, q13=1, q6=1, q8=0.
+
+Cycle 3: S3 = [1,1,1,1,1,1,1,0,0,0,1,0,0,1,1,1]
+Inputs: in0=1, in1=1 (from trace: cycle 3: in0=1, in1=1? Let's check trace.
+in0: [1,0,1,1,1,0,0,0,0,0,1,0,0,1,1,1,1,0,1,0,0,0,0,1,0,0,1,1,0,0,1,1,0,1,0,0,1,0,1,0]
+in1: [0,0,1,1,0,1,1,1,0,0,1,0,1,1,0,1,0,1,0,1,0,1,1,1,0,0,0,0,0,0,0,0,0,0,1,1,0,0,1,1]
+Cycle indices: 0..39.
+Cycle 0: in0=1, in1=0
+Cycle 1: in0=0, in1=0
+Cycle 2: in0=1, in1=1
+Cycle 3: in0=1, in1=1? trace: in0[3]=1, in1[3]=1? Yes, in1[3] is the 4th element: in1=[0,0,1,1,...] so index 3 is 1. in0[3]=1. So cycle 3: in0=1, in1=1.
+
+But wait, I used in1=1 for cycle 2? Cycle 2: in0=1, in1=1? trace: in0[2]=1, in1[2]=1? in1: index 2 is 1 (third element). Yes. So cycle 2: in0=1, in1=1; cycle 3: in0=1, in1=1. So cycle 3 inputs same as cycle 2.
+
+Now compute next state for cycle 3:
+S3 = [1,1,1,1,1,1,1,0,0,0,1,0,0,1,1,1]
+in0=1, in1=1.
+
+c0_0 = NAND(q2=1, in0=1) = 0
+c0_1 = NAND(0, q10=1) = 1
+c0_2 = NAND(1, q1=1) = 0
+c0_3 = NAND(0, q13=1) = 1
+c0_4 = NAND(1, q1=1) = 0 => q0'=0
+
+c1_0 = NAND(q13=1, q2=1) = 0
+c1_1 = NAND(0, q15=1) = 1
+c1_2 = NAND(1, q15=1) = 0
+c1_3 = NAND(0, q7=0) = 1
+c1_4 = NAND(1, q4=1) = 0 => q1'=0
+
+c2_0 = NAND(q0=1, q3=1) = 0
+c2_1 = NAND(0, q14=1) = 1
+c2_2 = NAND(1, q15=1) = 0
+c2_3 = NAND(0, q12=0) = 1
+c2_4 = NAND(1, q9=0) = 1 => q2'=1
+
+c3_0 = NAND(in0=1, q13=1) = 0
+c3_1 = NAND(0, q12=0) = 1
+c3_2 = NAND(1, q6=1) = 0
+c3_3 = NAND(0, q0=1) = 1
+c3_4 = NAND(1, q0=1) = 0 => q3'=0
+
+c4_0 = NAND(q13=1, q8=0) = 1
+c4_1 = NAND(1, q2=1) = 0
+c4_2 = NAND(0, in1=1) = 1
+c4_3 = NAND(1, q8=0) = 1
+c4_4 = NAND(1, in0=1) = 0 => q4'=0
+
+c5_0 = NAND(q15=1, q4=1) = 0
+c5_1 = NAND(0, q1=1) = 1
+c5_2 = NAND(1, q13=1) = 0
+c5_3 = NAND(0, in1=1) = 1
+c5_4 = NAND(1, q4=1) = 0 => q5'=0
+
+c6_0 = NAND(q10=1, q2=1) = 0
+c6_1 = NAND(0, q0=1) = 1
+c6_2 = NAND(1, q3=1) = 0
+c6_3 = NAND(0, q12=0) = 1
+c6_4 = NAND(1, q13=1) = 0 => q6'=0
+
+c7_0 = NAND(q14=1, q2=1) = 0
+c7_1 = NAND(0, q12=0) = 1
+c7_2 = NAND(1, q9=0) = 1
+c7_3 = NAND(1, q3=1) = 0
+c7_4 = NAND(0, q9=0) = 1 => q7'=1
+
+c8_0 = NAND(q6=1, in1=1) = 0
+c8_1 = NAND(0, q5=1) = 1
+c8_2 = NAND(1, q12=0) = 1
+c8_3 = NAND(1, q13=1) = 0
+c8_4 = NAND(0, q9=0) = 1 => q8'=1
+
+c9_0 = NAND(q2=1, q9=0) = 1
+c9_1 = NAND(1, q11=0) = 1
+c9_2 = NAND(1, q1=1) = 0
+c9_3 = NAND(0, q15=1) = 1
+c9_4 = NAND(1, q3=1) = 0 => q9'=0
+
+c10_0 = NAND(q12=0, q15=1) = 1
+c10_1 = NAND(1, q4=1) = 0
+c10_2 = NAND(0, q6=1) = 1
+c10_3 = NAND(1, q5=1) = 0
+c10_4 = NAND(0, q1=1) = 1 => q10'=1
+
+c11_0 = NAND(q3=1, in0=1) = 0
+c11_1 = NAND(0, q1=1) = 1
+c11_2 = NAND(1, q12=0) = 1
+c11_3 = NAND(1, q12=0) = 1
+c11_4 = NAND(1, in0=1) = 0 => q11'=0
+
+c12_0 = NAND(q9=0, q13=1) = 1
+c12_1 = NAND(1, q15=1) = 0
+c12_2 = NAND(0, q0=1) = 1
+c12_3 = NAND(1, q0=1) = 0
+c12_4 = NAND(0, q12=0) = 1 => q12'=1
+
+c13_0 = NAND(q0=1, q13=1) = 0
+c13_1 = NAND(0, q0=1) = 1
+c13_2 = NAND(1, q10=1) = 0
+c13_3 = NAND(0, q10=1) = 1
+c13_4 = NAND(1, q1=1) = 0 => q13'=0
+
+c14_0 = NAND(q1=1, q11=0) = 1
+c14_1 = NAND(1, in1=1) = 0
+c14_2 = NAND(0, q10=1) = 1
+c14_3 = NAND(1, q0=1) = 0
+c14_4 = NAND(0, in1=1) = 1 => q14'=1
+
+c15_0 = NAND(q2=1, q1=1) = 0
+c15_1 = NAND(0, in1=1) = 1
+c15_2 = NAND(1, q14=1) = 0
+c15_3 = NAND(0, q7=0) = 1
+c15_4 = NAND(1, q10=1) = 0 => q15'=0
+
+S4 = [0,0,1,0,0,0,0,1,1,0,1,0,1,0,1,0]
+Output cycle 4: q0=0, q10=1, q12=1, q13=0, q6=0, q8=1.
+
+Cycle 4: S4 = [0,0,1,0,0,0,0,1,1,0,1,0,1,0,1,0]
+Inputs: in0=1, in1=0? Trace: in0[4]=1, in1[4]=0. Yes, cycle 4: in0=1, in1=0.
+
+Compute next state S5:
+q0=0, q1=0, q2=1, q3=0, q4=0, q5=0, q6=0, q7=1, q8=1, q9=0, q10=1, q11=0, q12=1, q13=0, q14=1, q15=0.
+in0=1, in1=0.
+
+c0_0 = NAND(q2=1, in0=1) = 0
+c0_1 = NAND(0, q10=1) = 1
+c0_2 = NAND(1, q1=0) = 1
+c0_3 = NAND(1, q13=0) = 1
+c0_4 = NAND(1, q1=0) = 1 => q0'=1
+
+c1_0 = NAND(q13=0, q2=1) = 1
+c1_1 = NAND(1, q15=0) = 1
+c1_2 = NAND(1, q15=0) = 1
+c1_3 = NAND(1, q7=1) = 0
+c1_4 = NAND(0, q4=0) = 1 => q1'=1
+
+c2_0 = NAND(q0=0, q3=0) = 1
+c2_1 = NAND(1, q14=1) = 0
+c2_2 = NAND(0, q15=0) = 1
+c2_3 = NAND(1, q12=1) = 0
+c2_4 = NAND(0, q9=0) = 1 => q2'=1
+
+c3_0 = NAND(in0=1, q13=0) = 1
+c3_1 = NAND(1, q12=1) = 0
+c3_2 = NAND(0, q6=0) = 1
+c3_3 = NAND(1, q0=0) = 1
+c3_4 = NAND(1, q0=0) = 1 => q3'=1
+
+c4_0 = NAND(q13=0, q8=1) = 1
+c4_1 = NAND(1, q2=1) = 0
+c4_2 = NAND(0, in1=0) = 1
+c4_3 = NAND(1, q8=1) = 0
+c4_4 = NAND(0, in0=1) = 1 => q4'=1
+
+c5_0 = NAND(q15=0, q4=0) = 1
+c5_1 = NAND(1, q1=0) = 1
+c5_2 = NAND(1, q13=0) = 1
+c5_3 = NAND(1, in1=0) = 1
+c5_4 = NAND(1, q4=0) = 1 => q5'=1
+
+c6_0 = NAND(q10=1, q2=1) = 0
+c6_1 = NAND(0, q0=0) = 1
+c6_2 = NAND(1, q3=0) = 1
+c6_3 = NAND(1, q12=1) = 0
+c6_4 = NAND(0, q13=0) = 1 => q6'=1
+
+c7_0 = NAND(q14=1, q2=1) = 0
+c7_1 = NAND(0, q12=1) = 1
+c7_2 = NAND(1, q9=0) = 1
+c7_3 = NAND(1, q3=0) = 1
+c7_4 = NAND(1, q9=0) = 1 => q7'=1
+
+c8_0 = NAND(q6=0, in1=0) = 1
+c8_1 = NAND(1, q5=0) = 1
+c8_2 = NAND(1, q12=1) = 0
+c8_3 = NAND(0, q13=0) = 1
+c8_4 = NAND(1, q9=0) = 1 => q8'=1
+
+c9_0 = NAND(q2=1, q9=0) = 1
+c9_1 = NAND(1, q11=0) = 1
+c9_2 = NAND(1, q1=0) = 1
+c9_3 = NAND(1, q15=0) = 1
+c9_4 = NAND(1, q3=0) = 1 => q9'=1
+
+c10_0 = NAND(q12=1, q15=0) = 1
+c10_1 = NAND(1, q4=0) = 1
+c10_2 = NAND(1, q6=0) = 1
+c10_3 = NAND(1, q5=0) = 1
+c10_4 = NAND(1, q1=0) = 1 => q10'=1
+
+c11_0 = NAND(q3=0, in0=1) = 1
+c11_1 = NAND(1, q1=0) = 1
+c11_2 = NAND(1, q12=1) = 0
+c11_3 = NAND(0, q12=1) = 1
+c11_4 = NAND(1, in0=1) = 0 => q11'=0
+
+c12_0 = NAND(q9=0, q13=0) = 1
+c12_1 = NAND(1, q15=0) = 1
+c12_2 = NAND(1, q0=0) = 1
+c12_3 = NAND(1, q0=0) = 1
+c12_4 = NAND(1, q12=1) = 0 => q12'=0
+
+c13_0 = NAND(q0=0, q13=0) = 1
+c13_1 = NAND(1, q0=0) = 1
+c13_2 = NAND(1, q10=1) = 0
+c13_3 = NAND(0, q10=1) = 1
+c13_4 = NAND(1, q1=0) = 1 => q13'=1
+
+c14_0 = NAND(q1=0, q11=0) = 1
+c14_1 = NAND(1, in1=0) = 1
+c14_2 = NAND(1, q10=1) = 0
+c14_3 = NAND(0, q0=0) = 1
+c14_4 = NAND(1, in1=0) = 1 => q14'=1
+
+c15_0 = NAND(q2=1, q1=0) = 1
+c15_1 = NAND(1, in1=0) = 1
+c15_2 = NAND(1, q14=1) = 0
+c15_3 = NAND(0, q7=1) = 1
+c15_4 = NAND(1, q10=1) = 0 => q15'=0
+
+S5 = [1,1,1,1,1,1,1,1,1,1,1,0,0,1,1,0]
+Output cycle 5: q0=1, q10=1, q12=0, q13=1, q6=1, q8=1.
+
+Cycle 5: S5 = [1,1,1,1,1,1,1,1,1,1,1,0,0,1,1,0]
+Inputs: in0=0, in1=1? Trace: in0[5]=0, in1[5]=1.
+
+c0_0 = NAND(q2=1, in0=0) = 1
+c0_1 = NAND(1, q10=1) = 0
+c0_2 = NAND(0, q1=1) = 1
+c0_3 = NAND(1, q13=1) = 0
+c0_4 = NAND(0, q1=1) = 1 => q0'=1
+
+c1_0 = NAND(q13=1, q2=1) = 0
+c1_1 = NAND(0, q15=0) = 1
+c1_2 = NAND(1, q15=0) = 1
+c1_3 = NAND(1, q7=1) = 0
+c1_4 = NAND(0, q4=1) = 1 => q1'=1
+
+c2_0 = NAND(q0=1, q3=1) = 0
+c2_1 = NAND(0, q14=1) = 1
+c2_2 = NAND(1, q15=0) = 1
+c2_3 = NAND(1, q12=0) = 1
+c2_4 = NAND(1, q9=1) = 0 => q2'=0
+
+c3_0 = NAND(in0=0, q13=1) = 1
+c3_1 = NAND(1, q12=0) = 1
+c3_2 = NAND(1, q6=1) = 0
+c3_3 = NAND(0, q0=1) = 1
+c3_4 = NAND(1, q0=1) = 0 => q3'=0
+
+c4_0 = NAND(q13=1, q8=1) = 0
+c4_1 = NAND(0, q2=1) = 1
+c4_2 = NAND(1, in1=1) = 0
+c4_3 = NAND(0, q8=1) = 1
+c4_4 = NAND(1, in0=0) = 1 => q4'=1
+
+c5_0 = NAND(q15=0, q4=1) = 1
+c5_1 = NAND(1, q1=1) = 0
+c5_2 = NAND(0, q13=1) = 1
+c5_3 = NAND(1, in1=1) = 0
+c5_4 = NAND(0, q4=1) = 1 => q5'=1
+
+c6_0 = NAND(q10=1, q2=1) = 0
+c6_1 = NAND(0, q0=1) = 1
+c6_2 = NAND(1, q3=1) = 0
+c6_3 = NAND(0, q12=0) = 1
+c6_4 = NAND(1, q13=1) = 0 => q6'=0
+
+c7_0 = NAND(q14=1, q2=1) = 0
+c7_1 = NAND(0, q12=0) = 1
+c7_2 = NAND(1, q9=1) = 0
+c7_3 = NAND(0, q3=1) = 1
+c7_4 = NAND(1, q9=1) = 0 => q7'=0
+
+c8_0 = NAND(q6=1, in1=1) = 0
+c8_1 = NAND(0, q5=1) = 1
+c8_2 = NAND(1, q12=0) = 1
+c8_3 = NAND(1, q13=1) = 0
+c8_4 = NAND(0, q9=1) = 1 => q8'=1
+
+c9_0 = NAND(q2=1, q9=1) = 0
+c9_1 = NAND(0, q11=0) = 1
+c9_2 = NAND(1, q1=1) = 0
+c9_3 = NAND(0, q15=0) = 1
+c9_4 = NAND(1, q3=1) = 0 => q9'=0
+
+c10_0 = NAND(q12=0, q15=0) = 1
+c10_1 = NAND(1, q4=1) = 0
+c10_2 = NAND(0, q6=1) = 1
+c10_3 = NAND(1, q5=1) = 0
+c10_4 = NAND(0, q1=1) = 1 => q10'=1
+
+c11_0 = NAND(q3=1, in0=0) = 1
+c11_1 = NAND(1, q1=1) = 0
+c11_2 = NAND(0, q12=0) = 1
+c11_3 = NAND(1, q12=0) = 1
+c11_4 = NAND(1, in0=0) = 1 => q11'=1
+
+c12_0 = NAND(q9=1, q13=1) = 0
+c12_1 = NAND(0, q15=0) = 1
+c12_2 = NAND(1, q0=1) = 0
+c12_3 = NAND(0, q0=1) = 1
+c12_4 = NAND(1, q12=0) = 1 => q12'=1
+
+c13_0 = NAND(q0=1, q13=1) = 0
+c13_1 = NAND(0, q0=1) = 1
+c13_2 = NAND(1, q10=1) = 0
+c13_3 = NAND(0, q10=1) = 1
+c13_4 = NAND(1, q1=1) = 0 => q13'=0
+
+c14_0 = NAND(q1=1, q11=0) = 1
+c14_1 = NAND(1, in1=1) = 0
+c14_2 = NAND(0, q10=1) = 1
+c14_3 = NAND(1, q0=1) = 0
+c14_4 = NAND(0, in1=1) = 1 => q14'=1
+
+c15_0 = NAND(q2=1, q1=1) = 0
+c15_1 = NAND(0, in1=1) = 1
+c15_2 = NAND(1, q14=1) = 0
+c15_3 = NAND(0, q7=1) = 1
+c15_4 = NAND(1, q10=1) = 0 => q15'=0
+
+S6 = [1,1,0,0,1,1,0,0,1,0,1,1,1,0,1,0]
+Output cycle 6: q0=1, q10=1, q12=1, q13=0, q6=0, q8=1.
+
+Cycle 6: S6 = [1,1,0,0,1,1,0,0,1,0,1,1,1,0,1,0]
+Inputs: in0=0, in1=1? Trace: in0[6]=0, in1[6]=1.
+
+c0_0 = NAND(q2=0, in0=0) = 1
+c0_1 = NAND(1, q10=1) = 0
+c0_2 = NAND(0, q1=1) = 1
+c0_3 = NAND(1, q13=0) = 1
+c0_4 = NAND(1, q1=1) = 0 => q0'=0
+
+c1_0 = NAND(q13=0, q2=0) = 1
+c1_1 = NAND(1, q15=0) = 1
+c1_2 = NAND(1, q15=0) = 1
+c1_3 = NAND(1, q7=0) = 1
+c1_4 = NAND(1, q4=1) = 0 => q1'=0
+
+c2_0 = NAND(q0=1, q3=0) = 1
+c2_1 = NAND(1, q14=1) = 0
+c2_2 = NAND(0, q15=0) = 1
+c2_3 = NAND(1, q12=1) = 0
+c2_4 = NAND(0, q9=0) = 1 => q2'=1
+
+c3_0 = NAND(in0=0, q13=0) = 1
+c3_1 = NAND(1, q12=1) = 0
+c3_2 = NAND(0, q6=0) = 1
+c3_3 = NAND(1, q0=1) = 0
+c3_4 = NAND(0, q0=1) = 1 => q3'=1
+
+c4_0 = NAND(q13=0, q8=1) = 1
+c4_1 = NAND(1, q2=0) = 1
+c4_2 = NAND(1, in1=1) = 0
+c4_3 = NAND(0, q8=1) = 1
+c4_4 = NAND(1, in0=0) = 1 => q4'=1
+
+c5_0 = NAND(q15=0, q4=1) = 1
+c5_1 = NAND(1, q1=1) = 0
+c5_2 = NAND(0, q13=0) = 1
+c5_3 = NAND(1, in1=1) = 0
+c5_4 = NAND(0, q4=1) = 1 => q5'=1
+
+c6_0 = NAND(q10=1, q2=0) = 1
+c6_1 = NAND(1, q0=1) = 0
+c6_2 = NAND(0, q3=0) = 1
+c6_3 = NAND(1, q12=1) = 0
+c6_4 = NAND(0, q13=0) = 1 => q6'=1
+
+c7_0 = NAND(q14=1, q2=0) = 1
+c7_1 = NAND(1, q12=1) = 0
+c7_2 = NAND(0, q9=0) = 1
+c7_3 = NAND(1, q3=0) = 1
+c7_4 = NAND(1, q9=0) = 1 => q7'=1
+
+c8_0 = NAND(q6=0, in1=1) = 1
+c8_1 = NAND(1, q5=1) = 0
+c8_2 = NAND(0, q12=1) = 1
+c8_3 = NAND(1, q13=0) = 1
+c8_4 = NAND(1, q9=0) = 1 => q8'=1
+
+c9_0 = NAND(q2=0, q9=0) = 1
+c9_1 = NAND(1, q11=1) = 0
+c9_2 = NAND(0, q1=1) = 1
+c9_3 = NAND(1, q15=0) = 1
+c9_4 = NAND(1, q3=0) = 1 => q9'=1
+
+c10_0 = NAND(q12=1, q15=0) = 1
+c10_1 = NAND(1, q4=1) = 0
+c10_2 = NAND(0, q6=0) = 1
+c10_3 = NAND(1, q5=1) = 0
+c10_4 = NAND(0, q1=1) = 1 => q10'=1
+
+c11_0 = NAND(q3=0, in0=0) = 1
+c11_1 = NAND(1, q1=1) = 0
+c11_2 = NAND(0, q12=1) = 1
+c11_3 = NAND(1, q12=1) = 0
+c11_4 = NAND(0, in0=0) = 1 => q11'=1
+
+c12_0 = NAND(q9=0, q13=0) = 1
+c12_1 = NAND(1, q15=0) = 1
+c12_2 = NAND(1, q0=1) = 0
+c12_3 = NAND(0, q0=1) = 1
+c12_4 = NAND(1, q12=1) = 0 => q12'=0
+
+c13_0 = NAND(q0=1, q13=0) = 1
+c13_1 = NAND(1, q0=1) = 0
+c13_2 = NAND(0, q10=1) = 1
+c13_3 = NAND(1, q10=1) = 0
+c13_4 = NAND(0, q1=1) = 1 => q13'=1
+
+c14_0 = NAND(q1=1, q11=1) = 0
+c14_1 = NAND(0, in1=1) = 1
+c14_2 = NAND(1, q10=1) = 0
+c14_3 = NAND(0, q0=1) = 1
+c14_4 = NAND(1, in1=1) = 0 => q14'=0
+
+c15_0 = NAND(q2=0, q1=1) = 1
+c15_1 = NAND(1, in1=1) = 0
+c15_2 = NAND(0, q14=1) = 1
+c15_3 = NAND(1, q7=0) = 1
+c15_4 = NAND(1, q10=1) = 0 => q15'=0
+
+S7 = [0,0,1,1,1,1,1,1,1,1,1,1,0,1,0,0]
+Output cycle 7: q0=0, q10=1, q12=0, q13=1, q6=1, q8=1.
+
+Cycle 7: S7 = [0,0,1,1,1,1,1,1,1,1,1,1,0,1,0,0]
+Inputs: in0=0, in1=1? Trace: in0[7]=0, in1[7]=1.
+
+c0_0 = NAND(q2=1, in0=0) = 1
+c0_1 = NAND(1, q10=1) = 0
+c0_2 = NAND(0, q1=0) = 1
+c0_3 = NAND(1, q13=1) = 0
+c0_4 = NAND(0, q1=0) = 1 => q0'=1
+
+c1_0 = NAND(q13=1, q2=1) = 0
+c1_1 = NAND(0, q15=0) = 1
+c1_2 = NAND(1, q15=0) = 1
+c1_3 = NAND(1, q7=1) = 0
+c1_4 = NAND(0, q4=1) = 1 => q1'=1
+
+c2_0 = NAND(q0=0, q3=1) = 1
+c2_1 = NAND(1, q14=0) = 1
+c2_2 = NAND(1, q15=0) = 1
+c2_3 = NAND(1, q12=0) = 1
+c2_4 = NAND(1, q9=1) = 0 => q2'=0
+
+c3_0 = NAND(in0=0, q13=1) = 1
+c3_1 = NAND(1, q12=0) = 1
+c3_2 = NAND(1, q6=1) = 0
+c3_3 = NAND(0, q0=0) = 1
+c3_4 = NAND(1, q0=0) = 1 => q3'=1
+
+c4_0 = NAND(q13=1, q8=1) = 0
+c4_1 = NAND(0, q2=1) = 1
+c4_2 = NAND(1, in1=1) = 0
+c4_3 = NAND(0, q8=1) = 1
+c4_4 = NAND(1, in0=0) = 1 => q4'=1
+
+c5_0 = NAND(q15=0, q4=1) = 1
+c5_1 = NAND(1, q1=0) = 1
+c5_2 = NAND(1, q13=1) = 0
+c5_3 = NAND(0, in1=1) = 1
+c5_4 = NAND(1, q4=1) = 0 => q5'=0
+
+c6_0 = NAND(q10=1, q2=1) = 0
+c6_1 = NAND(0, q0=0) = 1
+c6_2 = NAND(1, q3=1) = 0
+c6_3 = NAND(0, q12=0) = 1
+c6_4 = NAND(1, q13=1) = 0 => q6'=0
+
+c7_0 = NAND(q14=0, q2=1) = 1
+c7_1 = NAND(1, q12=0) = 1
+c7_2 = NAND(1, q9=1) = 0
+c7_3 = NAND(0, q3=1) = 1
+c7_4 = NAND(1, q9=1) = 0 => q7'=0
+
+c8_0 = NAND(q6=1, in1=1) = 0
+c8_1 = NAND(0, q5=1) = 1
+c8_2 = NAND(1, q12=0) = 1
+c8_3 = NAND(1, q13=1) = 0
+c8_4 = NAND(0, q9=1) = 1 => q8'=1
+
+c9_0 = NAND(q2=1, q9=1) = 0
+c9_1 = NAND(0, q11=1) = 1
+c9_2 = NAND(1, q1=0) = 1
+c9_3 = NAND(1, q15=0) = 1
+c9_4 = NAND(1, q3=1) = 0 => q9'=0
+
+c10_0 = NAND(q12=0, q15=0) = 1
+c10_1 = NAND(1, q4=1) = 0
+c10_2 = NAND(0, q6=1) = 1
+c10_3 = NAND(1, q5=1) = 0
+c10_4 = NAND(0, q1=0) = 1 => q10'=1
+
+c11_0 = NAND(q3=1, in0=0) = 1
+c11_1 = NAND(1, q1=0) = 1
+c11_2 = NAND(1, q12=0) = 1
+c11_3 = NAND(1, q12=0) = 1
+c11_4 = NAND(1, in0=0) = 1 => q11'=1
+
+c12_0 = NAND(q9=1, q13=1) = 0
+c12_1 = NAND(0, q15=0) = 1
+c12_2 = NAND(1, q0=0) = 1
+c12_3 = NAND(1, q0=0) = 1
+c12_4 = NAND(1, q12=0) = 1 => q12'=1
+
+c13_0 = NAND(q0=0, q13=1) = 1
+c13_1 = NAND(1, q0=0) = 1
+c13_2 = NAND(1, q10=1) = 0
+c13_3 = NAND(0, q10=1) = 1
+c13_4 = NAND(1, q1=0) = 1 => q13'=1
+
+c14_0 = NAND(q1=0, q11=1) = 1
+c14_1 = NAND(1, in1=1) = 0
+c14_2 = NAND(0, q10=1) = 1
+c14_3 = NAND(1, q0=0) = 1
+c14_4 = NAND(1, in1=1) = 0 => q14'=0
+
+c15_0 = NAND(q2=1, q1=0) = 1
+c15_1 = NAND(1, in1=1) = 0
+c15_2 = NAND(0, q14=0) = 1
+c15_3 = NAND(1, q7=1) = 0
+c15_4 = NAND(0, q10=1) = 1 => q15'=1
+
+S8 = [1,1,0,1,1,0,0,0,1,0,1,1,1,1,0,1]
+Output cycle 8: q0=1, q10=1, q12=1, q13=1, q6=0, q8=1.
+
+Cycle 8: S8 = [1,1,0,1,1,0,0,0,1,0,1,1,1,1,0,1]
+Inputs: in0=0, in1=0? Trace: in0[8]=0, in1[8]=0.
+
+c0_0 = NAND(q2=0, in0=0) = 1
+c0_1 = NAND(1, q10=1) = 0
+c0_2 = NAND(0, q1=1) = 1
+c0_3 = NAND(1, q13=1) = 0
+c0_4 = NAND(0, q1=1) = 1 => q0'=1
+
+c1_0 = NAND(q13=1, q2=0) = 1
+c1_1 = NAND(1, q15=1) = 0
+c1_2 = NAND(0, q15=1) = 1
+c1_3 = NAND(1, q7=0) = 1
+c1_4 = NAND(1, q4=1) = 0 => q1'=0
+
+c2_0 = NAND(q0=1, q3=1) = 0
+c2_1 = NAND(0, q14=0) = 1
+c2_2 = NAND(1, q15=1) = 0
+c2_3 = NAND(0, q12=1) = 1
+c2_4 = NAND(1, q9=0) = 1 => q2'=1
+
+c3_0 = NAND(in0=0, q13=1) = 1
+c3_1 = NAND(1, q12=1) = 0
+c3_2 = NAND(0, q6=0) = 1
+c3_3 = NAND(1, q0=1) = 0
+c3_4 = NAND(0, q0=1) = 1 => q3'=1
+
+c4_0 = NAND(q13=1, q8=1) = 0
+c4_1 = NAND(0, q2=0) = 1
+c4_2 = NAND(1, in1=0) = 1
+c4_3 = NAND(1, q8=1) = 0
+c4_4 = NAND(0, in0=0) = 1 => q4'=1
+
+c5_0 = NAND(q15=1, q4=1) = 0
+c5_1 = NAND(0, q1=1) = 1
+c5_2 = NAND(1, q13=1) = 0
+c5_3 = NAND(0, in1=0) = 1
+c5_4 = NAND(1, q4=1) = 0 => q5'=0
+
+c6_0 = NAND(q10=1, q2=0) = 1
+c6_1 = NAND(1, q0=1) = 0
+c6_2 = NAND(0, q3=1) = 1
+c6_3 = NAND(1, q12=1) = 0
+c6_4 = NAND(0, q13=1) = 1 => q6'=1
+
+c7_0 = NAND(q14=0, q2=0) = 1
+c7_1 = NAND(1, q12=1) = 0
+c7_2 = NAND(0, q9=0) = 1
+c7_3 = NAND(1, q3=1) = 0
+c7_4 = NAND(0, q9=0) = 1 => q7'=1
+
+c8_0 = NAND(q6=0, in1=0) = 1
+c8_1 = NAND(1, q5=0) = 1
+c8_2 = NAND(1, q12=1) = 0
+c8_3 = NAND(0, q13=1) = 1
+c8_4 = NAND(1, q9=0) = 1 => q8'=1
+
+c9_0 = NAND(q2=0, q9=0) = 1
+c9_1 = NAND(1, q11=1) = 0
+c9_2 = NAND(0, q1=1) = 1
+c9_3 = NAND(1, q15=1) = 0
+c9_4 = NAND(0, q3=1) = 1 => q9'=1
+
+c10_0 = NAND(q12=1, q15=1) = 0
+c10_1 = NAND(0, q4=1) = 1
+c10_2 = NAND(1, q6=0) = 1
+c10_3 = NAND(1, q5=0) = 1
+c10_4 = NAND(1, q1=1) = 0 => q10'=0
+
+c11_0 = NAND(q3=1, in0=0) = 1
+c11_1 = NAND(1, q1=1) = 0
+c11_2 = NAND(0, q12=1) = 1
+c11_3 = NAND(1, q12=1) = 0
+c11_4 = NAND(0, in0=0) = 1 => q11'=1
+
+c12_0 = NAND(q9=0, q13=1) = 1
+c12_1 = NAND(1, q15=1) = 0
+c12_2 = NAND(0, q0=1) = 1
+c12_3 = NAND(1, q0=1) = 0
+c12_4 = NAND(0, q12=1) = 1 => q12'=1
+
+c13_0 = NAND(q0=1, q13=1) = 0
+c13_1 = NAND(0, q0=1) = 1
+c13_2 = NAND(1, q10=1) = 0
+c13_3 = NAND(0, q10=1) = 1
+c13_4 = NAND(1, q1=1) = 0 => q13'=0
+
+c14_0 = NAND(q1=1, q11=1) = 0
+c14_1 = NAND(0, in1=0) = 1
+c14_2 = NAND(1, q10=1) = 0
+c14_3 = NAND(0, q0=1) = 1
+c14_4 = NAND(1, in1=0) = 1 => q14'=1
+
+c15_0 = NAND(q2=0, q1=1) = 1
+c15_1 = NAND(1, in1=0) = 1
+c15_2 = NAND(1, q14=0) = 1
+c15_3 = NAND(1, q7=0) = 1
+c15_4 = NAND(1, q10=1) = 0 => q15'=0
+
+S9 = [1,0,1,1,1,0,1,1,1,1,0,1,1,0,1,0]
+Output cycle 9: q0=1, q10=0, q12=1, q13=0, q6=1, q8=1.
+
+Wait, S9 looks familiar: S9 = [1,0,1,1,1,0,1,1,1,1,0,1,1,0,1,0]. This is exactly S2! S2 was [1,0,1,1,1,0,1,1,1,1,0,1,1,0,1,0]. Let's check: S2: q0=1, q1=0, q2=1, q3=1, q4=1, q5=0, q6=1, q7=1, q8=1, q9=1, q10=0, q11=1, q12=1, q13=0, q14=1, q15=0. Yes, S9 equals S2.
+
+Cycle 9 inputs: in0=0, in1=0. S2 inputs were in0=1, in1=1. So state is same but inputs differ.
+
+Cycle 9: S9 = [1,0,1,1,1,0,1,1,1,1,0,1,1,0,1,0]
+Inputs: in0=0, in1=0? Trace: in0[9]=0, in1[9]=0.
+
+c0_0 = NAND(q2=1, in0=0) = 1
+c0_1 = NAND(1, q10=0) = 1
+c0_2 = NAND(1, q1=0) = 1
+c0_3 = NAND(1, q13=0) = 1
+c0_4 = NAND(1, q1=0) = 1 => q0'=1
+
+c1_0 = NAND(q13=0, q2=1) = 1
+c1_1 = NAND(1, q15=0) = 1
+c1_2 = NAND(1, q15=0) = 1
+c1_3 = NAND(1, q7=1) = 0
+c1_4 = NAND(0, q4=1) = 1 => q1'=1
+
+c2_0 = NAND(q0=1, q3=1) = 0
+c2_1 = NAND(0, q14=1) = 1
+c2_2 = NAND(1, q15=0) = 1
+c2_3 = NAND(1, q12=1) = 0
+c2_4 = NAND(0, q9=1) = 1 => q2'=1
+
+c3_0 = NAND(in0=0, q13=0) = 1
+c3_1 = NAND(1, q12=1) = 0
+c3_2 = NAND(0, q6=1) = 1
+c3_3 = NAND(1, q0=1) = 0
+c3_4 = NAND(0, q0=1) = 1 => q3'=1
+
+c4_0 = NAND(q13=0, q8=1) = 1
+c4_1 = NAND(1, q2=1) = 0
+c4_2 = NAND(0, in1=0) = 1
+c4_3 = NAND(1, q8=1) = 0
+c4_4 = NAND(0, in0=0) = 1 => q4'=1
+
+c5_0 = NAND(q15=0, q4=1) = 1
+c5_1 = NAND(1, q1=0) = 1
+c5_2 = NAND(1, q13=0) = 1
+c5_3 = NAND(1, in1=0) = 1
+c5_4 = NAND(1, q4=1) = 0 => q5'=0? Wait, NAND(1,1)=0. So q5'=0.
+
+c6_0 = NAND(q10=0, q2=1) = 1
+c6_1 = NAND(1, q0=1) = 0
+c6_2 = NAND(0, q3=1) = 1
+c6_3 = NAND(1, q12=1) = 0
+c6_4 = NAND(0, q13=0) = 1 => q6'=1
+
+c7_0 = NAND(q14=1, q2=1) = 0
+c7_1 = NAND(0, q12=1) = 1
+c7_2 = NAND(1, q9=1) = 0
+c7_3 = NAND(0, q3=1) = 1
+c7_4 = NAND(1, q9=1) = 0 => q7'=0
+
+c8_0 = NAND(q6=1, in1=0) = 1
+c8_1 = NAND(1, q5=0) = 1
+c8_2 = NAND(1, q12=1) = 0
+c8_3 = NAND(0, q13=0) = 1
+c8_4 = NAND(1, q9=1) = 0 => q8'=0
+
+c9_0 = NAND(q2=1, q9=1) = 0
+c9_1 = NAND(0, q11=1) = 1
+c9_2 = NAND(1, q1=0) = 1
+c9_3 = NAND(1, q15=0) = 1
+c9_4 = NAND(1, q3=1) = 0 => q9'=0
+
+c10_0 = NAND(q12=1, q15=0) = 1
+c10_1 = NAND(1, q4=1) = 0
+c10_2 = NAND(0, q6=1) = 1
+c10_3 = NAND(1, q5=0) = 1
+c10_4 = NAND(1, q1=0) = 1 => q10'=1
+
+c11_0 = NAND(q3=1, in0=0) = 1
+c11_1 = NAND(1, q1=0) = 1
+c11_2 = NAND(1, q12=1) = 0
+c11_3 = NAND(0, q12=1) = 1
+c11_4 = NAND(1, in0=0) = 1 => q11'=1
+
+c12_0 = NAND(q9=1, q13=0) = 1
+c12_1 = NAND(1, q15=0) = 1
+c12_2 = NAND(1, q0=1) = 0
+c12_3 = NAND(0, q0=1) = 1
+c12_4 = NAND(1, q12=1) = 0 => q12'=0
+
+c13_0 = NAND(q0=1, q13=0) = 1
+c13_1 = NAND(1, q0=1) = 0
+c13_2 = NAND(0, q10=0) = 1
+c13_3 = NAND(1, q10=0) = 1
+c13_4 = NAND(1, q1=0) = 1 => q13'=1
+
+c14_0 = NAND(q1=0, q11=1) = 1
+c14_1 = NAND(1, in1=0) = 1
+c14_2 = NAND(1, q10=0) = 1
+c14_3 = NAND(1, q0=1) = 0
+c14_4 = NAND(0, in1=0) = 1 => q14'=1
+
+c15_0 = NAND(q2=1, q1=0) = 1
+c15_1 = NAND(1, in1=0) = 1
+c15_2 = NAND(1, q14=1) = 0
+c15_3 = NAND(0, q7=1) = 1
+c15_4 = NAND(1, q10=0) = 1 => q15'=1
+
+S10 = [1,1,1,1,1,0,1,0,0,0,1,1,0,1,1,1]
+Output cycle 10: q0=1, q10=1, q12=0, q13=1, q6=1, q8=0.
+
+Cycle 10: S10 = [1,1,1,1,1,0,1,0,0,0,1,1,0,1,1,1]
+Inputs: in0=1, in1=1? Trace: in0[10]=1, in1[10]=1.
+
+c0_0 = NAND(q2=1, in0=1) = 0
+c0_1 = NAND(0, q10=1) = 1
+c0_2 = NAND(1, q1=1) = 0
+c0_3 = NAND(0, q13=1) = 1
+c0_4 = NAND(1, q1=1) = 0 => q0'=0
+
+c1_0 = NAND(q13=1, q2=1) = 0
+c1_1 = NAND(0, q15=1) = 1
+c1_2 = NAND(1, q15=1) = 0
+c1_3 = NAND(0, q7=0) = 1
+c1_4 = NAND(1, q4=1) = 0 => q1'=0
+
+c2_0 = NAND(q0=1, q3=1) = 0
+c2_1 = NAND(0, q14=1) = 1
+c2_2 = NAND(1, q15=1) = 0
+c2_3 = NAND(0, q12=0) = 1
+c2_4 = NAND(1, q9=0) = 1 => q2'=1
+
+c3_0 = NAND(in0=1, q13=1) = 0
+c3_1 = NAND(0, q12=0) = 1
+c3_2 = NAND(1, q6=1) = 0
+c3_3 = NAND(0, q0=1) = 1
+c3_4 = NAND(1, q0=1) = 0 => q3'=0
+
+c4_0 = NAND(q13=1, q8=0) = 1
+c4_1 = NAND(1, q2=1) = 0
+c4_2 = NAND(0, in1=1) = 1
+c4_3 = NAND(1, q8=0) = 1
+c4_4 = NAND(1, in0=1) = 0 => q4'=0
+
+c5_0 = NAND(q15=1, q4=1) = 0
+c5_1 = NAND(0, q1=1) = 1
+c5_2 = NAND(1, q13=1) = 0
+c5_3 = NAND(0, in1=1) = 1
+c5_4 = NAND(1, q4=1) = 0 => q5'=0
+
+c6_0 = NAND(q10=1, q2=1) = 0
+c6_1 = NAND(0, q0=1) = 1
+c6_2 = NAND(1, q3=1) = 0
+c6_3 = NAND(0, q12=0) = 1
+c6_4 = NAND(1, q13=1) = 0 => q6'=0
+
+c7_0 = NAND(q14=1, q2=1) = 0
+c7_1 = NAND(0, q12=0) = 1
+c7_2 = NAND(1, q9=0) = 1
+c7_3 = NAND(1, q3=1) = 0
+c7_4 = NAND(0, q9=0) = 1 => q7'=1
+
+c8_0 = NAND(q6=1, in1=1) = 0
+c8_1 = NAND(0, q5=0) = 1
+c8_2 = NAND(1, q12=0) = 1
+c8_3 = NAND(1, q13=1) = 0
+c8_4 = NAND(0, q9=0) = 1 => q8'=1
+
+c9_0 = NAND(q2=1, q9=0) = 1
+c9_1 = NAND(1, q11=1) = 0
+c9_2 = NAND(0, q1=1) = 1
+c9_3 = NAND(1, q15=1) = 0
+c9_4 = NAND(0, q3=1) = 1 => q9'=1
+
+c10_0 = NAND(q12=0, q15=1) = 1
+c10_1 = NAND(1, q4=1) = 0
+c10_2 = NAND(0, q6=1) = 1
+c10_3 = NAND(1, q5=0) = 1
+c10_4 = NAND(1, q1=1) = 0 => q10'=0
+
+c11_0 = NAND(q3=1, in0=1) = 0
+c11_1 = NAND(0, q1=1) = 1
+c11_2 = NAND(1, q12=0) = 1
+c11_3 = NAND(1, q12=0) = 1
+c11_4 = NAND(1, in0=1) = 0 => q11'=0
+
+c12_0 = NAND(q9=0, q13=1) = 1
+c12_1 = NAND(1, q15=1) = 0
+c12_2 = NAND(0, q0=1) = 1
+c12_3 = NAND(1, q0=1) = 0
+c12_4 = NAND(0, q12=0) = 1 => q12'=1
+
+c13_0 = NAND(q0=1, q13=1) = 0
+c13_1 = NAND(0, q0=1) = 1
+c13_2 = NAND(1, q10=1) = 0
+c13_3 = NAND(0, q10=1) = 1
+c13_4 = NAND(1, q1=1) = 0 => q13'=0
+
+c14_0 = NAND(q1=1, q11=1) = 0
+c14_1 = NAND(0, in1=1) = 1
+c14_2 = NAND(1, q10=1) = 0
+c14_3 = NAND(0, q0=1) = 1
+c14_4 = NAND(1, in1=1) = 0 => q14'=0
+
+c15_0 = NAND(q2=1, q1=1) = 0
+c15_1 = NAND(0, in1=1) = 1
+c15_2 = NAND(1, q14=1) = 0
+c15_3 = NAND(0, q7=0) = 1
+c15_4 = NAND(1, q10=1) = 0 => q15'=0
+
+S11 = [0,0,1,0,0,0,0,1,1,1,0,0,1,0,0,0]
+Output cycle 11: q0=0, q10=0, q12=1, q13=0, q6=0, q8=1.
+
+Cycle 11: S11 = [0,0,1,0,0,0,0,1,1,1,0,0,1,0,0,0]
+Inputs: in0=0, in1=0? Trace: in0[11]=0, in1[11]=0.
+
+c0_0 = NAND(q2=1, in0=0) = 1
+c0_1 = NAND(1, q10=0) = 1
+c0_2 = NAND(1, q1=0) = 1
+c0_3 = NAND(1, q13=0) = 1
+c0_4 = NAND(1, q1=0) = 1 => q0'=1
+
+c1_0 = NAND(q13=0, q2=1) = 1
+c1_1 = NAND(1, q15=0) = 1
+c1_2 = NAND(1, q15=0) = 1
+c1_3 = NAND(1, q7=1) = 0
+c1_4 = NAND(0, q4=0) = 1 => q1'=1
+
+c2_0 = NAND(q0=0, q3=0) = 1
+c2_1 = NAND(1, q14=0) = 1
+c2_2 = NAND(1, q15=0) = 1
+c2_3 = NAND(1, q12=1) = 0
+c2_4 = NAND(0, q9=1) = 1 => q2'=1
+
+c3_0 = NAND(in0=0, q13=0) = 1
+c3_1 = NAND(1, q12=1) = 0
+c3_2 = NAND(0, q6=0) = 1
+c3_3 = NAND(1, q0=0) = 1
+c3_4 = NAND(1, q0=0) = 1 => q3'=1
+
+c4_0 = NAND(q13=0, q8=1) = 1
+c4_1 = NAND(1, q2=1) = 0
+c4_2 = NAND(0, in1=0) = 1
+c4_3 = NAND(1, q8=1) = 0
+c4_4 = NAND(0, in0=0) = 1 => q4'=1
+
+c5_0 = NAND(q15=0, q4=0) = 1
+c5_1 = NAND(1, q1=0) = 1
+c5_2 = NAND(1, q13=0) = 1
+c5_3 = NAND(1, in1=0) = 1
+c5_4 = NAND(1, q4=0) = 1 => q5'=1
+
+c6_0 = NAND(q10=0, q2=1) = 1
+c6_1 = NAND(1, q0=0) = 1
+c6_2 = NAND(1, q3=0) = 1
+c6_3 = NAND(1, q12=1) = 0
+c6_4 = NAND(0, q13=0) = 1 => q6'=1
+
+c7_0 = NAND(q14=0, q2=1) = 1
+c7_1 = NAND(1, q12=1) = 0
+c7_2 = NAND(0, q9=1) = 1
+c7_3 = NAND(1, q3=0) = 1
+c7_4 = NAND(1, q9=1) = 0 => q7'=0
+
+c8_0 = NAND(q6=0, in1=0) = 1
+c8_1 = NAND(1, q5=0) = 1
+c8_2 = NAND(1, q12=1) = 0
+c8_3 = NAND(0, q13=0) = 1
+c8_4 = NAND(1, q9=1) = 0 => q8'=0
+
+c9_0 = NAND(q2=1, q9=1) = 0
+c9_1 = NAND(0, q11=0) = 1
+c9_2 = NAND(1, q1=0) = 1
+c9_3 = NAND(1, q15=0) = 1
+c9_4 = NAND(1, q3=0) = 1 => q9'=1
+
+c10_0 = NAND(q12=1, q15=0) = 1
+c10_1 = NAND(1, q4=0) = 1
+c10_2 = NAND(1, q6=0) = 1
+c10_3 = NAND(1, q5=0) = 1
+c10_4 = NAND(1, q1=0) = 1 => q10'=1
+
+c11_0 = NAND(q3=0, in0=0) = 1
+c11_1 = NAND(1, q1=0) = 1
+c11_2 = NAND(1, q12=1) = 0
+c11_3 = NAND(0, q12=1) = 1
+c11_4 = NAND(1, in0=0) = 1 => q11'=1
+
+c12_0 = NAND(q9=1, q13=0) = 1
+c12_1 = NAND(1, q15=0) = 1
+c12_2 = NAND(1, q0=0) = 1
+c12_3 = NAND(1, q0=0) = 1
+c12_4 = NAND(1, q12=1) = 0 => q12'=0
+
+c13_0 = NAND(q0=0, q13=0) = 1
+c13_1 = NAND(1, q0=0) = 1
+c13_2 = NAND(1, q10=0) = 1
+c13_3 = NAND(1, q10=0) = 1
+c13_4 = NAND(1, q1=0) = 1 => q13'=1
+
+c14_0 = NAND(q1=0, q11=0) = 1
+c14_1 = NAND(1, in1=0) = 1
+c14_2 = NAND(1, q10=0) = 1
+c14_3 = NAND(1, q0=0) = 1
+c14_4 = NAND(1, in1=0) = 1 => q14'=1
+
+c15_0 = NAND(q2=1, q1=0) = 1
+c15_1 = NAND(1, in1=0) = 1
+c15_2 = NAND(1, q14=0) = 1
+c15_3 = NAND(1, q7=1) = 0
+c15_4 = NAND(0, q10=0) = 1 => q15'=1
+
+S12 = [1,1,1,1,1,1,1,0,0,1,1,1,0,1,1,1]
+Output cycle 12: q0=1, q10=1, q12=0, q13=1, q6=1, q8=0.
+
+Cycle 12: S12 = [1,1,1,1,1,1,1,0,0,1,1,1,0,1,1,1]
+Inputs: in0=0, in1=1? Trace: in0[12]=0, in1[12]=1.
+
+c0_0 = NAND(q2=1, in0=0) = 1
+c0_1 = NAND(1, q10=1) = 0
+c0_2 = NAND(0, q1=1) = 1
+c0_3 = NAND(1, q13=1) = 0
+c0_4 = NAND(0, q1=1) = 1 => q0'=1
+
+c1_0 = NAND(q13=1, q2=1) = 0
+c1_1 = NAND(0, q15=1) = 1
+c1_2 = NAND(1, q15=1) = 0
+c1_3 = NAND(0, q7=0) = 1
+c1_4 = NAND(1, q4=1) = 0 => q1'=0
+
+c2_0 = NAND(q0=1, q3=1) = 0
+c2_1 = NAND(0, q14=1) = 1
+c2_2 = NAND(1, q15=1) = 0
+c2_3 = NAND(0, q12=0) = 1
+c2_4 = NAND(1, q9=1) = 0 => q2'=0
+
+c3_0 = NAND(in0=0, q13=1) = 1
+c3_1 = NAND(1, q12=0) = 1
+c3_2 = NAND(1, q6=1) = 0
+c3_3 = NAND(0, q0=1) = 1
+c3_4 = NAND(1, q0=1) = 0 => q3'=0
+
+c4_0 = NAND(q13=1, q8=0) = 1
+c4_1 = NAND(1, q2=1) = 0
+c4_2 = NAND(0, in1=1) = 1
+c4_3 = NAND(1, q8=0) = 1
+c4_4 = NAND(1, in0=0) = 1 => q4'=1
+
+c5_0 = NAND(q15=1, q4=1) = 0
+c5_1 = NAND(0, q1=1) = 1
+c5_2 = NAND(1, q13=1) = 0
+c5_3 = NAND(0, in1=1) = 1
+c5_4 = NAND(1, q4=1) = 0 => q5'=0
+
+c6_0 = NAND(q10=1, q2=1) = 0
+c6_1 = NAND(0, q0=1) = 1
+c6_2 = NAND(1, q3=1) = 0
+c6_3 = NAND(0, q12=0) = 1
+c6_4 = NAND(1, q13=1) = 0 => q6'=0
+
+c7_0 = NAND(q14=1, q2=1) = 0
+c7_1 = NAND(0, q12=0) = 1
+c7_2 = NAND(1, q9=1) = 0
+c7_3 = NAND(0, q3=1) = 1
+c7_4 = NAND(1, q9=1) = 0 => q7'=0
+
+c8_0 = NAND(q6=1, in1=1) = 0
+c8_1 = NAND(0, q5=1) = 1
+c8_2 = NAND(1, q12=0) = 1
+c8_3 = NAND(1, q13=1) = 0
+c8_4 = NAND(0, q9=1) = 1 => q8'=1
+
+c9_0 = NAND(q2=1, q9=1) = 0
+c9_1 = NAND(0, q11=1) = 1
+c9_2 = NAND(1, q1=1) = 0
+c9_3 = NAND(0, q15=1) = 1
+c9_4 = NAND(1, q3=1) = 0 => q9'=0
+
+c10_0 = NAND(q12=0, q15=1) = 1
+c10_1 = NAND(1, q4=1) = 0
+c10_2 = NAND(0, q6=1) = 1
+c10_3 = NAND(1, q5=1) = 0
+c10_4 = NAND(0, q1=1) = 1 => q10'=1
+
+c11_0 = NAND(q3=1, in0=0) = 1
+c11_1 = NAND(1, q1=1) = 0
+c11_2 = NAND(0, q12=0) = 1
+c11_3 = NAND(1, q12=0) = 1
+c11_4 = NAND(1, in0=0) = 1 => q11'=1
+
+c12_0 = NAND(q9=1, q13=1) = 0
+c12_1 = NAND(0, q15=1) = 1
+c12_2 = NAND(1, q0=1) = 0
+c12_3 = NAND(0, q0=1) = 1
+c12_4 = NAND(1, q12=0) = 1 => q12'=1
+
+c13_0 = NAND(q0=1, q13=1) = 0
+c13_1 = NAND(0, q0=1) = 1
+c13_2 = NAND(1, q10=1) = 0
+c13_3 = NAND(0, q10=1) = 1
+c13_4 = NAND(1, q1=1) = 0 => q13'=0
+
+c14_0 = NAND(q1=1, q11=1) = 0
+c14_1 = NAND(0, in1=1) = 1
+c14_2 = NAND(1, q10=1) = 0
+c14_3 = NAND(0, q0=1) = 1
+c14_4 = NAND(1, in1=1) = 0 => q14'=0
+
+c15_0 = NAND(q2=1, q1=1) = 0
+c15_1 = NAND(0, in1=1) = 1
+c15_2 = NAND(1, q14=1) = 0
+c15_3 = NAND(0, q7=0) = 1
+c15_4 = NAND(1, q10=1) = 0 => q15'=0
+
+S13 = [1,0,0,0,1,0,0,0,1,0,1,1,1,0,0,0]
+Output cycle 13: q0=1, q10=1, q12=1, q13=0, q6=0, q8=1.
+
+Cycle 13: S13 = [1,0,0,0,1,0,0,0,1,0,1,1,1,0,0,0]
+Inputs: in0=1, in1=1? Trace: in0[13]=1, in1[13]=1.
+
+c0_0 = NAND(q2=0, in0=1) = 1
+c0_1 = NAND(1, q10=1) = 0
+c0_2 = NAND(0, q1=0) = 1
+c0_3 = NAND(1, q13=0) = 1
+c0_4 = NAND(1, q1=0) = 1 => q0'=1
+
+c1_0 = NAND(q13=0, q2=0) = 1
+c1_1 = NAND(1, q15=0) = 1
+c1_2 = NAND(1, q15=0) = 1
+c1_3 = NAND(1, q7=0) = 1
+c1_4 = NAND(1, q4=1) = 0 => q1'=0
+
+c2_0 = NAND(q0=1, q3=0) = 1
+c2_1 = NAND(1, q14=0) = 1
+c2_2 = NAND(1, q15=0) = 1
+c2_3 = NAND(1, q12=1) = 0
+c2_4 = NAND(0, q9=0) = 1 => q2'=1
+
+c3_0 = NAND(in0=1, q13=0) = 1
+c3_1 = NAND(1, q12=1) = 0
+c3_2 = NAND(0, q6=0) = 1
+c3_3 = NAND(1, q0=1) = 0
+c3_4 = NAND(0, q0=1) = 1 => q3'=1
+
+c4_0 = NAND(q13=0, q8=1) = 1
+c4_1 = NAND(1, q2=0) = 1
+c4_2 = NAND(1, in1=1) = 0
+c4_3 = NAND(0, q8=1) = 1
+c4_4 = NAND(1, in0=1) = 0 => q4'=0
+
+c5_0 = NAND(q15=0, q4=1) = 1
+c5_1 = NAND(1, q1=0) = 1
+c5_2 = NAND(1, q13=0) = 1
+c5_3 = NAND(1, in1=1) = 0
+c5_4 = NAND(0, q4=1) = 1 => q5'=1
+
+c6_0 = NAND(q10=1, q2=0) = 1
+c6_1 = NAND(1, q0=1) = 0
+c6_2 = NAND(0, q3=0) = 1
+c6_3 = NAND(1, q12=1) = 0
+c6_4 = NAND(0, q13=0) = 1 => q6'=1
+
+c7_0 = NAND(q14=0, q2=0) = 1
+c7_1 = NAND(1, q12=1) = 0
+c7_2 = NAND(0, q9=0) = 1
+c7_3 = NAND(1, q3=0) = 1
+c7_4 = NAND(1, q9=0) = 1 => q7'=1
+
+c8_0 = NAND(q6=0, in1=1) = 1
+c8_1 = NAND(1, q5=0) = 1
+c8_2 = NAND(1, q12=1) = 0
+c8_3 = NAND(0, q13=0) = 1
+c8_4 = NAND(1, q9=0) = 1 => q8'=1
+
+c9_0 = NAND(q2=0, q9=0) = 1
+c9_1 = NAND(1, q11=1) = 0
+c9_2 = NAND(0, q1=0) = 1
+c9_3 = NAND(1, q15=0) = 1
+c9_4 = NAND(1, q3=0) = 1 => q9'=1
+
+c10_0 = NAND(q12=1, q15=0) = 1
+c10_1 = NAND(1, q4=1) = 0
+c10_2 = NAND(0, q6=0) = 1
+c10_3 = NAND(1, q5=0) = 1
+c10_4 = NAND(1, q1=0) = 1 => q10'=1
+
+c11_0 = NAND(q3=0, in0=1) = 1
+c11_1 = NAND(1, q1=0) = 1
+c11_2 = NAND(1, q12=1) = 0
+c11_3 = NAND(0, q12=1) = 1
+c11_4 = NAND(1, in0=1) = 0 => q11'=0
+
+c12_0 = NAND(q9=0, q13=0) = 1
+c12_1 = NAND(1, q15=0) = 1
+c12_2 = NAND(1, q0=1) = 0
+c12_3 = NAND(0, q0=1) = 1
+c12_4 = NAND(1, q12=1) = 0 => q12'=0
+
+c13_0 = NAND(q0=1, q13=0) = 1
+c13_1 = NAND(1, q0=1) = 0
+c13_2 = NAND(0, q10=1) = 1
+c13_3 = NAND(1, q10=1) = 0
+c13_4 = NAND(0, q1=0) = 1 => q13'=1
+
+c14_0 = NAND(q1=0, q11=1) = 1
+c14_1 = NAND(1, in1=1) = 0
+c14_2 = NAND(0, q10=1) = 1
+c14_3 = NAND(1, q0=1) = 0
+c14_4 = NAND(0, in1=1) = 1 => q14'=1
+
+c15_0 = NAND(q2=0, q1=0) = 1
+c15_1 = NAND(1, in1=1) = 0
+c15_2 = NAND(0, q14=0) = 1
+c15_3 = NAND(1, q7=0) = 1
+c15_4 = NAND(1, q10=1) = 0 => q15'=0
+
+S14 = [1,0,1,1,0,1,1,1,1,1,1,0,0,1,1,0]
+Output cycle 14: q0=1, q10=1, q12=0, q13=1, q6=1, q8=1.
+
+Cycle 14: S14 = [1,0,1,1,0,1,1,1,1,1,1,0,0,1,1,0]
+Inputs: in0=1, in1=0? Trace: in0[14]=1, in1[14]=0.
+
+c0_0 = NAND(q2=1, in0=1) = 0
+c0_1 = NAND(0, q10=1) = 1
+c0_2 = NAND(1, q1=0) = 1
+c0_3 = NAND(1, q13=1) = 0
+c0_4 = NAND(0, q1=0) = 1 => q0'=1
+
+c1_0 = NAND(q13=1, q2=1) = 0
+c1_1 = NAND(0, q15=0) = 1
+c1_2 = NAND(1, q15=0) = 1
+c1_3 = NAND(1, q7=1) = 0
+c1_4 = NAND(0, q4=0) = 1 => q1'=1
+
+c2_0 = NAND(q0=1, q3=1) = 0
+c2_1 = NAND(0, q14=1) = 1
+c2_2 = NAND(1, q15=0) = 1
+c2_3 = NAND(1, q12=0) = 1
+c2_4 = NAND(1, q9=1) = 0 => q2'=0
+
+c3_0 = NAND(in0=1, q13=1) = 0
+c3_1 = NAND(0, q12=0) = 1
+c3_2 = NAND(1, q6=1) = 0
+c3_3 = NAND(0, q0=1) = 1
+c3_4 = NAND(1, q0=1) = 0 => q3'=0
+
+c4_0 = NAND(q13=1, q8=1) = 0
+c4_1 = NAND(0, q2=1) = 1
+c4_2 = NAND(1, in1=0) = 1
+c4_3 = NAND(1, q8=1) = 0
+c4_4 = NAND(0, in0=1) = 1 => q4'=1
+
+c5_0 = NAND(q15=0, q4=0) = 1
+c5_1 = NAND(1, q1=0) = 1
+c5_2 = NAND(1, q13=1) = 0
+c5_3 = NAND(0, in1=0) = 1
+c5_4 = NAND(1, q4=0) = 1 => q5'=1
+
+c6_0 = NAND(q10=1, q2=1) = 0
+c6_1 = NAND(0, q0=1) = 1
+c6_2 = NAND(1, q3=1) = 0
+c6_3 = NAND(0, q12=0) = 1
+c6_4 = NAND(1, q13=1) = 0 => q6'=0
+
+c7_0 = NAND(q14=1, q2=1) = 0
+c7_1 = NAND(0, q12=0) = 1
+c7_2 = NAND(1, q9=1) = 0
+c7_3 = NAND(0, q3=1) = 1
+c7_4 = NAND(1, q9=1) = 0 => q7'=0
+
+c8_0 = NAND(q6=1, in1=0) = 1
+c8_1 = NAND(1, q5=1) = 0
+c8_2 = NAND(0, q12=0) = 1
+c8_3 = NAND(1, q13=1) = 0
+c8_4 = NAND(0, q9=1) = 1 => q8'=1
+
+c9_0 = NAND(q2=1, q9=1) = 0
+c9_1 = NAND(0, q11=0) = 1
+c9_2 = NAND(1, q1=0) = 1
+c9_3 = NAND(1, q15=0) = 1
+c9_4 = NAND(1, q3=1) = 0 => q9'=0
+
+c10_0 = NAND(q12=0, q15=0) = 1
+c10_1 = NAND(1, q4=0) = 1
+c10_2 = NAND(1, q6=1) = 0
+c10_3 = NAND(0, q5=1) = 1
+c10_4 = NAND(1, q1=0) = 1 => q10'=1
+
+c11_0 = NAND(q3=1, in0=1) = 0
+c11_1 = NAND(0, q1=0) = 1
+c11_2 = NAND(1, q12=0) = 1
+c11_3 = NAND(1, q12=0) = 1
+c11_4 = NAND(1, in0=1) = 0 => q11'=0
+
+c12_0 = NAND(q9=1, q13=1) = 0
+c12_1 = NAND(0, q15=0) = 1
+c12_2 = NAND(1, q0=1) = 0
+c12_3 = NAND(0, q0=1) = 1
+c12_4 = NAND(1, q12=0) = 1 => q12'=1
+
+c13_0 = NAND(q0=1, q13=1) = 0
+c13_1 = NAND(0, q0=1) = 1
+c13_2 = NAND(1, q10=1) = 0
+c13_3 = NAND(0, q10=1) = 1
+c13_4 = NAND(1, q1=0) = 1 => q13'=1
+
+c14_0 = NAND(q1=0, q11=0) = 1
+c14_1 = NAND(1, in1=0) = 1
+c14_2 = NAND(1, q10=1) = 0
+c14_3 = NAND(0, q0=1) = 1
+c14_4 = NAND(1, in1=0) = 1 => q14'=1
+
+c15_0 = NAND(q2=1, q1=0) = 1
+c15_1 = NAND(1, in1=0) = 1
+c15_2 = NAND(1, q14=1) = 0
+c15_3 = NAND(0, q7=1) = 1
+c15_4 = NAND(1, q10=1) = 0 => q15'=0
+
+S15 = [1,1,0,0,1,1,0,0,1,0,1,0,1,1,1,0]
+Output cycle 15: q0=1, q10=1, q12=1, q13=1, q6=0, q8=1.
+
+Cycle 15: S15 = [1,1,0,0,1,1,0,0,1,0,1,0,1,1,1,0]
+Inputs: in0=1, in1=1? Trace: in0[15]=1, in1[15]=1.
+
+c0_0 = NAND(q2=0, in0=1) = 1
+c0_1 = NAND(1, q10=1) = 0
+c0_2 = NAND(0, q1=1) = 1
+c0_3 = NAND(1, q13=1) = 0
+c0_4 = NAND(0, q1=1) = 1 => q0'=1
+
+c1_0 = NAND(q13=1, q2=0) = 1
+c1_1 = NAND(1, q15=0) = 1
+c1_2 = NAND(1, q15=0) = 1
+c1_3 = NAND(1, q7=0) = 1
+c1_4 = NAND(1, q4=1) = 0 => q1'=0
+
+c2_0 = NAND(q0=1, q3=0) = 1
+c2_1 = NAND(1, q14=1) = 0
+c2_2 = NAND(0, q15=0) = 1
+c2_3 = NAND(1, q12=1) = 0
+c2_4 = NAND(0, q9=0) = 1 => q2'=1
+
+c3_0 = NAND(in0=1, q13=1) = 0
+c3_1 = NAND(0, q12=1) = 1
+c3_2 = NAND(1, q6=0) = 1
+c3_3 = NAND(1, q0=1) = 0
+c3_4 = NAND(0, q0=1) = 1 => q3'=1
+
+c4_0 = NAND(q13=1, q8=1) = 0
+c4_1 = NAND(0, q2=0) = 1
+c4_2 = NAND(1, in1=1) = 0
+c4_3 = NAND(0, q8=1) = 1
+c4_4 = NAND(1, in0=1) = 0 => q4'=0
+
+c5_0 = NAND(q15=0, q4=1) = 1
+c5_1 = NAND(1, q1=1) = 0
+c5_2 = NAND(0, q13=1) = 1
+c5_3 = NAND(1, in1=1) = 0
+c5_4 = NAND(0, q4=1) = 1 => q5'=1
+
+c6_0 = NAND(q10=1, q2=0) = 1
+c6_1 = NAND(1, q0=1) = 0
+c6_2 = NAND(0, q3=0) = 1
+c6_3 = NAND(1, q12=1) = 0
+c6_4 = NAND(0, q13=1) = 1 => q6'=1
+
+c7_0 = NAND(q14=1, q2=0) = 1
+c7_1 = NAND(1, q12=1) = 0
+c7_2 = NAND(0, q9=0) = 1
+c7_3 = NAND(1, q3=0) = 1
+c7_4 = NAND(1, q9=0) = 1 => q7'=1
+
+c8_0 = NAND(q6=0, in1=1) = 1
+c8_1 = NAND(1, q5=1) = 0
+c8_2 = NAND(0, q12=1) = 1
+c8_3 = NAND(1, q13=1) = 0
+c8_4 = NAND(0, q9=0) = 1 => q8'=1
+
+c9_0 = NAND(q2=0, q9=0) = 1
+c9_1 = NAND(1, q11=0) = 1
+c9_2 = NAND(1, q1=1) = 0
+c9_3 = NAND(0, q15=0) = 1
+c9_4 = NAND(1, q3=0) = 1 => q9'=1
+
+c10_0 = NAND(q12=1, q15=0) = 1
+c10_1 = NAND(1, q4=1) = 0
+c10_2 = NAND(0, q6=0) = 1
+c10_3 = NAND(1, q5=1) = 0
+c10_4 = NAND(0, q1=1) = 1 => q10'=1
+
+c11_0 = NAND(q3=0, in0=1) = 1
+c11_1 = NAND(1, q1=1) = 0
+c11_2 = NAND(0, q12=1) = 1
+c11_3 = NAND(1, q12=1) = 0
+c11_4 = NAND(0, in0=1) = 1 => q11'=1
+
+c12_0 = NAND(q9=0, q13=1) = 1
+c12_1 = NAND(1, q15=0) = 1
+c12_2 = NAND(1, q0=1) = 0
+c12_3 = NAND(0, q0=1) = 1
+c12_4 = NAND(1, q12=1) = 0 => q12'=0
+
+c13_0 = NAND(q0=1, q13=1) = 0
+c13_1 = NAND(0, q0=1) = 1
+c13_2 = NAND(1, q10=1) = 0
+c13_3 = NAND(0, q10=1) = 1
+c13_4 = NAND(1, q1=1) = 0 => q13'=0
+
+c14_0 = NAND(q1=1, q11=0) = 1
+c14_1 = NAND(1, in1=1) = 0
+c14_2 = NAND(0, q10=1) = 1
+c14_3 = NAND(1, q0=1) = 0
+c14_4 = NAND(0, in1=1) = 1 => q14'=1
+
+c15_0 = NAND(q2=0, q1=1) = 1
+c15_1 = NAND(1, in1=1) = 0
+c15_2 = NAND(0, q14=1) = 1
+c15_3 = NAND(1, q7=0) = 1
+c15_4 = NAND(1, q10=1) = 0 => q15'=0
+
+S16 = [1,0,1,1,0,1,1,1,1,1,1,1,0,0,1,0]
+Output cycle 16: q0=1, q10=1, q12=0, q13=0, q6=1, q8=1.
+
+Cycle 16: S16 = [1,0,1,1,0,1,1,1,1,1,1,1,0,0,1,0]
+Inputs: in0=1, in1=0? Trace: in0[16]=1, in1[16]=0.
+
+c0_0 = NAND(q2=1, in0=1) = 0
+c0_1 = NAND(0, q10=1) = 1
+c0_2 = NAND(1, q1=0) = 1
+c0_3 = NAND(1, q13=0) = 1
+c0_4 = NAND(1, q1=0) = 1 => q0'=1
+
+c1_0 = NAND(q13=0, q2=1) = 1
+c1_1 = NAND(1, q15=0) = 1
+c1_2 = NAND(1, q15=0) = 1
+c1_3 = NAND(1, q7=1) = 0
+c1_4 = NAND(0, q4=0) = 1 => q1'=1
+
+c2_0 = NAND(q0=1, q3=1) = 0
+c2_1 = NAND(0, q14=1) = 1
+c2_2 = NAND(1, q15=0) = 1
+c2_3 = NAND(1, q12=0) = 1
+c2_4 = NAND(1, q9=1) = 0 => q2'=0
+
+c3_0 = NAND(in0=1, q13=0) = 1
+c3_1 = NAND(1, q12=0) = 1
+c3_2 = NAND(1, q6=1) = 0
+c3_3 = NAND(0, q0=1) = 1
+c3_4 = NAND(1, q0=1) = 0 => q3'=0
+
+c4_0 = NAND(q13=0, q8=1) = 1
+c4_1 = NAND(1, q2=1) = 0
+c4_2 = NAND(0, in1=0) = 1
+c4_3 = NAND(1, q8=1) = 0
+c4_4 = NAND(0, in0=1) = 1 => q4'=1
+
+c5_0 = NAND(q15=0, q4=0) = 1
+c5_1 = NAND(1, q1=0) = 1
+c5_2 = NAND(1, q13=0) = 1
+c5_3 = NAND(1, in1=0) = 1
+c5_4 = NAND(1, q4=0) = 1 => q5'=1
+
+c6_0 = NAND(q10=1, q2=1) = 0
+c6_1 = NAND(0, q0=1) = 1
+c6_2 = NAND(1, q3=1) = 0
+c6_3 = NAND(0, q12=0) = 1
+c6_4 = NAND(1, q13=0) = 1 => q6'=1
+
+c7_0 = NAND(q14=1, q2=1) = 0
+c7_1 = NAND(0, q12=0) = 1
+c7_2 = NAND(1, q9=1) = 0
+c7_3 = NAND(0, q3=1) = 1
+c7_4 = NAND(1, q9=1) = 0 => q7'=0
+
+c8_0 = NAND(q6=1, in1=0) = 1
+c8_1 = NAND(1, q5=1) = 0
+c8_2 = NAND(0, q12=0) = 1
+c8_3 = NAND(1, q13=0) = 1
+c8_4 = NAND(1, q9=1) = 0 => q8'=0
+
+c9_0 = NAND(q2=1, q9=1) = 0
+c9_1 = NAND(0, q11=1) = 1
+c9_2 = NAND(1, q1=0) = 1
+c9_3 = NAND(1, q15=0) = 1
+c9_4 = NAND(1, q3=1) = 0 => q9'=0
+
+c10_0 = NAND(q12=0, q15=0) = 1
+c10_1 = NAND(1, q4=0) = 1
+c10_2 = NAND(1, q6=1) = 0
+c10_3 = NAND(0, q5=1) = 1
+c10_4 = NAND(1, q1=0) = 1 => q10'=1
+
+c11_0 = NAND(q3=1, in0=1) = 0
+c11_1 = NAND(0, q1=0) = 1
+c11_2 = NAND(1, q12=0) = 1
+c11_3 = NAND(1, q12=0) = 1
+c11_4 = NAND(1, in0=1) = 0 => q11'=0
+
+c12_0 = NAND(q9=1, q13=0) = 1
+c12_1 = NAND(1, q15=0) = 1
+c12_2 = NAND(1, q0=1) = 0
+c12_3 = NAND(0, q0=1) = 1
+c12_4 = NAND(1, q12=0) = 1 => q12'=1
+
+c13_0 = NAND(q0=1, q13=0) = 1
+c13_1 = NAND(1, q0=1) = 0
+c13_2 = NAND(0, q10=1) = 1
+c13_3 = NAND(1, q10=1) = 0
+c13_4 = NAND(0, q1=0) = 1 => q13'=1
+
+c14_0 = NAND(q1=0, q11=1) = 1
+c14_1 = NAND(1, in1=0) = 1
+c14_2 = NAND(1, q10=1) = 0
+c14_3 = NAND(0, q0=1) = 1
+c14_4 = NAND(1, in1=0) = 1 => q14'=1
+
+c15_0 = NAND(q2=1, q1=0) = 1
+c15_1 = NAND(1, in1=0) = 1
+c15_2 = NAND(1, q14=1) = 0
+c15_3 = NAND(0, q7=1) = 1
+c15_4 = NAND(1, q10=1) = 0 => q15'=0
+
+S17 = [1,1,0,0,1,1,1,0,0,0,1,0,1,1,1,0]
+Output cycle 17: q0=1, q10=1, q12=1, q13=1, q6=1, q8=0.
+
+Cycle 17: S17 = [1,1,0,0,1,1,1,0,0,0,1,0,1,1,1,0]
+Inputs: in0=0, in1=1? Trace: in0[17]=0, in1[17]=1.
+
+c0_0 = NAND(q2=0, in0=0) = 1
+c0_1 = NAND(1, q10=1) = 0
+c0_2 = NAND(0, q1=1) = 1
+c0_3 = NAND(1, q13=1) = 0
+c0_4 = NAND(0, q1=1) = 1 => q0'=1
+
+c1_0 = NAND(q13=1, q2=0) = 1
+c1_1 = NAND(1, q15=0) = 1
+c1_2 = NAND(1, q15=0) = 1
+c1_3 = NAND(1, q7=0) = 1
+c1_4 = NAND(1, q4=1) = 0 => q1'=0
+
+c2_0 = NAND(q0=1, q3=0) = 1
+c2_1 = NAND(1, q14=1) = 0
+c2_2 = NAND(0, q15=0) = 1
+c2_3 = NAND(1, q12=1) = 0
+c2_4 = NAND(0, q9=0) = 1 => q2'=1
+
+c3_0 = NAND(in0=0, q13=1) = 1
+c3_1 = NAND(1, q12=1) = 0
+c3_2 = NAND(0, q6=1) = 1
+c3_3 = NAND(1, q0=1) = 0
+c3_4 = NAND(0, q0=1) = 1 => q3'=1
+
+c4_0 = NAND(q13=1, q8=0) = 1
+c4_1 = NAND(1, q2=0) = 1
+c4_2 = NAND(1, in1=1) = 0
+c4_3 = NAND(0, q8=0) = 1
+c4_4 = NAND(1, in0=0) = 1 => q4'=1
+
+c5_0 = NAND(q15=0, q4=1) = 1
+c5_1 = NAND(1, q1=1) = 0
+c5_2 = NAND(0, q13=1) = 1
+c5_3 = NAND(1, in1=1) = 0
+c5_4 = NAND(0, q4=1) = 1 => q5'=1
+
+c6_0 = NAND(q10=1, q2=0) = 1
+c6_1 = NAND(1, q0=1) = 0
+c6_2 = NAND(0, q3=0) = 1
+c6_3 = NAND(1, q12=1) = 0
+c6_4 = NAND(0, q13=1) = 1 => q6'=1
+
+c7_0 = NAND(q14=1, q2=0) = 1
+c7_1 = NAND(1, q12=1) = 0
+c7_2 = NAND(0, q9=0) = 1
+c7_3 = NAND(1, q3=0) = 1
+c7_4 = NAND(1, q9=0) = 1 => q7'=1
+
+c8_0 = NAND(q6=1, in1=1) = 0
+c8_1 = NAND(0, q5=1) = 1
+c8_2 = NAND(1, q12=1) = 0
+c8_3 = NAND(0, q13=1) = 1
+c8_4 = NAND(1, q9=0) = 1 => q8'=1
+
+c9_0 = NAND(q2=0, q9=0) = 1
+c9_1 = NAND(1, q11=0) = 1
+c9_2 = NAND(1, q1=1) = 0
+c9_3 = NAND(0, q15=0) = 1
+c9_4 = NAND(1, q3=0) = 1 => q9'=1
+
+c10_0 = NAND(q12=1, q15=0) = 1
+c10_1 = NAND(1, q4=1) = 0
+c10_2 = NAND(0, q6=1) = 1
+c10_3 = NAND(1, q5=1) = 0
+c10_4 = NAND(0, q1=1) = 1 => q10'=1
+
+c11_0 = NAND(q3=0, in0=0) = 1
+c11_1 = NAND(1, q1=1) = 0
+c11_2 = NAND(0, q12=1) = 1
+c11_3 = NAND(1, q12=1) = 0
+c11_4 = NAND(0, in0=0) = 1 => q11'=1
+
+c12_0 = NAND(q9=0, q13=1) = 1
+c12_1 = NAND(1, q15=0) = 1
+c12_2 = NAND(1, q0=1) = 0
+c12_3 = NAND(0, q0=1) = 1
+c12_4 = NAND(1, q12=1) = 0 => q12'=0
+
+c13_0 = NAND(q0=1, q13=1) = 0
+c13_1 = NAND(0, q0=1) = 1
+c13_2 = NAND(1, q10=1) = 0
+c13_3 = NAND(0, q10=1) = 1
+c13_4 = NAND(1, q1=1) = 0 => q13'=0
+
+c14_0 = NAND(q1=1, q11=0) = 1
+c14_1 = NAND(1, in1=1) = 0
+c14_2 = NAND(0, q10=1) = 1
+c14_3 = NAND(1, q0=1) = 0
+c14_4 = NAND(0, in1=1) = 1 => q14'=1
+
+c15_0 = NAND(q2=0, q1=1) = 1
+c15_1 = NAND(1, in1=1) = 0
+c15_2 = NAND(0, q14=1) = 1
+c15_3 = NAND(1, q7=0) = 1
+c15_4 = NAND(1, q10=1) = 0 => q15'=0
+
+S18 = [1,0,1,1,1,1,1,1,1,1,1,1,0,0,1,0]
+Output cycle 18: q0=1, q10=1, q12=0, q13=0, q6=1, q8=1.
+
+Cycle 18: S18 = [1,0,1,1,1,1,1,1,1,1,1,1,0,0,1,0]
+Inputs: in0=1, in1=0? Trace: in0[18]=1, in1[18]=0.
+
+c0_0 = NAND(q2=1, in0=1) = 0
+c0_1 = NAND(0, q10=1) = 1
+c0_2 = NAND(1, q1=0) = 1
+c0_3 = NAND(1, q13=0) = 1
+c0_4 = NAND(1, q1=0) = 1 => q0'=1
+
+c1_0 = NAND(q13=0, q2=1) = 1
+c1_1 = NAND(1, q15=0) = 1
+c1_2 = NAND(1, q15=0) = 1
+c1_3 = NAND(1, q7=1) = 0
+c1_4 = NAND(0, q4=1) = 1 => q1'=1
+
+c2_0 = NAND(q0=1, q3=1) = 0
+c2_1 = NAND(0, q14=1) = 1
+c2_2 = NAND(1, q15=0) = 1
+c2_3 = NAND(1, q12=0) = 1
+c2_4 = NAND(1, q9=1) = 0 => q2'=0
+
+c3_0 = NAND(in0=1, q13=0) = 1
+c3_1 = NAND(1, q12=0) = 1
+c3_2 = NAND(1, q6=1) = 0
+c3_3 = NAND(0, q0=1) = 1
+c3_4 = NAND(1, q0=1) = 0 => q3'=0
+
+c4_0 = NAND(q13=0, q8=1) = 1
+c4_1 = NAND(1, q2=1) = 0
+c4_2 = NAND(0, in1=0) = 1
+c4_3 = NAND(1, q8=1) = 0
+c4_4 = NAND(0, in0=1) = 1 => q4'=1
+
+c5_0 = NAND(q15=0, q4=1) = 1
+c5_1 = NAND(1, q1=0) = 1
+c5_2 = NAND(1, q13=0) = 1
+c5_3 = NAND(1, in1=0) = 1
+c5_4 = NAND(1, q4=1) = 0 => q5'=0
+
+c6_0 = NAND(q10=1, q2=1) = 0
+c6_1 = NAND(0, q0=1) = 1
+c6_2 = NAND(1, q3=1) = 0
+c6_3 = NAND(0, q12=0) = 1
+c6_4 = NAND(1, q13=0) = 1 => q6'=1
+
+c7_0 = NAND(q14=1, q2=1) = 0
+c7_1 = NAND(0, q12=0) = 1
+c7_2 = NAND(1, q9=1) = 0
+c7_3 = NAND(0, q3=1) = 1
+c7_4 = NAND(1, q9=1) = 0 => q7'=0
+
+c8_0 = NAND(q6=1, in1=0) = 1
+c8_1 = NAND(1, q5=1) = 0
+c8_2 = NAND(0, q12=0) = 1
+c8_3 = NAND(1, q13=0) = 1
+c8_4 = NAND(1, q9=1) = 0 => q8'=0
+
+c9_0 = NAND(q2=1, q9=1) = 0
+c9_1 = NAND(0, q11=1) = 1
+c9_2 = NAND(1, q1=0) = 1
+c9_3 = NAND(1, q15=0) = 1
+c9_4 = NAND(1, q3=1) = 0 => q9'=0
+
+c10_0 = NAND(q12=0, q15=0) = 1
+c10_1 = NAND(1, q4=1) = 0
+c10_2 = NAND(0, q6=1) = 1
+c10_3 = NAND(1, q5=1) = 0
+c10_4 = NAND(0, q1=0) = 1 => q10'=1
+
+c11_0 = NAND(q3=1, in0=1) = 0
+c11_1 = NAND(0, q1=0) = 1
+c11_2 = NAND(1, q12=0) = 1
+c11_3 = NAND(1, q12=0) = 1
+c11_4 = NAND(1, in0=1) = 0 => q11'=0
+
+c12_0 = NAND(q9=1, q13=0) = 1
+c12_1 = NAND(1, q15=0) = 1
+c12_2 = NAND(1, q0=1) = 0
+c12_3 = NAND(0, q0=1) = 1
+c12_4 = NAND(1, q12=0) = 1 => q12'=1
+
+c13_0 = NAND(q0=1, q13=0) = 1
+c13_1 = NAND(1, q0=1) = 0
+c13_2 = NAND(0, q10=1) = 1
+c13_3 = NAND(1, q10=1) = 0
+c13_4 = NAND(0, q1=0) = 1 => q13'=1
+
+c14_0 = NAND(q1=0, q11=1) = 1
+c14_1 = NAND(1, in1=0) = 1
+c14_2 = NAND(1, q10=1) = 0
+c14_3 = NAND(0, q0=1) = 1
+c14_4 = NAND(1, in1=0) = 1 => q14'=1
+
+c15_0 = NAND(q2=1, q1=0) = 1
+c15_1 = NAND(1, in1=0) = 1
+c15_2 = NAND(1, q14=1) = 0
+c15_3 = NAND(0, q7=1) = 1
+c15_4 = NAND(1, q10=1) = 0 => q15'=0
+
+S19 = [1,1,0,0,1,0,1,0,0,0,1,0,1,1,1,0]
+Output cycle 19: q0=1, q10=1, q12=1, q13=1, q6=1, q8=0.
+
+Cycle 19: S19 = [1,1,0,0,1,0,1,0,0,0,1,0,1,1,1,0]
+Inputs: in0=0, in1=1? Trace: in0[19]=0, in1[19]=1.
+
+c0_0 = NAND(q2=0, in0=0) = 1
+c0_1 = NAND(1, q10=1) = 0
+c0_2 = NAND(0, q1=1) = 1
+c0_3 = NAND(1, q13=1) = 0
+c0_4 = NAND(0, q1=1) = 1 => q0'=1
+
+c1_0 = NAND(q13=1, q2=0) = 1
+c1_1 = NAND(1, q15=0) = 1
+c1_2 = NAND(1, q15=0) = 1
+c1_3 = NAND(1, q7=0) = 1
+c1_4 = NAND(1, q4=1) = 0 => q1'=0
+
+c2_0 = NAND(q0=1, q3=0) = 1
+c2_1 = NAND(1, q14=1) = 0
+c2_2 = NAND(0, q15=0) = 1
+c2_3 = NAND(1, q12=1) = 0
+c2_4 = NAND(0, q9=0) = 1 => q2'=1
+
+c3_0 = NAND(in0=0, q13=1) = 1
+c3_1 = NAND(1, q12=1) = 0
+c3_2 = NAND(0, q6=1) = 1
+c3_3 = NAND(1, q0=1) = 0
+c3_4 = NAND(0, q0=1) = 1 => q3'=1
+
+c4_0 = NAND(q13=1, q8=0) = 1
+c4_1 = NAND(1, q2=0) = 1
+c4_2 = NAND(1, in1=1) = 0
+c4_3 = NAND(0, q8=0) = 1
+c4_4 = NAND(1, in0=0) = 1 => q4'=1
+
+c5_0 = NAND(q15=0, q4=1) = 1
+c5_1 = NAND(1, q1=1) = 0
+c5_2 = NAND(0, q13=1) = 1
+c5_3 = NAND(1, in1=1) = 0
+c5_4 = NAND(0, q4=1) = 1 => q5'=1
+
+c6_0 = NAND(q10=1, q2=0) = 1
+c6_1 = NAND(1, q0=1) = 0
+c6_2 = NAND(0, q3=0) = 1
+c6_3 = NAND(1, q12=1) = 0
+c6_4 = NAND(0, q13=1) = 1 => q6'=1
+
+c7_0 = NAND(q14=1, q2=0) = 1
+c7_1 = NAND(1, q12=1) = 0
+c7_2 = NAND(0, q9=0) = 1
+c7_3 = NAND(1, q3=0) = 1
+c7_4 = NAND(1, q9=0) = 1 => q7'=1
+
+c8_0 = NAND(q6=1, in1=1) = 0
+c8_1 = NAND(0, q5=0) = 1
+c8_2 = NAND(1, q12=1) = 0
+c8_3 = NAND(0, q13=1) = 1
+c8_4 = NAND(1, q9=0) = 1 => q8'=1
+
+c9_0 = NAND(q2=0, q9=0) = 1
+c9_1 = NAND(1, q11=0) = 1
+c9_2 = NAND(1, q1=1) = 0
+c9_3 = NAND(0, q15=0) = 1
+c9_4 = NAND(1, q3=0) = 1 => q9'=1
+
+c10_0 = NAND(q12=1, q15=0) = 1
+c10_1 = NAND(1, q4=1) = 0
+c10_2 = NAND(0, q6=1) = 1
+c10_3 = NAND(1, q5=0) = 1
+c10_4 = NAND(1, q1=1) = 0 => q10'=0
+
+c11_0 = NAND(q3=0, in0=0) = 1
+c11_1 = NAND(1, q1=1) = 0
+c11_2 = NAND(0, q12=1) = 1
+c11_3 = NAND(1, q12=1) = 0
+c11_4 = NAND(0, in0=0) = 1 => q11'=1
+
+c12_0 = NAND(q9=0, q13=1) = 1
+c12_1 = NAND(1, q15=0) = 1
+c12_2 = NAND(1, q0=1) = 0
+c12_3 = NAND(0, q0=1) = 1
+c12_4 = NAND(1, q12=1) = 0 => q12'=0
+
+c13_0 = NAND(q0=1, q13=1) = 0
+c13_1 = NAND(0, q0=1) = 1
+c13_2 = NAND(1, q10=1) = 0
+c13_3 = NAND(0, q10=1) = 1
+c13_4 = NAND(1, q1=1) = 0 => q13'=0
+
+c14_0 = NAND(q1=1, q11=0) = 1
+c14_1 = NAND(1, in1=1) = 0
+c14_2 = NAND(0, q10=1) = 1
+c14_3 = NAND(1, q0=1) = 0
+c14_4 = NAND(0, in1=1) = 1 => q14'=1
+
+c15_0 = NAND(q2=0, q1=1) = 1
+c15_1 = NAND(1, in1=1) = 0
+c15_2 = NAND(0, q14=1) = 1
+c15_3 = NAND(1, q7=0) = 1
+c15_4 = NAND(1, q10=1) = 0 => q15'=0
+
+S20 = [1,0,1,1,1,1,1,1,1,1,0,1,0,0,1,0]
+Output cycle 20: q0=1, q10=0, q12=0, q13=0, q6=1, q8=1.
+
+Cycle 20: S20 = [1,0,1,1,1,1,1,1,1,1,0,1,0,0,1,0]
+Inputs: in0=0, in1=0? Trace: in0[20]=0, in1[20]=0.
+
+c0_0 = NAND(q2=1, in0=0) = 1
+c0_1 = NAND(1, q10=0) = 1
+c0_2 = NAND(1, q1=0) = 1
+c0_3 = NAND(1, q13=0) = 1
+c0_4 = NAND(1, q1=0) = 1 => q0'=1
+
+c1_0 = NAND(q13=0, q2=1) = 1
+c1_1 = NAND(1, q15=0) = 1
+c1_2 = NAND(1, q15=0) = 1
+c1_3 = NAND(1, q7=1) = 0
+c1_4 = NAND(0, q4=1) = 1 => q1'=1
+
+c2_0 = NAND(q0=1, q3=1) = 0
+c2_1 = NAND(0, q14=1) = 1
+c2_2 = NAND(1, q15=0) = 1
+c2_3 = NAND(1, q12=0) = 1
+c2_4 = NAND(1, q9=1) = 0 => q2'=0
+
+c3_0 = NAND(in0=0, q13=0) = 1
+c3_1 = NAND(1, q12=0) = 1
+c3_2 = NAND(1, q6=1) = 0
+c3_3 = NAND(0, q0=1) = 1
+c3_4 = NAND(1, q0=1) = 0 => q3'=0
+
+c4_0 = NAND(q13=0, q8=1) = 1
+c4_1 = NAND(1, q2=1) = 0
+c4_2 = NAND(0, in1=0) = 1
+c4_3 = NAND(1, q8=1) = 0
+c4_4 = NAND(0, in0=0) = 1 => q4'=1
+
+c5_0 = NAND(q15=0, q4=1) = 1
+c5_1 = NAND(1, q1=0) = 1
+c5_2 = NAND(1, q13=0) = 1
+c5_3 = NAND(1, in1=0) = 1
+c5_4 = NAND(1, q4=1) = 0 => q5'=0
+
+c6_0 = NAND(q10=0, q2=1) = 1
+c6_1 = NAND(1, q0=1) = 0
+c6_2 = NAND(0, q3=1) = 1
+c6_3 = NAND(1, q12=0) = 1
+c6_4 = NAND(1, q13=0) = 1 => q6'=1
+
+c7_0 = NAND(q14=1, q2=1) = 0
+c7_1 = NAND(0, q12=0) = 1
+c7_2 = NAND(1, q9=1) = 0
+c7_3 = NAND(0, q3=1) = 1
+c7_4 = NAND(1, q9=1) = 0 => q7'=0
+
+c8_0 = NAND(q6=1, in1=0) = 1
+c8_1 = NAND(1, q5=1) = 0
+c8_2 = NAND(0, q12=0) = 1
+c8_3 = NAND(1, q13=0) = 1
+c8_4 = NAND(1, q9=1) = 0 => q8'=0
+
+c9_0 = NAND(q2=1, q9=1) = 0
+c9_1 = NAND(0, q11=1) = 1
+c9_2 = NAND(1, q1=0) = 1
+c9_3 = NAND(1, q15=0) = 1
+c9_4 = NAND(1, q3=1) = 0 => q9'=0
+
+c10_0 = NAND(q12=0, q15=0) = 1
+c10_1 = NAND(1, q4=1) = 0
+c10_2 = NAND(0, q6=1) = 1
+c10_3 = NAND(1, q5=1) = 0
+c10_4 = NAND(0, q1=0) = 1 => q10'=1
+
+c11_0 = NAND(q3=1, in0=0) = 1
+c11_1 = NAND(1, q1=0) = 1
+c11_2 = NAND(1, q12=0) = 1
+c11_3 = NAND(1, q12=0) = 1
+c11_4 = NAND(1, in0=0) = 1 => q11'=1
+
+c12_0 = NAND(q9=1, q13=0) = 1
+c12_1 = NAND(1, q15=0) = 1
+c12_2 = NAND(1, q0=1) = 0
+c12_3 = NAND(0, q0=1) = 1
+c12_4 = NAND(1, q12=0) = 1 => q12'=1
+
+c13_0 = NAND(q0=1, q13=0) = 1
+c13_1 = NAND(1, q0=1) = 0
+c13_2 = NAND(0, q10=0) = 1
+c13_3 = NAND(1, q10=0) = 1
+c13_4 = NAND(1, q1=0) = 1 => q13'=1
+
+c14_0 = NAND(q1=0, q11=1) = 1
+c14_1 = NAND(1, in1=0) = 1
+c14_2 = NAND(1, q10=0) = 1
+c14_3 = NAND(1, q0=1) = 0
+c14_4 = NAND(0, in1=0) = 1 => q14'=1
+
+c15_0 = NAND(q2=1, q1=0) = 1
+c15_1 = NAND(1, in1=0) = 1
+c15_2 = NAND(1, q14=1) = 0
+c15_3 = NAND(0, q7=1) = 1
+c15_4 = NAND(1, q10=0) = 1 => q15'=1
+
+S21 = [1,1,0,0,1,0,1,0,0,0,1,1,1,1,1,1]
+Output cycle 21: q0=1, q10=1, q12=1, q13=1, q6=1, q8=0.
+
+Cycle 21: S21 = [1,1,0,0,1,0,1,0,0,0,1,1,1,1,1,1]
+Inputs: in0=0, in1=1? Trace: in0[21]=0, in1[21]=1.
+
+c0_0 = NAND(q2=0, in0=0) = 1
+c0_1 = NAND(1, q10=1) = 0
+c0_2 = NAND(0, q1=1) = 1
+c0_3 = NAND(1, q13=1) = 0
+c0_4 = NAND(0, q1=1) = 1 => q0'=1
+
+c1_0 = NAND(q13=1, q2=0) = 1
+c1_1 = NAND(1, q15=1) = 0
+c1_2 = NAND(0, q15=1) = 1
+c1_3 = NAND(1, q7=0) = 1
+c1_4 = NAND(1, q4=1) = 0 => q1'=0
+
+c2_0 = NAND(q0=1, q3=0) = 1
+c2_1 = NAND(1, q14=1) = 0
+c2_2 = NAND(0, q15=1) = 1
+c2_3 = NAND(1, q12=1) = 0
+c2_4 = NAND(0, q9=0) = 1 => q2'=1
+
+c3_0 = NAND(in0=0, q13=1) = 1
+c3_1 = NAND(1, q12=1) = 0
+c3_2 = NAND(0, q6=1) = 1
+c3_3 = NAND(1, q0=1) = 0
+c3_4 = NAND(0, q0=1) = 1 => q3'=1
+
+c4_0 = NAND(q13=1, q8=0) = 1
+c4_1 = NAND(1, q2=0) = 1
+c4_2 = NAND(1, in1=1) = 0
+c4_3 = NAND(0, q8=0) = 1
+c4_4 = NAND(1, in0=0) = 1 => q4'=1
+
+c5_0 = NAND(q15=1, q4=1) = 0
+c5_1 = NAND(0, q1=1) = 1
+c5_2 = NAND(1, q13=1) = 0
+c5_3 = NAND(0, in1=1) = 1
+c5_4 = NAND(1, q4=1) = 0 => q5'=0
+
+c6_0 = NAND(q10=1, q2=0) = 1
+c6_1 = NAND(1, q0=1) = 0
+c6_2 = NAND(0, q3=0) = 1
+c6_3 = NAND(1, q12=1) = 0
+c6_4 = NAND(0, q13=1) = 1 => q6'=1
+
+c7_0 = NAND(q14=1, q2=0) = 1
+c7_1 = NAND(1, q12=1) = 0
+c7_2 = NAND(0, q9=0) = 1
+c7_3 = NAND(1, q3=0) = 1
+c7_4 = NAND(1, q9=0) = 1 => q7'=1
+
+c8_0 = NAND(q6=1, in1=1) = 0
+c8_1 = NAND(0, q5=0) = 1
+c8_2 = NAND(1, q12=1) = 0
+c8_3 = NAND(0, q13=1) = 1
+c8_4 = NAND(1, q9=0) = 1 => q8'=1
+
+c9_0 = NAND(q2=0, q9=0) = 1
+c9_1 = NAND(1, q11=1) = 0
+c9_2 = NAND(0, q1=1) = 1
+c9_3 = NAND(1, q15=1) = 0
+c9_4 = NAND(0, q3=0) = 1 => q9'=1
+
+c10_0 = NAND(q12=1, q15=1) = 0
+c10_1 = NAND(0, q4=1) = 1
+c10_2 = NAND(1, q6=1) = 0
+c10_3 = NAND(0, q5=0) = 1
+c10_4 = NAND(1, q1=1) = 0 => q10'=0
+
+c11_0 = NAND(q3=0, in0=0) = 1
+c11_1 = NAND(1, q1=1) = 0
+c11_2 = NAND(0, q12=1) = 1
+c11_3 = NAND(1, q12=1) = 0
+c11_4 = NAND(0, in0=0) = 1 => q11'=1
+
+c12_0 = NAND(q9=0, q13=1) = 1
+c12_1 = NAND(1, q15=1) = 0
+c12_2 = NAND(0, q0=1) = 1
+c12_3 = NAND(1, q0=1) = 0
+c12_4 = NAND(0, q12=1) = 1 => q12'=1
+
+c13_0 = NAND(q0=1, q13=1) = 0
+c13_1 = NAND(0, q0=1) = 1
+c13_2 = NAND(1, q10=1) = 0
+c13_3 = NAND(0, q10=1) = 1
+c13_4 = NAND(1, q1=1) = 0 => q13'=0
+
+c14_0 = NAND(q1=1, q11=1) = 0
+c14_1 = NAND(0, in1=1) = 1
+c14_2 = NAND(1, q10=1) = 0
+c14_3 = NAND(0, q0=1) = 1
+c14_4 = NAND(1, in1=1) = 0 => q14'=0
+
+c15_0 = NAND(q2=0, q1=1) = 1
+c15_1 = NAND(1, in1=1) = 0
+c15_2 = NAND(0, q14=1) = 1
+c15_3 = NAND(1, q7=0) = 1
+c15_4 = NAND(1, q10=1) = 0 => q15'=0
+
+S22 = [1,0,1,1,1,0,1,1,1,1,0,1,1,0,0,0]
+Output cycle 22: q0=1, q10=0, q12=1, q13=0, q6=1, q8=1.
+
+Note: S22 = [1,0,1,1,1,0,1,1,1,1,0,1,1,0,0,0]. This is similar to S2 and S9 but with q14=0, q15=0. S2 was [1,0,1,1,1,0,1,1,1,1,0,1,1,0,1,0]. So S22 has q14=0, q15=0.
+
+Cycle 22: S22 = [1,0,1,1,1,0,1,1,1,1,0,1,1,0,0,0]
+Inputs: in0=0, in1=1? Trace: in0[22]=0, in1[22]=1.
+
+c0_0 = NAND(q2=1, in0=0) = 1
+c0_1 = NAND(1, q10=0) = 1
+c0_2 = NAND(1, q1=0) = 1
+c0_3 = NAND(1, q13=0) = 1
+c0_4 = NAND(1, q1=0) = 1 => q0'=1
+
+c1_0 = NAND(q13=0, q2=1) = 1
+c1_1 = NAND(1, q15=0) = 1
+c1_2 = NAND(1, q15=0) = 1
+c1_3 = NAND(1, q7=1) = 0
+c1_4 = NAND(0, q4=1) = 1 => q1'=1
+
+c2_0 = NAND(q0=1, q3=1) = 0
+c2_1 = NAND(0, q14=0) = 1
+c2_2 = NAND(1, q15=0) = 1
+c2_3 = NAND(1, q12=1) = 0
+c2_4 = NAND(0, q9=1) = 1 => q2'=1
+
+c3_0 = NAND(in0=0, q13=0) = 1
+c3_1 = NAND(1, q12=1) = 0
+c3_2 = NAND(0, q6=1) = 1
+c3_3 = NAND(1, q0=1) = 0
+c3_4 = NAND(0, q0=1) = 1 => q3'=1
+
+c4_0 = NAND(q13=0, q8=1) = 1
+c4_1 = NAND(1, q2=1) = 0
+c4_2 = NAND(0, in1=1) = 1
+c4_3 = NAND(1, q8=1) = 0
+c4_4 = NAND(0, in0=0) = 1 => q4'=1
+
+c5_0 = NAND(q15=0, q4=1) = 1
+c5_1 = NAND(1, q1=0) = 1
+c5_2 = NAND(1, q13=0) = 1
+c5_3 = NAND(1, in1=1) = 0
+c5_4 = NAND(0, q4=1) = 1 => q5'=1
+
+c6_0 = NAND(q10=0, q2=1) = 1
+c6_1 = NAND(1, q0=1) = 0
+c6_2 = NAND(0, q3=1) = 1
+c6_3 = NAND(1, q12=1) = 0
+c6_4 = NAND(0, q13=0) = 1 => q6'=1
+
+c7_0 = NAND(q14=0, q2=1) = 1
+c7_1 = NAND(1, q12=1) = 0
+c7_2 = NAND(0, q9=1) = 1
+c7_3 = NAND(1, q3=1) = 0
+c7_4 = NAND(0, q9=1) = 1 => q7'=1
+
+c8_0 = NAND(q6=1, in1=1) = 0
+c8_1 = NAND(0, q5=0) = 1
+c8_2 = NAND(1, q12=1) = 0
+c8_3 = NAND(0, q13=0) = 1
+c8_4 = NAND(1, q9=1) = 0 => q8'=0
+
+c9_0 = NAND(q2=1, q9=1) = 0
+c9_1 = NAND(0, q11=1) = 1
+c9_2 = NAND(1, q1=0) = 1
+c9_3 = NAND(1, q15=0) = 1
+c9_4 = NAND(1, q3=1) = 0 => q9'=0
+
+c10_0 = NAND(q12=1, q15=0) = 1
+c10_1 = NAND(1, q4=1) = 0
+c10_2 = NAND(0, q6=1) = 1
+c10_3 = NAND(1, q5=0) = 1
+c10_4 = NAND(1, q1=0) = 1 => q10'=1
+
+c11_0 = NAND(q3=1, in0=0) = 1
+c11_1 = NAND(1, q1=0) = 1
+c11_2 = NAND(1, q12=1) = 0
+c11_3 = NAND(0, q12=1) = 1
+c11_4 = NAND(1, in0=0) = 1 => q11'=1
+
+c12_0 = NAND(q9=1, q13=0) = 1
+c12_1 = NAND(1, q15=0) = 1
+c12_2 = NAND(1, q0=1) = 0
+c12_3 = NAND(0, q0=1) = 1
+c12_4 = NAND(1, q12=1) = 0 => q12'=0
+
+c13_0 = NAND(q0=1, q13=0) = 1
+c13_1 = NAND(1, q0=1) = 0
+c13_2 = NAND(0, q10=0) = 1
+c13_3 = NAND(1, q10=0) = 1
+c13_4 = NAND(1, q1=0) = 1 => q13'=1
+
+c14_0 = NAND(q1=0, q11=1) = 1
+c14_1 = NAND(1, in1=1) = 0
+c14_2 = NAND(0, q10=0) = 1
+c14_3 = NAND(1, q0=1) = 0
+c14_4 = NAND(0, in1=1) = 1 => q14'=1
+
+c15_0 = NAND(q2=1, q1=0) = 1
+c15_1 = NAND(1, in1=1) = 0
+c15_2 = NAND(0, q14=0) = 1
+c15_3 = NAND(1, q7=1) = 0
+c15_4 = NAND(0, q10=0) = 1 => q15'=1
+
+S23 = [1,1,1,1,1,1,1,1,0,0,1,1,0,1,1,1]
+Output cycle 23: q0=1, q10=1, q12=0, q13=1, q6=1, q8=0.
+
+Cycle 23: S23 = [1,1,1,1,1,1,1,1,0,0,1,1,0,1,1,1]
+Inputs: in0=1, in1=1? Trace: in0[23]=1, in1[23]=1.
+
+c0_0 = NAND(q2=1, in0=1) = 0
+c0_1 = NAND(0, q10=1) = 1
+c0_2 = NAND(1, q1=1) = 0
+c0_3 = NAND(0, q13=1) = 1
+c0_4 = NAND(1, q1=1) = 0 => q0'=0
+
+c1_0 = NAND(q13=1, q2=1) = 0
+c1_1 = NAND(0, q15=1) = 1
+c1_2 = NAND(1, q15=1) = 0
+c1_3 = NAND(0, q7=1) = 1
+c1_4 = NAND(1, q4=1) = 0 => q1'=0
+
+c2_0 = NAND(q0=1, q3=1) = 0
+c2_1 = NAND(0, q14=1) = 1
+c2_2 = NAND(1, q15=1) = 0
+c2_3 = NAND(0, q12=0) = 1
+c2_4 = NAND(1, q9=0) = 1 => q2'=1
+
+c3_0 = NAND(in0=1, q13=1) = 0
+c3_1 = NAND(0, q12=0) = 1
+c3_2 = NAND(1, q6=1) = 0
+c3_3 = NAND(0, q0=1) = 1
+c3_4 = NAND(1, q0=1) = 0 => q3'=0
+
+c4_0 = NAND(q13=1, q8=0) = 1
+c4_1 = NAND(1, q2=1) = 0
+c4_2 = NAND(0, in1=1) = 1
+c4_3 = NAND(1, q8=0) = 1
+c4_4 = NAND(1, in0=1) = 0 => q4'=0
+
+c5_0 = NAND(q15=1, q4=1) = 0
+c5_1 = NAND(0, q1=1) = 1
+c5_2 = NAND(1, q13=1) = 0
+c5_3 = NAND(0, in1=1) = 1
+c5_4 = NAND(1, q4=1) = 0 => q5'=0
+
+c6_0 = NAND(q10=1, q2=1) = 0
+c6_1 = NAND(0, q0=1) = 1
+c6_2 = NAND(1, q3=1) = 0
+c6_3 = NAND(0, q12=0) = 1
+c6_4 = NAND(1, q13=1) = 0 => q6'=0
+
+c7_0 = NAND(q14=1, q2=1) = 0
+c7_1 = NAND(0, q12=0) = 1
+c7_2 = NAND(1, q9=0) = 1
+c7_3 = NAND(1, q3=1) = 0
+c7_4 = NAND(0, q9=0) = 1 => q7'=1
+
+c8_0 = NAND(q6=1, in1=1) = 0
+c8_1 = NAND(0, q5=1) = 1
+c8_2 = NAND(1, q12=0) = 1
+c8_3 = NAND(1, q13=1) = 0
+c8_4 = NAND(0, q9=0) = 1 => q8'=1
+
+c9_0 = NAND(q2=1, q9=0) = 1
+c9_1 = NAND(1, q11=1) = 0
+c9_2 = NAND(0, q1=1) = 1
+c9_3 = NAND(1, q15=1) = 0
+c9_4 = NAND(0, q3=1) = 1 => q9'=1
+
+c10_0 = NAND(q12=0, q15=1) = 1
+c10_1 = NAND(1, q4=1) = 0
+c10_2 = NAND(0, q6=1) = 1
+c10_3 = NAND(1, q5=1) = 0
+c10_4 = NAND(0, q1=1) = 1 => q10'=1
+
+c11_0 = NAND(q3=1, in0=1) = 0
+c11_1 = NAND(0, q1=1) = 1
+c11_2 = NAND(1, q12=0) = 1
+c11_3 = NAND(1, q12=0) = 1
+c11_4 = NAND(1, in0=1) = 0 => q11'=0
+
+c12_0 = NAND(q9=0, q13=1) = 1
+c12_1 = NAND(1, q15=1) = 0
+c12_2 = NAND(0, q0=1) = 1
+c12_3 = NAND(1, q0=1) = 0
+c12_4 = NAND(0, q12=0) = 1 => q12'=1
+
+c13_0 = NAND(q0=1, q13=1) = 0
+c13_1 = NAND(0, q0=1) = 1
+c13_2 = NAND(1, q10=1) = 0
+c13_3 = NAND(0, q10=1) = 1
+c13_4 = NAND(1, q1=1) = 0 => q13'=0
+
+c14_0 = NAND(q1=1, q11=1) = 0
+c14_1 = NAND(0, in1=1) = 1
+c14_2 = NAND(1, q10=1) = 0
+c14_3 = NAND(0, q0=1) = 1
+c14_4 = NAND(1, in1=1) = 0 => q14'=0
+
+c15_0 = NAND(q2=1, q1=1) = 0
+c15_1 = NAND(0, in1=1) = 1
+c15_2 = NAND(1, q14=1) = 0
+c15_3 = NAND(0, q7=1) = 1
+c15_4 = NAND(1, q10=1) = 0 => q15'=0
+
+S24 = [0,0,1,0,0,0,0,1,1,1,1,0,1,0,0,0]
+Output cycle 24: q0=0, q10=1, q12=1, q13=0, q6=0, q8=1.
+
+Cycle 24: S24 = [0,0,1,0,0,0,0,1,1,1,1,0,1,0,0,0]
+Inputs: in0=0, in1=0? Trace: in0[24]=0, in1[24]=0.
+
+c0_0 = NAND(q2=1, in0=0) = 1
+c0_1 = NAND(1, q10=1) = 0
+c0_2 = NAND(0, q1=0) = 1
+c0_3 = NAND(1, q13=0) = 1
+c0_4 = NAND(1, q1=0) = 1 => q0'=1
+
+c1_0 = NAND(q13=0, q2=1) = 1
+c1_1 = NAND(1, q15=0) = 1
+c1_2 = NAND(1, q15=0) = 1
+c1_3 = NAND(1, q7=1) = 0
+c1_4 = NAND(0, q4=0) = 1 => q1'=1
+
+c2_0 = NAND(q0=0, q3=0) = 1
+c2_1 = NAND(1, q14=0) = 1
+c2_2 = NAND(1, q15=0) = 1
+c2_3 = NAND(1, q12=1) = 0
+c2_4 = NAND(0, q9=1) = 1 => q2'=1
+
+c3_0 = NAND(in0=0, q13=0) = 1
+c3_1 = NAND(1, q12=1) = 0
+c3_2 = NAND(0, q6=0) = 1
+c3_3 = NAND(1, q0=0) = 1
+c3_4 = NAND(1, q0=0) = 1 => q3'=1
+
+c4_0 = NAND(q13=0, q8=1) = 1
+c4_1 = NAND(1, q2=1) = 0
+c4_2 = NAND(0, in1=0) = 1
+c4_3 = NAND(1, q8=1) = 0
+c4_4 = NAND(0, in0=0) = 1 => q4'=1
+
+c5_0 = NAND(q15=0, q4=0) = 1
+c5_1 = NAND(1, q1=0) = 1
+c5_2 = NAND(1, q13=0) = 1
+c5_3 = NAND(1, in1=0) = 1
+c5_4 = NAND(1, q4=0) = 1 => q5'=1
+
+c6_0 = NAND(q10=1, q2=1) = 0
+c6_1 = NAND(0, q0=0) = 1
+c6_2 = NAND(1, q3=0) = 1
+c6_3 = NAND(1, q12=1) = 0
+c6_4 = NAND(0, q13=0) = 1 => q6'=1
+
+c7_0 = NAND(q14=0, q2=1) = 1
+c7_1 = NAND(1, q12=1) = 0
+c7_2 = NAND(0, q9=1) = 1
+c7_3 = NAND(1, q3=0) = 1
+c7_4 = NAND(1, q9=1) = 0 => q7'=0
+
+c8_0 = NAND(q6=0, in1=0) = 1
+c8_1 = NAND(1, q5=0) = 1
+c8_2 = NAND(1, q12=1) = 0
+c8_3 = NAND(0, q13=0) = 1
+c8_4 = NAND(1, q9=1) = 0 => q8'=0
+
+c9_0 = NAND(q2=1, q9=1) = 0
+c9_1 = NAND(0, q11=0) = 1
+c9_2 = NAND(1, q1=0) = 1
+c9_3 = NAND(1, q15=0) = 1
+c9_4 = NAND(1, q3=0) = 1 => q9'=1
+
+c10_0 = NAND(q12=1, q15=0) = 1
+c10_1 = NAND(1, q4=0) = 1
+c10_2 = NAND(1, q6=0) = 1
+c10_3 = NAND(1, q5=0) = 1
+c10_4 = NAND(1, q1=0) = 1 => q10'=1
+
+c11_0 = NAND(q3=0, in0=0) = 1
+c11_1 = NAND(1, q1=0) = 1
+c11_2 = NAND(1, q12=1) = 0
+c11_3 = NAND(0, q12=1) = 1
+c11_4 = NAND(1, in0=0) = 1 => q11'=1
+
+c12_0 = NAND(q9=1, q13=0) = 1
+c12_1 = NAND(1, q15=0) = 1
+c12_2 = NAND(1, q0=0) = 1
+c12_3 = NAND(1, q0=0) = 1
+c12_4 = NAND(1, q12=1) = 0 => q12'=0
+
+c13_0 = NAND(q0=0, q13=0) = 1
+c13_1 = NAND(1, q0=0) = 1
+c13_2 = NAND(1, q10=1) = 0
+c13_3 = NAND(0, q10=1) = 1
+c13_4 = NAND(1, q1=0) = 1 => q13'=1
+
+c14_0 = NAND(q1=0, q11=0) = 1
+c14_1 = NAND(1, in1=0) = 1
+c14_2 = NAND(1, q10=1) = 0
+c14_3 = NAND(0, q0=0) = 1
+c14_4 = NAND(1, in1=0) = 1 => q14'=1
+
+c15_0 = NAND(q2=1, q1=0) = 1
+c15_1 = NAND(1, in1=0) = 1
+c15_2 = NAND(1, q14=0) = 1
+c15_3 = NAND(1, q7=1) = 0
+c15_4 = NAND(0, q10=1) = 1 => q15'=1
+
+S25 = [1,1,1,1,1,1,1,0,0,1,1,1,0,1,1,1]
+Output cycle 25: q0=1, q10=1, q12=0, q13=1, q6=1, q8=0.
+
+Cycle 25: S25 = [1,1,1,1,1,1,1,0,0,1,1,1,0,1,1,1] (similar to S12)
+Inputs: in0=0, in1=0? Trace: in0[25]=0, in1[25]=0.
+
+c0_0 = NAND(q2=1, in0=0) = 1
+c0_1 = NAND(1, q10=1) = 0
+c0_2 = NAND(0, q1=1) = 1
+c0_3 = NAND(1, q13=1) = 0
+c0_4 = NAND(0, q1=1) = 1 => q0'=1
+
+c1_0 = NAND(q13=1, q2=1) = 0
+c1_1 = NAND(0, q15=1) = 1
+c1_2 = NAND(1, q15=1) = 0
+c1_3 = NAND(0, q7=0) = 1
+c1_4 = NAND(1, q4=1) = 0 => q1'=0
+
+c2_0 = NAND(q0=1, q3=1) = 0
+c2_1 = NAND(0, q14=1) = 1
+c2_2 = NAND(1, q15=1) = 0
+c2_3 = NAND(0, q12=0) = 1
+c2_4 = NAND(1, q9=1) = 0 => q2'=0
+
+c3_0 = NAND(in0=0, q13=1) = 1
+c3_1 = NAND(1, q12=0) = 1
+c3_2 = NAND(1, q6=1) = 0
+c3_3 = NAND(0, q0=1) = 1
+c3_4 = NAND(1, q0=1) = 0 => q3'=0
+
+c4_0 = NAND(q13=1, q8=0) = 1
+c4_1 = NAND(1, q2=1) = 0
+c4_2 = NAND(0, in1=0) = 1
+c4_3 = NAND(1, q8=0) = 1
+c4_4 = NAND(1, in0=0) = 1 => q4'=1
+
+c5_0 = NAND(q15=1, q4=1) = 0
+c5_1 = NAND(0, q1=1) = 1
+c5_2 = NAND(1, q13=1) = 0
+c5_3 = NAND(0, in1=0) = 1
+c5_4 = NAND(1, q4=1) = 0 => q5'=0
+
+c6_0 = NAND(q10=1, q2=1) = 0
+c6_1 = NAND(0, q0=1) = 1
+c6_2 = NAND(1, q3=1) = 0
+c6_3 = NAND(0, q12=0) = 1
+c6_4 = NAND(1, q13=1) = 0 => q6'=0
+
+c7_0 = NAND(q14=1, q2=1) = 0
+c7_1 = NAND(0, q12=0) = 1
+c7_2 = NAND(1, q9=1) = 0
+c7_3 = NAND(0, q3=1) = 1
+c7_4 = NAND(1, q9=1) = 0 => q7'=0
+
+c8_0 = NAND(q6=1, in1=0) = 1
+c8_1 = NAND(1, q5=1) = 0
+c8_2 = NAND(0, q12=0) = 1
+c8_3 = NAND(1, q13=1) = 0
+c8_4 = NAND(0, q9=1) = 1 => q8'=1
+
+c9_0 = NAND(q2=1, q9=1) = 0
+c9_1 = NAND(0, q11=1) = 1
+c9_2 = NAND(1, q1=1) = 0
+c9_3 = NAND(0, q15=1) = 1
+c9_4 = NAND(1, q3=1) = 0 => q9'=0
+
+c10_0 = NAND(q12=0, q15=1) = 1
+c10_1 = NAND(1, q4=1) = 0
+c10_2 = NAND(0, q6=1) = 1
+c10_3 = NAND(1, q5=1) = 0
+c10_4 = NAND(0, q1=1) = 1 => q10'=1
+
+c11_0 = NAND(q3=1, in0=0) = 1
+c11_1 = NAND(1, q1=1) = 0
+c11_2 = NAND(0, q12=0) = 1
+c11_3 = NAND(1, q12=0) = 1
+c11_4 = NAND(1, in0=0) = 1 => q11'=1
+
+c12_0 = NAND(q9=1, q13=1) = 0
+c12_1 = NAND(0, q15=1) = 1
+c12_2 = NAND(1, q0=1) = 0
+c12_3 = NAND(0, q0=1) = 1
+c12_4 = NAND(1, q12=0) = 1 => q12'=1
+
+c13_0 = NAND(q0=1, q13=1) = 0
+c13_1 = NAND(0, q0=1) = 1
+c13_2 = NAND(1, q10=1) = 0
+c13_3 = NAND(0, q10=1) = 1
+c13_4 = NAND(1, q1=1) = 0 => q13'=0
+
+c14_0 = NAND(q1=1, q11=1) = 0
+c14_1 = NAND(0, in1=0) = 1
+c14_2 = NAND(1, q10=1) = 0
+c14_3 = NAND(0, q0=1) = 1
+c14_4 = NAND(1, in1=0) = 1 => q14'=1
+
+c15_0 = NAND(q2=1, q1=1) = 0
+c15_1 = NAND(0, in1=0) = 1
+c15_2 = NAND(1, q14=1) = 0
+c15_3 = NAND(0, q7=0) = 1
+c15_4 = NAND(1, q10=1) = 0 => q15'=0
+
+S26 = [1,0,0,0,1,0,0,0,1,0,1,1,1,0,1,0]
+Output cycle 26: q0=1, q10=1, q12=1, q13=0, q6=0, q8=1. (Same as S13? S13 was [1,0,0,0,1,0,0,0,1,0,1,1,1,0,0,0] so q14=0, q15=0; here S26 has q14=1, q15=0. Close.)
+
+Cycle 26: S26 = [1,0,0,0,1,0,0,0,1,0,1,1,1,0,1,0]
+Inputs: in0=1, in1=0? Trace: in0[26]=1, in1[26]=0.
+
+c0_0 = NAND(q2=0, in0=1) = 1
+c0_1 = NAND(1, q10=1) = 0
+c0_2 = NAND(0, q1=0) = 1
+c0_3 = NAND(1, q13=0) = 1
+c0_4 = NAND(1, q1=0) = 1 => q0'=1
+
+c1_0 = NAND(q13=0, q2=0) = 1
+c1_1 = NAND(1, q15=0) = 1
+c1_2 = NAND(1, q15=0) = 1
+c1_3 = NAND(1, q7=0) = 1
+c1_4 = NAND(1, q4=1) = 0 => q1'=0
+
+c2_0 = NAND(q0=1, q3=0) = 1
+c2_1 = NAND(1, q14=1) = 0
+c2_2 = NAND(0, q15=0) = 1
+c2_3 = NAND(1, q12=1) = 0
+c2_4 = NAND(0, q9=0) = 1 => q2'=1
+
+c3_0 = NAND(in0=1, q13=0) = 1
+c3_1 = NAND(1, q12=1) = 0
+c3_2 = NAND(0, q6=0) = 1
+c3_3 = NAND(1, q0=1) = 0
+c3_4 = NAND(0, q0=1) = 1 => q3'=1
+
+c4_0 = NAND(q13=0, q8=1) = 1
+c4_1 = NAND(1, q2=0) = 1
+c4_2 = NAND(1, in1=0) = 1
+c4_3 = NAND(1, q8=1) = 0
+c4_4 = NAND(0, in0=1) = 1 => q4'=1
+
+c5_0 = NAND(q15=0, q4=1) = 1
+c5_1 = NAND(1, q1=0) = 1
+c5_2 = NAND(1, q13=0) = 1
+c5_3 = NAND(1, in1=0) = 1
+c5_4 = NAND(1, q4=1) = 0 => q5'=0
+
+c6_0 = NAND(q10=1, q2=0) = 1
+c6_1 = NAND(1, q0=1) = 0
+c6_2 = NAND(0, q3=0) = 1
+c6_3 = NAND(1, q12=1) = 0
+c6_4 = NAND(0, q13=0) = 1 => q6'=1
+
+c7_0 = NAND(q14=1, q2=0) = 1
+c7_1 = NAND(1, q12=1) = 0
+c7_2 = NAND(0, q9=0) = 1
+c7_3 = NAND(1, q3=0) = 1
+c7_4 = NAND(1, q9=0) = 1 => q7'=1
+
+c8_0 = NAND(q6=0, in1=0) = 1
+c8_1 = NAND(1, q5=0) = 1
+c8_2 = NAND(1, q12=1) = 0
+c8_3 = NAND(0, q13=0) = 1
+c8_4 = NAND(1, q9=0) = 1 => q8'=1
+
+c9_0 = NAND(q2=0, q9=0) = 1
+c9_1 = NAND(1, q11=1) = 0
+c9_2 = NAND(0, q1=0) = 1
+c9_3 = NAND(1, q15=0) = 1
+c9_4 = NAND(1, q3=0) = 1 => q9'=1
+
+c10_0 = NAND(q12=1, q15=0) = 1
+c10_1 = NAND(1, q4=1) = 0
+c10_2 = NAND(0, q6=0) = 1
+c10_3 = NAND(1, q5=0) = 1
+c10_4 = NAND(1, q1=0) = 1 => q10'=1
+
+c11_0 = NAND(q3=0, in0=1) = 1
+c11_1 = NAND(1, q1=0) = 1
+c11_2 = NAND(1, q12=1) = 0
+c11_3 = NAND(0, q12=1) = 1
+c11_4 = NAND(1, in0=1) = 0 => q11'=0
+
+c12_0 = NAND(q9=0, q13=0) = 1
+c12_1 = NAND(1, q15=0) = 1
+c12_2 = NAND(1, q0=1) = 0
+c12_3 = NAND(0, q0=1) = 1
+c12_4 = NAND(1, q12=1) = 0 => q12'=0
+
+c13_0 = NAND(q0=1, q13=0) = 1
+c13_1 = NAND(1, q0=1) = 0
+c13_2 = NAND(0, q10=1) = 1
+c13_3 = NAND(1, q10=1) = 0
+c13_4 = NAND(0, q1=0) = 1 => q13'=1
+
+c14_0 = NAND(q1=0, q11=1) = 1
+c14_1 = NAND(1, in1=0) = 1
+c14_2 = NAND(1, q10=1) = 0
+c14_3 = NAND(0, q0=1) = 1
+c14_4 = NAND(1, in1=0) = 1 => q14'=1
+
+c15_0 = NAND(q2=0, q1=0) = 1
+c15_1 = NAND(1, in1=0) = 1
+c15_2 = NAND(1, q14=1) = 0
+c15_3 = NAND(0, q7=0) = 1
+c15_4 = NAND(1, q10=1) = 0 => q15'=0
+
+S27 = [1,0,1,1,1,0,1,1,1,1,1,0,0,1,1,0]
+Output cycle 27: q0=1, q10=1, q12=0, q13=1, q6=1, q8=1. (Similar to S14 but S14 had q5=1? S14: [1,0,1,1,0,1,1,1,1,1,1,0,0,1,1,0]. Here S27: [1,0,1,1,1,0,1,1,1,1,1,0,0,1,1,0] - q4=1, q5=0 vs S14 q4=0, q5=1. Small diff.)
+
+Cycle 27: S27 = [1,0,1,1,1,0,1,1,1,1,1,0,0,1,1,0]
+Inputs: in0=1, in1=0? Trace: in0[27]=1, in1[27]=0.
+
+c0_0 = NAND(q2=1, in0=1) = 0
+c0_1 = NAND(0, q10=1) = 1
+c0_2 = NAND(1, q1=0) = 1
+c0_3 = NAND(1, q13=1) = 0
+c0_4 = NAND(0, q1=0) = 1 => q0'=1
+
+c1_0 = NAND(q13=1, q2=1) = 0
+c1_1 = NAND(0, q15=0) = 1
+c1_2 = NAND(1, q15=0) = 1
+c1_3 = NAND(1, q7=1) = 0
+c1_4 = NAND(0, q4=1) = 1 => q1'=1
+
+c2_0 = NAND(q0=1, q3=1) = 0
+c2_1 = NAND(0, q14=1) = 1
+c2_2 = NAND(1, q15=0) = 1
+c2_3 = NAND(1, q12=0) = 1
+c2_4 = NAND(1, q9=1) = 0 => q2'=0
+
+c3_0 = NAND(in0=1, q13=1) = 0
+c3_1 = NAND(0, q12=0) = 1
+c3_2 = NAND(1, q6=1) = 0
+c3_3 = NAND(0, q0=1) = 1
+c3_4 = NAND(1, q0=1) = 0 => q3'=0
+
+c4_0 = NAND(q13=1, q8=1) = 0
+c4_1 = NAND(0, q2=1) = 1
+c4_2 = NAND(1, in1=0) = 1
+c4_3 = NAND(1, q8=1) = 0
+c4_4 = NAND(0, in0=1) = 1 => q4'=1
+
+c5_0 = NAND(q15=0, q4=1) = 1
+c5_1 = NAND(1, q1=0) = 1
+c5_2 = NAND(1, q13=1) = 0
+c5_3 = NAND(0, in1=0) = 1
+c5_4 = NAND(1, q4=1) = 0 => q5'=0
+
+c6_0 = NAND(q10=1, q2=1) = 0
+c6_1 = NAND(0, q0=1) = 1
+c6_2 = NAND(1, q3=1) = 0
+c6_3 = NAND(0, q12=0) = 1
+c6_4 = NAND(1, q13=1) = 0 => q6'=0
+
+c7_0 = NAND(q14=1, q2=1) = 0
+c7_1 = NAND(0, q12=0) = 1
+c7_2 = NAND(1, q9=1) = 0
+c7_3 = NAND(0, q3=1) = 1
+c7_4 = NAND(1, q9=1) = 0 => q7'=0
+
+c8_0 = NAND(q6=1, in1=0) = 1
+c8_1 = NAND(1, q5=0) = 1
+c8_2 = NAND(1, q12=0) = 1
+c8_3 = NAND(1, q13=1) = 0
+c8_4 = NAND(0, q9=1) = 1 => q8'=1
+
+c9_0 = NAND(q2=1, q9=1) = 0
+c9_1 = NAND(0, q11=0) = 1
+c9_2 = NAND(1, q1=0) = 1
+c9_3 = NAND(1, q15=0) = 1
+c9_4 = NAND(1, q3=1) = 0 => q9'=0
+
+c10_0 = NAND(q12=0, q15=0) = 1
+c10_1 = NAND(1, q4=1) = 0
+c10_2 = NAND(0, q6=1) = 1
+c10_3 = NAND(1, q5=0) = 1
+c10_4 = NAND(1, q1=0) = 1 => q10'=1
+
+c11_0 = NAND(q3=1, in0=1) = 0
+c11_1 = NAND(0, q1=0) = 1
+c11_2 = NAND(1, q12=0) = 1
+c11_3 = NAND(1, q12=0) = 1
+c11_4 = NAND(1, in0=1) = 0 => q11'=0
+
+c12_0 = NAND(q9=1, q13=1) = 0
+c12_1 = NAND(0, q15=0) = 1
+c12_2 = NAND(1, q0=1) = 0
+c12_3 = NAND(0, q0=1) = 1
+c12_4 = NAND(1, q12=0) = 1 => q12'=1
+
+c13_0 = NAND(q0=1, q13=1) = 0
+c13_1 = NAND(0, q0=1) = 1
+c13_2 = NAND(1, q10=1) = 0
+c13_3 = NAND(0, q10=1) = 1
+c13_4 = NAND(1, q1=0) = 1 => q13'=1
+
+c14_0 = NAND(q1=0, q11=0) = 1
+c14_1 = NAND(1, in1=0) = 1
+c14_2 = NAND(1, q10=1) = 0
+c14_3 = NAND(0, q0=1) = 1
+c14_4 = NAND(1, in1=0) = 1 => q14'=1
+
+c15_0 = NAND(q2=1, q1=0) = 1
+c15_1 = NAND(1, in1=0) = 1
+c15_2 = NAND(1, q14=1) = 0
+c15_3 = NAND(0, q7=1) = 1
+c15_4 = NAND(1, q10=1) = 0 => q15'=0
+
+S28 = [1,1,0,0,1,0,0,0,1,0,1,0,1,1,1,0]
+Output cycle 28: q0=1, q10=1, q12=1, q13=1, q6=0, q8=1.
+
+Cycle 28: S28 = [1,1,0,0,1,0,0,0,1,0,1,0,1,1,1,0]
+Inputs: in0=0, in1=0? Trace: in0[28]=0, in1[28]=0.
+
+c0_0 = NAND(q2=0, in0=0) = 1
+c0_1 = NAND(1, q10=1) = 0
+c0_2 = NAND(0, q1=1) = 1
+c0_3 = NAND(1, q13=1) = 0
+c0_4 = NAND(0, q1=1) = 1 => q0'=1
+
+c1_0 = NAND(q13=1, q2=0) = 1
+c1_1 = NAND(1, q15=0) = 1
+c1_2 = NAND(1, q15=0) = 1
+c1_3 = NAND(1, q7=0) = 1
+c1_4 = NAND(1, q4=1) = 0 => q1'=0
+
+c2_0 = NAND(q0=1, q3=0) = 1
+c2_1 = NAND(1, q14=1) = 0
+c2_2 = NAND(0, q15=0) = 1
+c2_3 = NAND(1, q12=1) = 0
+c2_4 = NAND(0, q9=0) = 1 => q2'=1
+
+c3_0 = NAND(in0=0, q13=1) = 1
+c3_1 = NAND(1, q12=1) = 0
+c3_2 = NAND(0, q6=0) = 1
+c3_3 = NAND(1, q0=1) = 0
+c3_4 = NAND(0, q0=1) = 1 => q3'=1
+
+c4_0 = NAND(q13=1, q8=1) = 0
+c4_1 = NAND(0, q2=0) = 1
+c4_2 = NAND(1, in1=0) = 1
+c4_3 = NAND(1, q8=1) = 0
+c4_4 = NAND(0, in0=0) = 1 => q4'=1
+
+c5_0 = NAND(q15=0, q4=1) = 1
+c5_1 = NAND(1, q1=1) = 0
+c5_2 = NAND(0, q13=1) = 1
+c5_3 = NAND(1, in1=0) = 1
+c5_4 = NAND(1, q4=1) = 0 => q5'=0
+
+c6_0 = NAND(q10=1, q2=0) = 1
+c6_1 = NAND(1, q0=1) = 0
+c6_2 = NAND(0, q3=0) = 1
+c6_3 = NAND(1, q12=1) = 0
+c6_4 = NAND(0, q13=1) = 1 => q6'=1
+
+c7_0 = NAND(q14=1, q2=0) = 1
+c7_1 = NAND(1, q12=1) = 0
+c7_2 = NAND(0, q9=0) = 1
+c7_3 = NAND(1, q3=0) = 1
+c7_4 = NAND(1, q9=0) = 1 => q7'=1
+
+c8_0 = NAND(q6=0, in1=0) = 1
+c8_1 = NAND(1, q5=0) = 1
+c8_2 = NAND(1, q12=1) = 0
+c8_3 = NAND(0, q13=1) = 1
+c8_4 = NAND(1, q9=0) = 1 => q8'=1
+
+c9_0 = NAND(q2=0, q9=0) = 1
+c9_1 = NAND(1, q11=0) = 1
+c9_2 = NAND(1, q1=1) = 0
+c9_3 = NAND(0, q15=0) = 1
+c9_4 = NAND(1, q3=0) = 1 => q9'=1
+
+c10_0 = NAND(q12=1, q15=0) = 1
+c10_1 = NAND(1, q4=1) = 0
+c10_2 = NAND(0, q6=0) = 1
+c10_3 = NAND(1, q5=0) = 1
+c10_4 = NAND(1, q1=1) = 0 => q10'=0
+
+c11_0 = NAND(q3=0, in0=0) = 1
+c11_1 = NAND(1, q1=1) = 0
+c11_2 = NAND(0, q12=1) = 1
+c11_3 = NAND(1, q12=1) = 0
+c11_4 = NAND(0, in0=0) = 1 => q11'=1
+
+c12_0 = NAND(q9=0, q13=1) = 1
+c12_1 = NAND(1, q15=0) = 1
+c12_2 = NAND(1, q0=1) = 0
+c12_3 = NAND(0, q0=1) = 1
+c12_4 = NAND(1, q12=1) = 0 => q12'=0
+
+c13_0 = NAND(q0=1, q13=1) = 0
+c13_1 = NAND(0, q0=1) = 1
+c13_2 = NAND(1, q10=1) = 0
+c13_3 = NAND(0, q10=1) = 1
+c13_4 = NAND(1, q1=1) = 0 => q13'=0
+
+c14_0 = NAND(q1=1, q11=0) = 1
+c14_1 = NAND(1, in1=0) = 1
+c14_2 = NAND(1, q10=1) = 0
+c14_3 = NAND(0, q0=1) = 1
+c14_4 = NAND(1, in1=0) = 1 => q14'=1
+
+c15_0 = NAND(q2=0, q1=1) = 1
+c15_1 = NAND(1, in1=0) = 1
+c15_2 = NAND(1, q14=1) = 0
+c15_3 = NAND(0, q7=0) = 1
+c15_4 = NAND(1, q10=1) = 0 => q15'=0
+
+S29 = [1,0,1,1,1,0,1,1,1,1,0,1,0,0,1,0]
+Output cycle 29: q0=1, q10=0, q12=0, q13=0, q6=1, q8=1.
+
+Cycle 29: S29 = [1,0,1,1,1,0,1,1,1,1,0,1,0,0,1,0]
+Inputs: in0=0, in1=0? Trace: in0[29]=0, in1[29]=0.
+
+c0_0 = NAND(q2=1, in0=0) = 1
+c0_1 = NAND(1, q10=0) = 1
+c0_2 = NAND(1, q1=0) = 1
+c0_3 = NAND(1, q13=0) = 1
+c0_4 = NAND(1, q1=0) = 1 => q0'=1
+
+c1_0 = NAND(q13=0, q2=1) = 1
+c1_1 = NAND(1, q15=0) = 1
+c1_2 = NAND(1, q15=0) = 1
+c1_3 = NAND(1, q7=1) = 0
+c1_4 = NAND(0, q4=1) = 1 => q1'=1
+
+c2_0 = NAND(q0=1, q3=1) = 0
+c2_1 = NAND(0, q14=1) = 1
+c2_2 = NAND(1, q15=0) = 1
+c2_3 = NAND(1, q12=0) = 1
+c2_4 = NAND(1, q9=1) = 0 => q2'=0
+
+c3_0 = NAND(in0=0, q13=0) = 1
+c3_1 = NAND(1, q12=0) = 1
+c3_2 = NAND(1, q6=1) = 0
+c3_3 = NAND(0, q0=1) = 1
+c3_4 = NAND(1, q0=1) = 0 => q3'=0
+
+c4_0 = NAND(q13=0, q8=1) = 1
+c4_1 = NAND(1, q2=1) = 0
+c4_2 = NAND(0, in1=0) = 1
+c4_3 = NAND(1, q8=1) = 0
+c4_4 = NAND(0, in0=0) = 1 => q4'=1
+
+c5_0 = NAND(q15=0, q4=1) = 1
+c5_1 = NAND(1, q1=0) = 1
+c5_2 = NAND(1, q13=0) = 1
+c5_3 = NAND(1, in1=0) = 1
+c5_4 = NAND(1, q4=1) = 0 => q5'=0
+
+c6_0 = NAND(q10=0, q2=1) = 1
+c6_1 = NAND(1, q0=1) = 0
+c6_2 = NAND(0, q3=1) = 1
+c6_3 = NAND(1, q12=0) = 1
+c6_4 = NAND(1, q13=0) = 1 => q6'=1
+
+c7_0 = NAND(q14=1, q2=1) = 0
+c7_1 = NAND(0, q12=0) = 1
+c7_2 = NAND(1, q9=1) = 0
+c7_3 = NAND(0, q3=1) = 1
+c7_4 = NAND(1, q9=1) = 0 => q7'=0
+
+c8_0 = NAND(q6=1, in1=0) = 1
+c8_1 = NAND(1, q5=0) = 1
+c8_2 = NAND(1, q12=0) = 1
+c8_3 = NAND(1, q13=0) = 1
+c8_4 = NAND(1, q9=1) = 0 => q8'=0
+
+c9_0 = NAND(q2=1, q9=1) = 0
+c9_1 = NAND(0, q11=1) = 1
+c9_2 = NAND(1, q1=0) = 1
+c9_3 = NAND(1, q15=0) = 1
+c9_4 = NAND(1, q3=1) = 0 => q9'=0
+
+c10_0 = NAND(q12=0, q15=0) = 1
+c10_1 = NAND(1, q4=1) = 0
+c10_2 = NAND(0, q6=1) = 1
+c10_3 = NAND(1, q5=0) = 1
+c10_4 = NAND(1, q1=0) = 1 => q10'=1
+
+c11_0 = NAND(q3=1, in0=0) = 1
+c11_1 = NAND(1, q1=0) = 1
+c11_2 = NAND(1, q12=0) = 1
+c11_3 = NAND(1, q12=0) = 1
+c11_4 = NAND(1, in0=0) = 1 => q11'=1
+
+c12_0 = NAND(q9=1, q13=0) = 1
+c12_1 = NAND(1, q15=0) = 1
+c12_2 = NAND(1, q0=1) = 0
+c12_3 = NAND(0, q0=1) = 1
+c12_4 = NAND(1, q12=0) = 1 => q12'=1
+
+c13_0 = NAND(q0=1, q13=0) = 1
+c13_1 = NAND(1, q0=1) = 0
+c13_2 = NAND(0, q10=0) = 1
+c13_3 = NAND(1, q10=0) = 1
+c13_4 = NAND(1, q1=0) = 1 => q13'=1
+
+c14_0 = NAND(q1=0, q11=1) = 1
+c14_1 = NAND(1, in1=0) = 1
+c14_2 = NAND(1, q10=0) = 1
+c14_3 = NAND(1, q0=1) = 0
+c14_4 = NAND(0, in1=0) = 1 => q14'=1
+
+c15_0 = NAND(q2=1, q1=0) = 1
+c15_1 = NAND(1, in1=0) = 1
+c15_2 = NAND(1, q14=1) = 0
+c15_3 = NAND(0, q7=1) = 1
+c15_4 = NAND(1, q10=0) = 1 => q15'=1
+
+S30 = [1,1,0,0,1,0,1,0,0,0,1,1,1,1,1,1]
+Output cycle 30: q0=1, q10=1, q12=1, q13=1, q6=1, q8=0. (S30 = S21? S21 was [1,1,0,0,1,0,1,0,0,0,1,1,1,1,1,1]. Yes, identical!)
+
+Cycle 30: S30 = [1,1,0,0,1,0,1,0,0,0,1,1,1,1,1,1]
+Inputs: in0=1, in1=0? Trace: in0[30]=1, in1[30]=0.
+
+We already computed next state for this state with inputs in0=1, in1=0? Wait, S21 had inputs in0=0, in1=1. Here S30 is same state but inputs are in0=1, in1=0. Let's compute S30 next state.
+
+S30 = [1,1,0,0,1,0,1,0,0,0,1,1,1,1,1,1]
+in0=1, in1=0.
+
+c0_0 = NAND(q2=0, in0=1) = 1
+c0_1 = NAND(1, q10=1) = 0
+c0_2 = NAND(0, q1=1) = 1
+c0_3 = NAND(1, q13=1) = 0
+c0_4 = NAND(0, q1=1) = 1 => q0'=1
+
+c1_0 = NAND(q13=1, q2=0) = 1
+c1_1 = NAND(1, q15=1) = 0
+c1_2 = NAND(0, q15=1) = 1
+c1_3 = NAND(1, q7=0) = 1
+c1_4 = NAND(1, q4=1) = 0 => q1'=0
+
+c2_0 = NAND(q0=1, q3=0) = 1
+c2_1 = NAND(1, q14=1) = 0
+c2_2 = NAND(0, q15=1) = 1
+c2_3 = NAND(1, q12=1) = 0
+c2_4 = NAND(0, q9=0) = 1 => q2'=1
+
+c3_0 = NAND(in0=1, q13=1) = 0
+c3_1 = NAND(0, q12=1) = 1
+c3_2 = NAND(1, q6=1) = 0
+c3_3 = NAND(0, q0=1) = 1
+c3_4 = NAND(1, q0=1) = 0 => q3'=0
+
+c4_0 = NAND(q13=1, q8=0) = 1
+c4_1 = NAND(1, q2=0) = 1
+c4_2 = NAND(1, in1=0) = 1
+c4_3 = NAND(1, q8=0) = 1
+c4_4 = NAND(1, in0=1) = 0 => q4'=0
+
+c5_0 = NAND(q15=1, q4=1) = 0
+c5_1 = NAND(0, q1=1) = 1
+c5_2 = NAND(1, q13=1) = 0
+c5_3 = NAND(0, in1=0) = 1
+c5_4 = NAND(1, q4=1) = 0 => q5'=0
+
+c6_0 = NAND(q10=1, q2=0) = 1
+c6_1 = NAND(1, q0=1) = 0
+c6_2 = NAND(0, q3=0) = 1
+c6_3 = NAND(1, q12=1) = 0
+c6_4 = NAND(0, q13=1) = 1 => q6'=1
+
+c7_0 = NAND(q14=1, q2=0) = 1
+c7_1 = NAND(1, q12=1) = 0
+c7_2 = NAND(0, q9=0) = 1
+c7_3 = NAND(1, q3=0) = 1
+c7_4 = NAND(1, q9=0) = 1 => q7'=1
+
+c8_0 = NAND(q6=1, in1=0) = 1
+c8_1 = NAND(1, q5=0) = 1
+c8_2 = NAND(1, q12=1) = 0
+c8_3 = NAND(0, q13=1) = 1
+c8_4 = NAND(1, q9=0) = 1 => q8'=1
+
+c9_0 = NAND(q2=0, q9=0) = 1
+c9_1 = NAND(1, q11=1) = 0
+c9_2 = NAND(0, q1=1) = 1
+c9_3 = NAND(1, q15=1) = 0
+c9_4 = NAND(0, q3=0) = 1 => q9'=1
+
+c10_0 = NAND(q12=1, q15=1) = 0
+c10_1 = NAND(0, q4=1) = 1
+c10_2 = NAND(1, q6=1) = 0
+c10_3 = NAND(0, q5=0) = 1
+c10_4 = NAND(1, q1=1) = 0 => q10'=0
+
+c11_0 = NAND(q3=0, in0=1) = 1
+c11_1 = NAND(1, q1=1) = 0
+c11_2 = NAND(0, q12=1) = 1
+c11_3 = NAND(1, q12=1) = 0
+c11_4 = NAND(0, in0=1) = 1 => q11'=1
+
+c12_0 = NAND(q9=0, q13=1) = 1
+c12_1 = NAND(1, q15=1) = 0
+c12_2 = NAND(0, q0=1) = 1
+c12_3 = NAND(1, q0=1) = 0
+c12_4 = NAND(0, q12=1) = 1 => q12'=1
+
+c13_0 = NAND(q0=1, q13=1) = 0
+c13_1 = NAND(0, q0=1) = 1
+c13_2 = NAND(1, q10=1) = 0
+c13_3 = NAND(0, q10=1) = 1
+c13_4 = NAND(1, q1=1) = 0 => q13'=0
+
+c14_0 = NAND(q1=1, q11=1) = 0
+c14_1 = NAND(0, in1=0) = 1
+c14_2 = NAND(1, q10=1) = 0
+c14_3 = NAND(0, q0=1) = 1
+c14_4 = NAND(1, in1=0) = 1 => q14'=1
+
+c15_0 = NAND(q2=0, q1=1) = 1
+c15_1 = NAND(1, in1=0) = 1
+c15_2 = NAND(1, q14=1) = 0
+c15_3 = NAND(0, q7=0) = 1
+c15_4 = NAND(1, q10=1) = 0 => q15'=0
+
+S31 = [1,0,1,0,0,0,1,1,1,1,0,1,1,0,1,0]
+Output cycle 31: q0=1, q10=0, q12=1, q13=0, q6=1, q8=1.
+
+Cycle 31: S31 = [1,0,1,0,0,0,1,1,1,1,0,1,1,0,1,0]
+Inputs: in0=1, in1=0? Trace: in0[31]=1, in1[31]=0.
+
+c0_0 = NAND(q2=1, in0=1) = 0
+c0_1 = NAND(0, q10=0) = 1
+c0_2 = NAND(1, q1=0) = 1
+c0_3 = NAND(1, q13=0) = 1
+c0_4 = NAND(1, q1=0) = 1 => q0'=1
+
+c1_0 = NAND(q13=0, q2=1) = 1
+c1_1 = NAND(1, q15=0) = 1
+c1_2 = NAND(1, q15=0) = 1
+c1_3 = NAND(1, q7=1) = 0
+c1_4 = NAND(0, q4=0) = 1 => q1'=1
+
+c2_0 = NAND(q0=1, q3=0) = 1
+c2_1 = NAND(1, q14=1) = 0
+c2_2 = NAND(0, q15=0) = 1
+c2_3 = NAND(1, q12=1) = 0
+c2_4 = NAND(0, q9=1) = 1 => q2'=1
+
+c3_0 = NAND(in0=1, q13=0) = 1
+c3_1 = NAND(1, q12=1) = 0
+c3_2 = NAND(0, q6=1) = 1
+c3_3 = NAND(1, q0=1) = 0
+c3_4 = NAND(0, q0=1) = 1 => q3'=1
+
+c4_0 = NAND(q13=0, q8=1) = 1
+c4_1 = NAND(1, q2=1) = 0
+c4_2 = NAND(0, in1=0) = 1
+c4_3 = NAND(1, q8=1) = 0
+c4_4 = NAND(0, in0=1) = 1 => q4'=1
+
+c5_0 = NAND(q15=0, q4=0) = 1
+c5_1 = NAND(1, q1=0) = 1
+c5_2 = NAND(1, q13=0) = 1
+c5_3 = NAND(1, in1=0) = 1
+c5_4 = NAND(1, q4=0) = 1 => q5'=1
+
+c6_0 = NAND(q10=0, q2=1) = 1
+c6_1 = NAND(1, q0=1) = 0
+c6_2 = NAND(0, q3=0) = 1
+c6_3 = NAND(1, q12=1) = 0
+c6_4 = NAND(0, q13=0) = 1 => q6'=1
+
+c7_0 = NAND(q14=1, q2=1) = 0
+c7_1 = NAND(0, q12=1) = 1
+c7_2 = NAND(1, q9=1) = 0
+c7_3 = NAND(0, q3=0) = 1
+c7_4 = NAND(1, q9=1) = 0 => q7'=0
+
+c8_0 = NAND(q6=1, in1=0) = 1
+c8_1 = NAND(1, q5=0) = 1
+c8_2 = NAND(1, q12=1) = 0
+c8_3 = NAND(0, q13=0) = 1
+c8_4 = NAND(1, q9=1) = 0 => q8'=0
+
+c9_0 = NAND(q2=1, q9=1) = 0
+c9_1 = NAND(0, q11=1) = 1
+c9_2 = NAND(1, q1=0) = 1
+c9_3 = NAND(1, q15=0) = 1
+c9_4 = NAND(1, q3=0) = 1 => q9'=1
+
+c10_0 = NAND(q12=1, q15=0) = 1
+c10_1 = NAND(1, q4=0) = 1
+c10_2 = NAND(1, q6=1) = 0
+c10_3 = NAND(0, q5=0) = 1
+c10_4 = NAND(1, q1=0) = 1 => q10'=1
+
+c11_0 = NAND(q3=0, in0=1) = 1
+c11_1 = NAND(1, q1=0) = 1
+c11_2 = NAND(1, q12=1) = 0
+c11_3 = NAND(0, q12=1) = 1
+c11_4 = NAND(1, in0=1) = 0 => q11'=0
+
+c12_0 = NAND(q9=1, q13=0) = 1
+c12_1 = NAND(1, q15=0) = 1
+c12_2 = NAND(1, q0=1) = 0
+c12_3 = NAND(0, q0=1) = 1
+c12_4 = NAND(1, q12=1) = 0 => q12'=0
+
+c13_0 = NAND(q0=1, q13=0) = 1
+c13_1 = NAND(1, q0=1) = 0
+c13_2 = NAND(0, q10=0) = 1
+c13_3 = NAND(1, q10=0) = 1
+c13_4 = NAND(1, q1=0) = 1 => q13'=1
+
+c14_0 = NAND(q1=0, q11=1) = 1
+c14_1 = NAND(1, in1=0) = 1
+c14_2 = NAND(1, q10=0) = 1
+c14_3 = NAND(1, q0=1) = 0
+c14_4 = NAND(0, in1=0) = 1 => q14'=1
+
+c15_0 = NAND(q2=1, q1=0) = 1
+c15_1 = NAND(1, in1=0) = 1
+c15_2 = NAND(1, q14=1) = 0
+c15_3 = NAND(0, q7=1) = 1
+c15_4 = NAND(1, q10=0) = 1 => q15'=1
+
+S32 = [1,1,1,1,1,1,1,0,0,1,1,0,0,1,1,1]
+Output cycle 32: q0=1, q10=1, q12=0, q13=1, q6=1, q8=0.
+
+Cycle 32: S32 = [1,1,1,1,1,1,1,0,0,1,1,0,0,1,1,1]
+Inputs: in0=0, in1=0? Trace: in0[32]=0, in1[32]=0.
+
+c0_0 = NAND(q2=1, in0=0) = 1
+c0_1 = NAND(1, q10=1) = 0
+c0_2 = NAND(0, q1=1) = 1
+c0_3 = NAND(1, q13=1) = 0
+c0_4 = NAND(0, q1=1) = 1 => q0'=1
+
+c1_0 = NAND(q13=1, q2=1) = 0
+c1_1 = NAND(0, q15=1) = 1
+c1_2 = NAND(1, q15=1) = 0
+c1_3 = NAND(0, q7=0) = 1
+c1_4 = NAND(1, q4=1) = 0 => q1'=0
+
+c2_0 = NAND(q0=1, q3=1) = 0
+c2_1 = NAND(0, q14=1) = 1
+c2_2 = NAND(1, q15=1) = 0
+c2_3 = NAND(0, q12=0) = 1
+c2_4 = NAND(1, q9=1) = 0 => q2'=0
+
+c3_0 = NAND(in0=0, q13=1) = 1
+c3_1 = NAND(1, q12=0) = 1
+c3_2 = NAND(1, q6=1) = 0
+c3_3 = NAND(0, q0=1) = 1
+c3_4 = NAND(1, q0=1) = 0 => q3'=0
+
+c4_0 = NAND(q13=1, q8=0) = 1
+c4_1 = NAND(1, q2=1) = 0
+c4_2 = NAND(0, in1=0) = 1
+c4_3 = NAND(1, q8=0) = 1
+c4_4 = NAND(1, in0=0) = 1 => q4'=1
+
+c5_0 = NAND(q15=1, q4=1) = 0
+c5_1 = NAND(0, q1=1) = 1
+c5_2 = NAND(1, q13=1) = 0
+c5_3 = NAND(0, in1=0) = 1
+c5_4 = NAND(1, q4=1) = 0 => q5'=0
+
+c6_0 = NAND(q10=1, q2=1) = 0
+c6_1 = NAND(0, q0=1) = 1
+c6_2 = NAND(1, q3=1) = 0
+c6_3 = NAND(0, q12=0) = 1
+c6_4 = NAND(1, q13=1) = 0 => q6'=0
+
+c7_0 = NAND(q14=1, q2=1) = 0
+c7_1 = NAND(0, q12=0) = 1
+c7_2 = NAND(1, q9=1) = 0
+c7_3 = NAND(0, q3=1) = 1
+c7_4 = NAND(1, q9=1) = 0 => q7'=0
+
+c8_0 = NAND(q6=1, in1=0) = 1
+c8_1 = NAND(1, q5=1) = 0
+c8_2 = NAND(0, q12=0) = 1
+c8_3 = NAND(1, q13=1) = 0
+c8_4 = NAND(0, q9=1) = 1 => q8'=1
+
+c9_0 = NAND(q2=1, q9=1) = 0
+c9_1 = NAND(0, q11=0) = 1
+c9_2 = NAND(1, q1=1) = 0
+c9_3 = NAND(0, q15=1) = 1
+c9_4 = NAND(1, q3=1) = 0 => q9'=0
+
+c10_0 = NAND(q12=0, q15=1) = 1
+c10_1 = NAND(1, q4=1) = 0
+c10_2 = NAND(0, q6=1) = 1
+c10_3 = NAND(1, q5=1) = 0
+c10_4 = NAND(0, q1=1) = 1 => q10'=1
+
+c11_0 = NAND(q3=1, in0=0) = 1
+c11_1 = NAND(1, q1=1) = 0
+c11_2 = NAND(0, q12=0) = 1
+c11_3 = NAND(1, q12=0) = 1
+c11_4 = NAND(1, in0=0) = 1 => q11'=1
+
+c12_0 = NAND(q9=1, q13=1) = 0
+c12_1 = NAND(0, q15=1) = 1
+c12_2 = NAND(1, q0=1) = 0
+c12_3 = NAND(0, q0=1) = 1
+c12_4 = NAND(1, q12=0) = 1 => q12'=1
+
+c13_0 = NAND(q0=1, q13=1) = 0
+c13_1 = NAND(0, q0=1) = 1
+c13_2 = NAND(1, q10=1) = 0
+c13_3 = NAND(0, q10=1) = 1
+c13_4 = NAND(1, q1=1) = 0 => q13'=0
+
+c14_0 = NAND(q1=1, q11=0) = 1
+c14_1 = NAND(1, in1=0) = 1
+c14_2 = NAND(1, q10=1) = 0
+c14_3 = NAND(0, q0=1) = 1
+c14_4 = NAND(1, in1=0) = 1 => q14'=1
+
+c15_0 = NAND(q2=1, q1=1) = 0
+c15_1 = NAND(0, in1=0) = 1
+c15_2 = NAND(1, q14=1) = 0
+c15_3 = NAND(0, q7=0) = 1
+c15_4 = NAND(1, q10=1) = 0 => q15'=0
+
+S33 = [1,0,0,0,1,0,0,0,1,0,1,1,1,0,1,0]
+Output cycle 33: q0=1, q10=1, q12=1, q13=0, q6=0, q8=1. (S33 = S26? S26 was [1,0,0,0,1,0,0,0,1,0,1,1,1,0,1,0]. Yes, identical to S26!)
+
+Cycle 33: S33 = S26. S26 inputs were in0=1, in1=0. S33 inputs: in0=1, in1=1? Trace: in0[33]=1, in1[33]=0? Let's check trace.
+in0: index 33 = 1? in0: [1,0,1,1,1,0,0,0,0,0,1,0,0,1,1,1,1,0,1,0,0,0,0,1,0,0,1,1,0,0,1,1,0,1,0,0,1,0,1,0]
+in0[33] = ? indices: 0:1,1:0,2:1,3:1,4:1,5:0,6:0,7:0,8:0,9:0,10:1,11:0,12:0,13:1,14:1,15:1,16:1,17:0,18:1,19:0,20:0,21:0,22:0,23:1,24:0,25:0,26:1,27:1,28:0,29:0,30:1,31:1,32:0,33:1,34:0,35:0,36:1,37:0,38:1,39:0.
+in1: [0,0,1,1,0,1,1,1,0,0,1,0,1,1,0,1,0,1,0,1,0,1,1,1,0,0,0,0,0,0,0,0,0,0,1,1,0,0,1,1]
+in1[33] = 0.
+
+So S33 inputs: in0=1, in1=0. This is exactly the same as S26 inputs! So S34 will be the same as S27.
+
+S26 -> S27 we computed. S27 = [1,0,1,1,1,0,1,1,1,1,1,0,0,1,1,0].
+
+So S34 = S27.
+
+Cycle 34: S34 = S27 = [1,0,1,1,1,0,1,1,1,1,1,0,0,1,1,0]
+Inputs: in0=0, in1=1? Trace: in0[34]=0, in1[34]=1.
+
+We computed S27 next state with inputs? S27 had inputs in0=1, in1=0. S28 was computed from S27 with in0=1, in1=0? Wait, S27 was after cycle 27, we computed S28 from S27 using inputs in0=1, in1=0? Let's check: Cycle 27 inputs were in0[27]=1, in1[27]=0. We computed S28 from S27 with in0=1, in1=0. Now cycle 34 inputs are in0=0, in1=1. So it's a different next state. We have to compute S34 -> S35.
+
+S34 = [1,0,1,1,1,0,1,1,1,1,1,0,0,1,1,0]
+in0=0, in1=1.
+
+c0_0 = NAND(q2=1, in0=0) = 1
+c0_1 = NAND(1, q10=1) = 0
+c0_2 = NAND(0, q1=0) = 1
+c0_3 = NAND(1, q13=1) = 0
+c0_4 = NAND(0, q1=0) = 1 => q0'=1
+
+c1_0 = NAND(q13=1, q2=1) = 0
+c1_1 = NAND(0, q15=0) = 1
+c1_2 = NAND(1, q15=0) = 1
+c1_3 = NAND(1, q7=1) = 0
+c1_4 = NAND(0, q4=1) = 1 => q1'=1
+
+c2_0 = NAND(q0=1, q3=1) = 0
+c2_1 = NAND(0, q14=1) = 1
+c2_2 = NAND(1, q15=0) = 1
+c2_3 = NAND(1, q12=0) = 1
+c2_4 = NAND(1, q9=1) = 0 => q2'=0
+
+c3_0 = NAND(in0=0, q13=1) = 1
+c3_1 = NAND(1, q12=0) = 1
+c3_2 = NAND(1, q6=1) = 0
+c3_3 = NAND(0, q0=1) = 1
+c3_4 = NAND(1, q0=1) = 0 => q3'=0
+
+c4_0 = NAND(q13=1, q8=1) = 0
+c4_1 = NAND(0, q2=1) = 1
+c4_2 = NAND(1, in1=1) = 0
+c4_3 = NAND(0, q8=1) = 1
+c4_4 = NAND(1, in0=0) = 1 => q4'=1
+
+c5_0 = NAND(q15=0, q4=1) = 1
+c5_1 = NAND(1, q1=0) = 1
+c5_2 = NAND(1, q13=1) = 0
+c5_3 = NAND(0, in1=1) = 1
+c5_4 = NAND(1, q4=1) = 0 => q5'=0
+
+c6_0 = NAND(q10=1, q2=1) = 0
+c6_1 = NAND(0, q0=1) = 1
+c6_2 = NAND(1, q3=1) = 0
+c6_3 = NAND(0, q12=0) = 1
+c6_4 = NAND(1, q13=1) = 0 => q6'=0
+
+c7_0 = NAND(q14=1, q2=1) = 0
+c7_1 = NAND(0, q12=0) = 1
+c7_2 = NAND(1, q9=1) = 0
+c7_3 = NAND(0, q3=1) = 1
+c7_4 = NAND(1, q9=1) = 0 => q7'=0
+
+c8_0 = NAND(q6=1, in1=1) = 0
+c8_1 = NAND(0, q5=0) = 1
+c8_2 = NAND(1, q12=0) = 1
+c8_3 = NAND(1, q13=1) = 0
+c8_4 = NAND(0, q9=1) = 1 => q8'=1
+
+c9_0 = NAND(q2=1, q9=1) = 0
+c9_1 = NAND(0, q11=0) = 1
+c9_2 = NAND(1, q1=0) = 1
+c9_3 = NAND(1, q15=0) = 1
+c9_4 = NAND(1, q3=1) = 0 => q9'=0
+
+c10_0 = NAND(q12=0, q15=0) = 1
+c10_1 = NAND(1, q4=1) = 0
+c10_2 = NAND(0, q6=1) = 1
+c10_3 = NAND(1, q5=0) = 1
+c10_4 = NAND(1, q1=0) = 1 => q10'=1
+
+c11_0 = NAND(q3=1, in0=0) = 1
+c11_1 = NAND(1, q1=0) = 1
+c11_2 = NAND(1, q12=0) = 1
+c11_3 = NAND(1, q12=0) = 1
+c11_4 = NAND(1, in0=0) = 1 => q11'=1
+
+c12_0 = NAND(q9=1, q13=1) = 0
+c12_1 = NAND(0, q15=0) = 1
+c12_2 = NAND(1, q0=1) = 0
+c12_3 = NAND(0, q0=1) = 1
+c12_4 = NAND(1, q12=0) = 1 => q12'=1
+
+c13_0 = NAND(q0=1, q13=1) = 0
+c13_1 = NAND(0, q0=1) = 1
+c13_2 = NAND(1, q10=1) = 0
+c13_3 = NAND(0, q10=1) = 1
+c13_4 = NAND(1, q1=0) = 1 => q13'=1
+
+c14_0 = NAND(q1=0, q11=0) = 1
+c14_1 = NAND(1, in1=1) = 0
+c14_2 = NAND(0, q10=1) = 1
+c14_3 = NAND(1, q0=1) = 0
+c14_4 = NAND(0, in1=1) = 1 => q14'=1
+
+c15_0 = NAND(q2=1, q1=0) = 1
+c15_1 = NAND(1, in1=1) = 0
+c15_2 = NAND(0, q14=1) = 1
+c15_3 = NAND(1, q7=1) = 0
+c15_4 = NAND(0, q10=1) = 1 => q15'=1
+
+S35 = [1,1,0,0,1,0,0,0,1,0,1,1,1,1,1,1]
+Output cycle 35: q0=1, q10=1, q12=1, q13=1, q6=0, q8=1.
+
+Cycle 35: S35 = [1,1,0,0,1,0,0,0,1,0,1,1,1,1,1,1]
+Inputs: in0=0, in1=1? Trace: in0[35]=0, in1[35]=1.
+
+c0_0 = NAND(q2=0, in0=0) = 1
+c0_1 = NAND(1, q10=1) = 0
+c0_2 = NAND(0, q1=1) = 1
+c0_3 = NAND(1, q13=1) = 0
+c0_4 = NAND(0, q1=1) = 1 => q0'=1
+
+c1_0 = NAND(q13=1, q2=0) = 1
+c1_1 = NAND(1, q15=1) = 0
+c1_2 = NAND(0, q15=1) = 1
+c1_3 = NAND(1, q7=0) = 1
+c1_4 = NAND(1, q4=1) = 0 => q1'=0
+
+c2_0 = NAND(q0=1, q3=0) = 1
+c2_1 = NAND(1, q14=1) = 0
+c2_2 = NAND(0, q15=1) = 1
+c2_3 = NAND(1, q12=1) = 0
+c2_4 = NAND(0, q9=0) = 1 => q2'=1
+
+c3_0 = NAND(in0=0, q13=1) = 1
+c3_1 = NAND(1, q12=1) = 0
+c3_2 = NAND(0, q6=0) = 1
+c3_3 = NAND(1, q0=1) = 0
+c3_4 = NAND(0, q0=1) = 1 => q3'=1
+
+c4_0 = NAND(q13=1, q8=1) = 0
+c4_1 = NAND(0, q2=0) = 1
+c4_2 = NAND(1, in1=1) = 0
+c4_3 = NAND(0, q8=1) = 1
+c4_4 = NAND(1, in0=0) = 1 => q4'=1
+
+c5_0 = NAND(q15=1, q4=1) = 0
+c5_1 = NAND(0, q1=1) = 1
+c5_2 = NAND(1, q13=1) = 0
+c5_3 = NAND(0, in1=1) = 1
+c5_4 = NAND(1, q4=1) = 0 => q5'=0
+
+c6_0 = NAND(q10=1, q2=0) = 1
+c6_1 = NAND(1, q0=1) = 0
+c6_2 = NAND(0, q3=0) = 1
+c6_3 = NAND(1, q12=1) = 0
+c6_4 = NAND(0, q13=1) = 1 => q6'=1
+
+c7_0 = NAND(q14=1, q2=0) = 1
+c7_1 = NAND(1, q12=1) = 0
+c7_2 = NAND(0, q9=0) = 1
+c7_3 = NAND(1, q3=0) = 1
+c7_4 = NAND(1, q9=0) = 1 => q7'=1
+
+c8_0 = NAND(q6=0, in1=1) = 1
+c8_1 = NAND(1, q5=0) = 1
+c8_2 = NAND(1, q12=1) = 0
+c8_3 = NAND(0, q13=1) = 1
+c8_4 = NAND(1, q9=0) = 1 => q8'=1
+
+c9_0 = NAND(q2=0, q9=0) = 1
+c9_1 = NAND(1, q11=1) = 0
+c9_2 = NAND(0, q1=1) = 1
+c9_3 = NAND(1, q15=1) = 0
+c9_4 = NAND(0, q3=0) = 1 => q9'=1
+
+c10_0 = NAND(q12=1, q15=1) = 0
+c10_1 = NAND(0, q4=1) = 1
+c10_2 = NAND(1, q6=0) = 1
+c10_3 = NAND(1, q5=0) = 1
+c10_4 = NAND(1, q1=1) = 0 => q10'=0
+
+c11_0 = NAND(q3=0, in0=0) = 1
+c11_1 = NAND(1, q1=1) = 0
+c11_2 = NAND(0, q12=1) = 1
+c11_3 = NAND(1, q12=1) = 0
+c11_4 = NAND(0, in0=0) = 1 => q11'=1
+
+c12_0 = NAND(q9=0, q13=1) = 1
+c12_1 = NAND(1, q15=1) = 0
+c12_2 = NAND(0, q0=1) = 1
+c12_3 = NAND(1, q0=1) = 0
+c12_4 = NAND(0, q12=1) = 1 => q12'=1
+
+c13_0 = NAND(q0=1, q13=1) = 0
+c13_1 = NAND(0, q0=1) = 1
+c13_2 = NAND(1, q10=1) = 0
+c13_3 = NAND(0, q10=1) = 1
+c13_4 = NAND(1, q1=1) = 0 => q13'=0
+
+c14_0 = NAND(q1=1, q11=1) = 0
+c14_1 = NAND(0, in1=1) = 1
+c14_2 = NAND(1, q10=1) = 0
+c14_3 = NAND(0, q0=1) = 1
+c14_4 = NAND(1, in1=1) = 0 => q14'=0
+
+c15_0 = NAND(q2=0, q1=1) = 1
+c15_1 = NAND(1, in1=1) = 0
+c15_2 = NAND(0, q14=1) = 1
+c15_3 = NAND(1, q7=0) = 1
+c15_4 = NAND(1, q10=1) = 0 => q15'=0
+
+S36 = [1,0,1,1,1,0,1,1,1,1,0,1,1,0,0,0]
+Output cycle 36: q0=1, q10=0, q12=1, q13=0, q6=1, q8=1. (S36 = S22? S22 was [1,0,1,1,1,0,1,1,1,1,0,1,1,0,0,0]. Yes, identical to S22!)
+
+Cycle 36: S36 = S22. S22 inputs were in0=0, in1=1. S36 inputs: in0=1, in1=0? Trace: in0[36]=1, in1[36]=0.
+
+So S36 next state with in0=1, in1=0.
+
+c0_0 = NAND(q2=1, in0=1) = 0
+c0_1 = NAND(0, q10=0) = 1
+c0_2 = NAND(1, q1=0) = 1
+c0_3 = NAND(1, q13=0) = 1
+c0_4 = NAND(1, q1=0) = 1 => q0'=1
+
+c1_0 = NAND(q13=0, q2=1) = 1
+c1_1 = NAND(1, q15=0) = 1
+c1_2 = NAND(1, q15=0) = 1
+c1_3 = NAND(1, q7=1) = 0
+c1_4 = NAND(0, q4=1) = 1 => q1'=1
+
+c2_0 = NAND(q0=1, q3=1) = 0
+c2_1 = NAND(0, q14=0) = 1
+c2_2 = NAND(1, q15=0) = 1
+c2_3 = NAND(1, q12=1) = 0
+c2_4 = NAND(0, q9=1) = 1 => q2'=1
+
+c3_0 = NAND(in0=1, q13=0) = 1
+c3_1 = NAND(1, q12=1) = 0
+c3_2 = NAND(0, q6=1) = 1
+c3_3 = NAND(1, q0=1) = 0
+c3_4 = NAND(0, q0=1) = 1 => q3'=1
+
+c4_0 = NAND(q13=0, q8=1) = 1
+c4_1 = NAND(1, q2=1) = 0
+c4_2 = NAND(0, in1=0) = 1
+c4_3 = NAND(1, q8=1) = 0
+c4_4 = NAND(0, in0=1) = 1 => q4'=1
+
+c5_0 = NAND(q15=0, q4=1) = 1
+c5_1 = NAND(1, q1=0) = 1
+c5_2 = NAND(1, q13=0) = 1
+c5_3 = NAND(1, in1=0) = 1
+c5_4 = NAND(1, q4=1) = 0 => q5'=0
+
+c6_0 = NAND(q10=0, q2=1) = 1
+c6_1 = NAND(1, q0=1) = 0
+c6_2 = NAND(0, q3=1) = 1
+c6_3 = NAND(1, q12=1) = 0
+c6_4 = NAND(0, q13=0) = 1 => q6'=1
+
+c7_0 = NAND(q14=0, q2=1) = 1
+c7_1 = NAND(1, q12=1) = 0
+c7_2 = NAND(0, q9=1) = 1
+c7_3 = NAND(1, q3=1) = 0
+c7_4 = NAND(0, q9=1) = 1 => q7'=1
+
+c8_0 = NAND(q6=1, in1=0) = 1
+c8_1 = NAND(1, q5=0) = 1
+c8_2 = NAND(1, q12=1) = 0
+c8_3 = NAND(0, q13=0) = 1
+c8_4 = NAND(1, q9=1) = 0 => q8'=0
+
+c9_0 = NAND(q2=1, q9=1) = 0
+c9_1 = NAND(0, q11=1) = 1
+c9_2 = NAND(1, q1=0) = 1
+c9_3 = NAND(1, q15=0) = 1
+c9_4 = NAND(1, q3=1) = 0 => q9'=0
+
+c10_0 = NAND(q12=1, q15=0) = 1
+c10_1 = NAND(1, q4=1) = 0
+c10_2 = NAND(0, q6=1) = 1
+c10_3 = NAND(1, q5=0) = 1
+c10_4 = NAND(1, q1=0) = 1 => q10'=1
+
+c11_0 = NAND(q3=1, in0=1) = 0
+c11_1 = NAND(0, q1=0) = 1
+c11_2 = NAND(1, q12=1) = 0
+c11_3 = NAND(0, q12=1) = 1
+c11_4 = NAND(1, in0=1) = 0 => q11'=0
+
+c12_0 = NAND(q9=1, q13=0) = 1
+c12_1 = NAND(1, q15=0) = 1
+c12_2 = NAND(1, q0=1) = 0
+c12_3 = NAND(0, q0=1) = 1
+c12_4 = NAND(1, q12=1) = 0 => q12'=0
+
+c13_0 = NAND(q0=1, q13=0) = 1
+c13_1 = NAND(1, q0=1) = 0
+c13_2 = NAND(0, q10=0) = 1
+c13_3 = NAND(1, q10=0) = 1
+c13_4 = NAND(1, q1=0) = 1 => q13'=1
+
+c14_0 = NAND(q1=0, q11=1) = 1
+c14_1 = NAND(1, in1=0) = 1
+c14_2 = NAND(1, q10=0) = 1
+c14_3 = NAND(1, q0=1) = 0
+c14_4 = NAND(0, in1=0) = 1 => q14'=1
+
+c15_0 = NAND(q2=1, q1=0) = 1
+c15_1 = NAND(1, in1=0) = 1
+c15_2 = NAND(1, q14=0) = 1
+c15_3 = NAND(1, q7=1) = 0
+c15_4 = NAND(0, q10=0) = 1 => q15'=1
+
+S37 = [1,1,1,1,1,0,1,1,0,0,1,0,0,1,1,1]
+Output cycle 37: q0=1, q10=1, q12=0, q13=1, q6=1, q8=0.
+
+Cycle 37: S37 = [1,1,1,1,1,0,1,1,0,0,1,0,0,1,1,1]
+Inputs: in0=0, in1=0? Trace: in0[37]=0, in1[37]=0.
+
+c0_0 = NAND(q2=1, in0=0) = 1
+c0_1 = NAND(1, q10=1) = 0
+c0_2 = NAND(0, q1=1) = 1
+c0_3 = NAND(1, q13=1) = 0
+c0_4 = NAND(0, q1=1) = 1 => q0'=1
+
+c1_0 = NAND(q13=1, q2=1) = 0
+c1_1 = NAND(0, q15=1) = 1
+c1_2 = NAND(1, q15=1) = 0
+c1_3 = NAND(0, q7=1) = 1
+c1_4 = NAND(1, q4=1) = 0 => q1'=0
+
+c2_0 = NAND(q0=1, q3=1) = 0
+c2_1 = NAND(0, q14=1) = 1
+c2_2 = NAND(1, q15=1) = 0
+c2_3 = NAND(0, q12=0) = 1
+c2_4 = NAND(1, q9=0) = 1 => q2'=1
+
+c3_0 = NAND(in0=0, q13=1) = 1
+c3_1 = NAND(1, q12=0) = 1
+c3_2 = NAND(1, q6=1) = 0
+c3_3 = NAND(0, q0=1) = 1
+c3_4 = NAND(1, q0=1) = 0 => q3'=0
+
+c4_0 = NAND(q13=1, q8=0) = 1
+c4_1 = NAND(1, q2=1) = 0
+c4_2 = NAND(0, in1=0) = 1
+c4_3 = NAND(1, q8=0) = 1
+c4_4 = NAND(1, in0=0) = 1 => q4'=1
+
+c5_0 = NAND(q15=1, q4=1) = 0
+c5_1 = NAND(0, q1=1) = 1
+c5_2 = NAND(1, q13=1) = 0
+c5_3 = NAND(0, in1=0) = 1
+c5_4 = NAND(1, q4=1) = 0 => q5'=0
+
+c6_0 = NAND(q10=1, q2=1) = 0
+c6_1 = NAND(0, q0=1) = 1
+c6_2 = NAND(1, q3=1) = 0
+c6_3 = NAND(0, q12=0) = 1
+c6_4 = NAND(1, q13=1) = 0 => q6'=0
+
+c7_0 = NAND(q14=1, q2=1) = 0
+c7_1 = NAND(0, q12=0) = 1
+c7_2 = NAND(1, q9=0) = 1
+c7_3 = NAND(1, q3=1) = 0
+c7_4 = NAND(0, q9=0) = 1 => q7'=1
+
+c8_0 = NAND(q6=1, in1=0) = 1
+c8_1 = NAND(1, q5=0) = 1
+c8_2 = NAND(1, q12=0) = 1
+c8_3 = NAND(1, q13=1) = 0
+c8_4 = NAND(0, q9=0) = 1 => q8'=1
+
+c9_0 = NAND(q2=1, q9=0) = 1
+c9_1 = NAND(1, q11=0) = 1
+c9_2 = NAND(1, q1=1) = 0
+c9_3 = NAND(0, q15=1) = 1
+c9_4 = NAND(1, q3=1) = 0 => q9'=0
+
+c10_0 = NAND(q12=0, q15=1) = 1
+c10_1 = NAND(1, q4=1) = 0
+c10_2 = NAND(0, q6=1) = 1
+c10_3 = NAND(1, q5=0) = 1
+c10_4 = NAND(1, q1=1) = 0 => q10'=0
+
+c11_0 = NAND(q3=1, in0=0) = 1
+c11_1 = NAND(1, q1=1) = 0
+c11_2 = NAND(0, q12=0) = 1
+c11_3 = NAND(1, q12=0) = 1
+c11_4 = NAND(1, in0=0) = 1 => q11'=1
+
+c12_0 = NAND(q9=0, q13=1) = 1
+c12_1 = NAND(1, q15=1) = 0
+c12_2 = NAND(0, q0=1) = 1
+c12_3 = NAND(1, q0=1) = 0
+c12_4 = NAND(0, q12=0) = 1 => q12'=1
+
+c13_0 = NAND(q0=1, q13=1) = 0
+c13_1 = NAND(0, q0=1) = 1
+c13_2 = NAND(1, q10=1) = 0
+c13_3 = NAND(0, q10=1) = 1
+c13_4 = NAND(1, q1=1) = 0 => q13'=0
+
+c14_0 = NAND(q1=1, q11=0) = 1
+c14_1 = NAND(1, in1=0) = 1
+c14_2 = NAND(1, q10=1) = 0
+c14_3 = NAND(0, q0=1) = 1
+c14_4 = NAND(1, in1=0) = 1 => q14'=1
+
+c15_0 = NAND(q2=1, q1=1) = 0
+c15_1 = NAND(0, in1=0) = 1
+c15_2 = NAND(1, q14=1) = 0
+c15_3 = NAND(0, q7=1) = 1
+c15_4 = NAND(1, q10=1) = 0 => q15'=0
+
+S38 = [1,0,1,0,1,0,0,1,1,0,0,1,1,0,1,0]
+Output cycle 38: q0=1, q10=0, q12=1, q13=0, q6=0, q8=1.
+
+Cycle 38: S38 = [1,0,1,0,1,0,0,1,1,0,0,1,1,0,1,0]
+Inputs: in0=1, in1=1? Trace: in0[38]=1, in1[38]=1.
+
+c0_0 = NAND(q2=1, in0=1) = 0
+c0_1 = NAND(0, q10=0) = 1
+c0_2 = NAND(1, q1=0) = 1
+c0_3 = NAND(1, q13=0) = 1
+c0_4 = NAND(1, q1=0) = 1 => q0'=1
+
+c1_0 = NAND(q13=0, q2=1) = 1
+c1_1 = NAND(1, q15=0) = 1
+c1_2 = NAND(1, q15=0) = 1
+c1_3 = NAND(1, q7=1) = 0
+c1_4 = NAND(0, q4=1) = 1 => q1'=1
+
+c2_0 = NAND(q0=1, q3=0) = 1
+c2_1 = NAND(1, q14=1) = 0
+c2_2 = NAND(0, q15=0) = 1
+c2_3 = NAND(1, q12=1) = 0
+c2_4 = NAND(0, q9=0) = 1 => q2'=1
+
+c3_0 = NAND(in0=1, q13=0) = 1
+c3_1 = NAND(1, q12=1) = 0
+c3_2 = NAND(0, q6=0) = 1
+c3_3 = NAND(1, q0=1) = 0
+c3_4 = NAND(0, q0=1) = 1 => q3'=1
+
+c4_0 = NAND(q13=0, q8=1) = 1
+c4_1 = NAND(1, q2=1) = 0
+c4_2 = NAND(0, in1=1) = 1
+c4_3 = NAND(1, q8=1) = 0
+c4_4 = NAND(0, in0=1) = 1 => q4'=1
+
+c5_0 = NAND(q15=0, q4=1) = 1
+c5_1 = NAND(1, q1=0) = 1
+c5_2 = NAND(1, q13=0) = 1
+c5_3 = NAND(1, in1=1) = 0
+c5_4 = NAND(0, q4=1) = 1 => q5'=1
+
+c6_0 = NAND(q10=0, q2=1) = 1
+c6_1 = NAND(1, q0=1) = 0
+c6_2 = NAND(0, q3=0) = 1
+c6_3 = NAND(1, q12=1) = 0
+c6_4 = NAND(0, q13=0) = 1 => q6'=1
+
+c7_0 = NAND(q14=1, q2=1) = 0
+c7_1 = NAND(0, q12=1) = 1
+c7_2 = NAND(1, q9=0) = 1
+c7_3 = NAND(1, q3=0) = 1
+c7_4 = NAND(1, q9=0) = 1 => q7'=1
+
+c8_0 = NAND(q6=0, in1=1) = 1
+c8_1 = NAND(1, q5=0) = 1
+c8_2 = NAND(1, q12=1) = 0
+c8_3 = NAND(0, q13=0) = 1
+c8_4 = NAND(1, q9=0) = 1 => q8'=1
+
+c9_0 = NAND(q2=1, q9=0) = 1
+c9_1 = NAND(1, q11=1) = 0
+c9_2 = NAND(0, q1=0) = 1
+c9_3 = NAND(1, q15=0) = 1
+c9_4 = NAND(1, q3=0) = 1 => q9'=1
+
+c10_0 = NAND(q12=1, q15=0) = 1
+c10_1 = NAND(1, q4=1) = 0
+c10_2 = NAND(0, q6=0) = 1
+c10_3 = NAND(1, q5=0) = 1
+c10_4 = NAND(1, q1=0) = 1 => q10'=1
+
+c11_0 = NAND(q3=0, in0=1) = 1
+c11_1 = NAND(1, q1=0) = 1
+c11_2 = NAND(1, q12=1) = 0
+c11_3 = NAND(0, q12=1) = 1
+c11_4 = NAND(1, in0=1) = 0 => q11'=0
+
+c12_0 = NAND(q9=0, q13=0) = 1
+c12_1 = NAND(1, q15=0) = 1
+c12_2 = NAND(1, q0=1) = 0
+c12_3 = NAND(0, q0=1) = 1
+c12_4 = NAND(1, q12=1) = 0 => q12'=0
+
+c13_0 = NAND(q0=1, q13=0) = 1
+c13_1 = NAND(1, q0=1) = 0
+c13_2 = NAND(0, q10=0) = 1
+c13_3 = NAND(1, q10=0) = 1
+c13_4 = NAND(1, q1=0) = 1 => q13'=1
+
+c14_0 = NAND(q1=0, q11=1) = 1
+c14_1 = NAND(1, in1=1) = 0
+c14_2 = NAND(0, q10=0) = 1
+c14_3 = NAND(1, q0=1) = 0
+c14_4 = NAND(0, in1=1) = 1 => q14'=1
+
+c15_0 = NAND(q2=1, q1=0) = 1
+c15_1 = NAND(1, in1=1) = 0
+c15_2 = NAND(0, q14=1) = 1
+c15_3 = NAND(1, q7=1) = 0
+c15_4 = NAND(0, q10=0) = 1 => q15'=1
+
+S39 = [1,1,1,1,1,1,1,1,1,1,1,0,0,1,1,1]
+Output cycle 39: q0=1, q10=1, q12=0, q13=1, q6=1, q8=1.
+
+Cycle 39 is the last cycle (cycles 0..39). We need outputs for cycle 39. We already have outputs for cycles 0..38. We need S39 outputs, which are the state at the beginning of cycle 39. We just computed S39! So we have all 40 outputs.
+
+Let's compile the outputs:
+
+Outputs needed: q0, q10, q12, q13, q6, q8.
+
+From the simulation:
+
+Cycle 0: q0=1, q10=0, q12=0, q13=1, q6=1, q8=1
+Cycle 1: q0=1, q10=1, q12=1, q13=1, q6=0, q8=1
+Cycle 2: q0=1, q10=0, q12=1, q13=0, q6=1, q8=1
+Cycle 3: q0=1, q10=1, q12=0, q13=1, q6=1, q8=0
+Cycle 4: q0=0, q10=1, q12=1, q13=0, q6=0, q8=1
+Cycle 5: q0=1, q10=1, q12=0, q13=1, q6=1, q8=1
+Cycle 6: q0=1, q10=1, q12=1, q13=0, q6=0, q8=1
+Cycle 7: q0=0, q10=1, q12=0, q13=1, q6=1, q8=1
+Cycle 8: q0=1, q10=1, q12=1, q13=1, q6=0, q8=1
+Cycle 9: q0=1, q10=0, q12=1, q13=0, q6=1, q8=1
+Cycle 10: q0=1, q10=1, q12=0, q13=1, q6=1, q8=0
+Cycle 11: q0=0, q10=0, q12=1, q13=0, q6=0, q8=1
+Cycle 12: q0=1, q10=1, q12=0, q13=1, q6=1, q8=0
+Cycle 13: q0=1, q10=1, q12=1, q13=0, q6=0, q8=1
+Cycle 14: q0=1, q10=1, q12=0, q13=1, q6=1, q8=1
+Cycle 15: q0=1, q10=1, q12=1, q13=1, q6=0, q8=1
+Cycle 16: q0=1, q10=1, q12=0, q13=0, q6=1, q8=1
+Cycle 17: q0=1, q10=1, q12=1, q13=1, q6=1, q8=0
+Cycle 18: q0=1, q10=1, q12=0, q13=0, q6=1, q8=1
+Cycle 19: q0=1, q10=1, q12=1, q13=1, q6=1, q8=0
+Cycle 20: q0=1, q10=0, q12=0, q13=0, q6=1, q8=1
+Cycle 21: q0=1, q10=1, q12=1, q13=1, q6=1, q8=0
+Cycle 22: q0=1, q10=0, q12=1, q13=0, q6=1, q8=1
+Cycle 23: q0=1, q10=1, q12=0, q13=1, q6=1, q8=0
+Cycle 24: q0=0, q10=1, q12=1, q13=0, q6=0, q8=1
+Cycle 25: q0=1, q10=1, q12=0, q13=1, q6=1, q8=0
+Cycle 26: q0=1, q10=1, q12=1, q13=0, q6=0, q8=1
+Cycle 27: q0=1, q10=1, q12=0, q13=1, q6=1, q8=1
+Cycle 28: q0=1, q10=1, q12=1, q13=1, q6=0, q8=1
+Cycle 29: q0=1, q10=0, q12=0, q13=0, q6=1, q8=1
+Cycle 30: q0=1, q10=1, q12=1, q13=1, q6=1, q8=0
+Cycle 31: q0=1, q10=0, q12=1, q13=0, q6=1, q8=1
+Cycle 32: q0=1, q10=1, q12=0, q13=1, q6=1, q8=0
+Cycle 33: q0=1, q10=1, q12=1, q13=0, q6=0, q8=1
+Cycle 34: q0=1, q10=1, q12=0, q13=1, q6=1, q8=1
+Cycle 35: q0=1, q10=1, q12=1, q13=1, q6=0, q8=1
+Cycle 36: q0=1, q10=0, q12=1, q13=0, q6=1, q8=1
+Cycle 37: q0=1, q10=1, q12=0, q13=1, q6=1, q8=0
+Cycle 38: q0=1, q10=0, q12=1, q13=0, q6=0, q8=1
+Cycle 39: q0=1, q10=1, q12=0, q13=1, q6=1, q8=1
+
+Wait, I need to double-check cycle 39 outputs. S39 is the state at the beginning of cycle 39, which we just computed. S39 = [1,1,1,1,1,1,1,1,1,1,1,0,0,1,1,1]. So q0=1, q10=1, q12=0, q13=1, q6=1, q8=1.
+
+Now let's put them in lists:
+
+q0: [1,1,1,1,0,1,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+Let's list carefully:
+0:1
+1:1
+2:1
+3:1
+4:0
+5:1
+6:1
+7:0
+8:1
+9:1
+10:1
+11:0
+12:1
+13:1
+14:1
+15:1
+16:1
+17:1
+18:1
+19:1
+20:1
+21:1
+22:1
+23:1
+24:0
+25:1
+26:1
+27:1
+28:1
+29:1
+30:1
+31:1
+32:1
+33:1
+34:1
+35:1
+36:1
+37:1
+38:1
+39:1
+
+q10:
+0:0
+1:1
+2:0
+3:1
+4:1
+5:1
+6:1
+7:1
+8:1
+9:0
+10:1
+11:0
+12:1
+13:1
+14:1
+15:1
+16:1
+17:1
+18:1
+19:1
+20:0
+21:1
+22:0
+23:1
+24:1
+25:1
+26:1
+27:1
+28:1
+29:0
+30:1
+31:0
+32:1
+33:1
+34:1
+35:1
+36:0
+37:1
+38:0
+39:1
+
+q12:
+0:0
+1:1
+2:1
+3:0
+4:1
+5:0
+6:1
+7:0
+8:1
+9:1
+10:0
+11:1
+12:0
+13:1
+14:0
+15:1
+16:0
+17:1
+18:0
+19:1
+20:0
+21:1
+22:1
+23:0
+24:1
+25:0
+26:1
+27:0
+28:1
+29:0
+30:1
+31:1
+32:0
+33:1
+34:0
+35:1
+36:1
+37:0
+38:1
+39:0
+
+q13:
+0:1
+1:1
+2:0
+3:1
+4:0
+5:1
+6:0
+7:1
+8:1
+9:0
+10:1
+11:0
+12:1
+13:0
+14:1
+15:1
+16:0
+17:1
+18:0
+19:1
+20:0
+21:1
+22:0
+23:1
+24:0
+25:1
+26:0
+27:1
+28:1
+29:0
+30:1
+31:0
+32:1
+33:0
+34:1
+35:1
+36:0
+37:1
+38:0
+39:1
+
+q6:
+0:1
+1:0
+2:1
+3:1
+4:0
+5:1
+6:0
+7:1
+8:0
+9:1
+10:1
+11:0
+12:1
+13:0
+14:1
+15:0
+16:1
+17:1
+18:1
+19:1
+20:1
+21:1
+22:1
+23:1
+24:0
+25:1
+26:0
+27:1
+28:0
+29:1
+30:1
+31:1
+32:1
+33:0
+34:1
+35:0
+36:1
+37:1
+38:0
+39:1
+
+q8:
+0:1
+1:1
+2:1
+3:0
+4:1
+5:1
+6:1
+7:1
+8:1
+9:1
+10:0
+11:1
+12:0
+13:1
+14:1
+15:1
+16:1
+17:0
+18:1
+19:0
+20:1
+21:0
+22:1
+23:0
+24:1
+25:0
+26:1
+27:1
+28:1
+29:1
+30:0
+31:1
+32:0
+33:1
+34:1
+35:1
+36:1
+37:0
+38:1
+39:1
+
+Let me verify a few points where I might have made errors.
+
+Cycles with similar patterns:
+I noticed S2 = S9 = S22? S2 was [1,0,1,1,1,0,1,1,1,1,0,1,1,0,1,0]. S9 was [1,0,1,1,1,0,1,1,1,1,0,1,1,0,1,0]. S22 was [1,0,1,1,1,0,1,1,1,1,0,1,1,0,0,0]. S36 was [1,0,1,1,1,0,1,1,1,1,0,1,1,0,0,0]. So there's a cycle of states? Might be a pseudo-random sequence. My outputs for cycle 2, 9, 22, 36:
+Cycle 2: q0=1, q10=0, q12=1, q13=0, q6=1, q8=1.
+Cycle 9: q0=1, q10=0, q12=1, q13=0, q6=1, q8=1. (matches)
+Cycle 22: q0=1, q10=0, q12=1, q13=0, q6=1, q8=1. (matches)
+Cycle 36: q0=1, q10=0, q12=1, q13=0, q6=1, q8=1. (matches)
+So that's consistent.
+
+Also S12 = S25? S12: [1,1,1,1,1,1,1,0,0,1,1,1,0,1,1,1]. S25: [1,1,1,1,1,1,1,0,0,1,1,1,0,1,1,1]. Outputs: cycle 12: 1,1,0,1,1,0. cycle 25: 1,1,0,1,1,0. (Wait cycle 25 I had: q0=1, q10=1, q12=0, q13=1, q6=1, q8=0. Matches.)
+
+Also S13 = S26? S13: [1,0,0,0,1,0,0,0,1,0,1,1,1,0,0,0]. S26: [1,0,0,0,1,0,0,0,1,0,1,1,1,0,1,0]. S33: [1,0,0,0,1,0,0,0,1,0,1,1,1,0,1,0]. Outputs: cycle 13: 1,1,1,0,0,1. cycle 26: 1,1,1,0,0,1. cycle 33: 1,1,1,0,0,1. (Matches for q0,q10,q12,q13,q6,q8: 1,1,1,0,0,1.)
+
+S14 = S27? S14: [1,0,1,1,0,1,1,1,1,1,1,0,0,1,1,0]. S27: [1,0,1,1,1,0,1,1,1,1,1,0,0,1,1,0]. S34: [1,0,1,1,1,0,1,1,1,1,1,0,0,1,1,0]. Outputs: cycle 14: 1,1,0,1,1,1. cycle 27: 1,1,0,1,1,1. cycle 34: 1,1,0,1,1,1. (Matches.)
+
+S15 = S28? S15: [1,1,0,0,1,1,0,0,1,0,1,0,1,1,1,0]. S28: [1,1,0,0,1,0,0,0,1,0,1,0,1,1,1,0]. Outputs: cycle 15: 1,1,1,1,0,1. cycle 28: 1,1,1,1,0,1. (Matches.)
+
+S16 = ? Let's check S16: [1,0,1,1,0,1,1,1,1,1,1,1,0,0,1,0]. Cycle 29? S29 is [1,0,1,1,1,0,1,1,1,1,0,1,0,0,1,0]. Not exactly same. There might be variations due to inputs.
+
+It seems my manual simulation is consistent with some periodicity.
+
+Now, I need to output the lists exactly. I'll compile the arrays:
+
+q0:
+[1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+
+Wait, cycle 7 q0=0? Yes, S7: q0=0. Cycle 11 q0=0? S11: q0=0. Cycle 24 q0=0? S24: q0=0. Others are 1.
+
+Let's re-check cycle 11: S11 = [0,0,1,0,0,0,0,1,1,1,0,0,1,0,0,0] => q0=0. Correct.
+Cycle 24: S24 = [0,0,1,0,0,0,0,1,1,1,1,0,1,0,0,0] => q0=0. Correct.
+
+q10:
+[0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1]
+
+Check cycle 10: S10 q10=1? S10: [1,1,1,1,1,0,1,0,0,0,1,1,0,1,1,1] => q10=1. In my list above I have cycle 10: 1. Correct.
+Cycle 11: S11 q10=0. Correct.
+Cycle 16: q10=1. S16: [1,0,1,1,0,1,1,1,1,1,1,1,0,0,1,0] => q10=1. Correct.
+Cycle 17: q10=1. S17: [1,1,0,0,1,1,1,0,0,0,1,0,1,1,1,0] => q10=1? Wait, S17 q10 is the 11th element (index 10). S17: q0=1, q1=1, q2=0, q3=0, q4=1, q5=1, q6=1, q7=0, q8=0, q9=0, q10=1. Yes. My list has 1.
+Cycle 18: q10=1. S18: q10=1.
+Cycle 19: q10=1. S19: q10=1.
+Cycle 20: q10=0. S20: [1,0,1,1,1,1,1,1,1,1,0,1,0,0,1,0] => q10=0. Correct.
+Cycle 21: q10=1. S21: q10=1.
+Cycle 22: q10=0. S22: q10=0.
+Cycle 23: q10=1. S23: q10=1.
+Cycle 24: q10=1. S24: q10=1.
+Cycle 25: q10=1. S25: q10=1.
+Cycle 26: q10=1. S26: q10=1.
+Cycle 27: q10=1. S27: q10=1.
+Cycle 28: q10=1. S28: q10=1? S28: [1,1,0,0,1,0,0,0,1,0,1,0,1,1,1,0] => q10=1. Correct.
+Cycle 29: q10=0. S29: q10=0.
+Cycle 30: q10=1. S30: q10=1.
+Cycle 31: q10=0. S31: q10=0.
+Cycle 32: q10=1. S32: q10=1.
+Cycle 33: q10=1. S33: q10=1.
+Cycle 34: q10=1. S34: q10=1.
+Cycle 35: q10=1. S35: q10=1.
+Cycle 36: q10=0. S36: q10=0.
+Cycle 37: q10=1. S37: q10=1? S37: [1,1,1,1,1,0,1,1,0,0,1,0,0,1,1,1] => q10=1? index 10 is q10, it's 1. Wait, S37: q0=1, q1=1, q2=1, q3=1, q4=1, q5=0, q6=1, q7=1, q8=0, q9=0, q10=1. My list has 1.
+Cycle 38: q10=0. S38: q10=0.
+Cycle 39: q10=1. S39: q10=1.
+
+q12:
+[0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0]
+
+Check cycle 0:0, 1:1, 2:1, 3:0, 4:1, 5:0, 6:1, 7:0, 8:1, 9:1, 10:0, 11:1, 12:0, 13:1, 14:0, 15:1, 16:0, 17:1, 18:0, 19:1, 20:0, 21:1, 22:1, 23:0, 24:1, 25:0, 26:1, 27:0, 28:1, 29:0, 30:1, 31:1, 32:0, 33:1, 34:0, 35:1, 36:1, 37:0, 38:1, 39:0.
+
+Let's verify a few:
+Cycle 7: q12=0? S7: q12=0. Yes.
+Cycle 8: q12=1? S8: q12=1. Yes.
+Cycle 9: q12=1? S9: [1,0,1,1,1,0,1,1,1,1,0,1,1,0,1,0] => q12=1. Yes.
+Cycle 12: 0? S12: q12=0. Yes.
+Cycle 15: 1? S15: q12=1. Yes.
+Cycle 17: 1? S17: q12=1. Yes.
+Cycle 20: 0? S20: q12=0. Yes.
+Cycle 22: 1? S22: q12=1. Yes.
+Cycle 23: 0? S23: q12=0. Yes.
+Cycle 24: 1? S24: q12=1? S24: [0,0,1,0,0,0,0,1,1,1,1,0,1,0,0,0] => q12=1. Yes.
+Cycle 26: q12=1? S26: q12=1. Yes.
+Cycle 27: q12=0? S27: q12=0. Yes.
+Cycle 28: q12=1? S28: q12=1. Yes.
+Cycle 29: q12=0? S29: q12=0. Yes.
+Cycle 30: q12=1? S30: q12=1. Yes.
+Cycle 31: q12=1? S31: q12=1. Yes.
+Cycle 32: q12=0? S32: q12=0. Yes.
+Cycle 33: q12=1? S33: q12=1. Yes.
+Cycle 34: q12=0? S34: q12=0. Yes.
+Cycle 35: q12=1? S35: q12=1. Yes.
+Cycle 36: q12=1? S36: q12=1. Yes.
+Cycle 37: q12=0? S37: q12=0. Yes.
+Cycle 38: q12=1? S38: q12=1. Yes.
+Cycle 39: q12=0? S39: q12=0. Yes.
+
+q13:
+[1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1]
+
+Check:
+0:1, 1:1, 2:0, 3:1, 4:0, 5:1, 6:0, 7:1, 8:1, 9:0, 10:1, 11:0, 12:1, 13:0, 14:1, 15:1, 16:0, 17:1, 18:0, 19:1, 20:0, 21:1, 22:0, 23:1, 24:0, 25:1, 26:0, 27:1, 28:1, 29:0, 30:1, 31:0, 32:1, 33:0, 34:1, 35:1, 36:0, 37:1, 38:0, 39:1.
+
+Verify:
+Cycle 8: q13=1? S8: q13=1. Yes.
+Cycle 9: q13=0? S9: q13=0. Yes.
+Cycle 14: q13=1? S14: q13=1. Yes.
+Cycle 15: q13=1? S15: q13=1. Yes.
+Cycle 16: q13=0? S16: q13=0. Yes.
+Cycle 17: q13=1? S17: q13=1. Yes.
+Cycle 20: q13=0? S20: q13=0. Yes.
+Cycle 21: q13=1? S21: q13=1. Yes.
+Cycle 22: q13=0? S22: q13=0. Yes.
+Cycle 23: q13=1? S23: q13=1. Yes.
+Cycle 24: q13=0? S24: q13=0. Yes.
+Cycle 25: q13=1? S25: q13=1. Yes.
+Cycle 26: q13=0? S26: q13=0. Yes.
+Cycle 27: q13=1? S27: q13=1. Yes.
+Cycle 28: q13=1? S28: q13=1. Yes.
+Cycle 29: q13=0? S29: q13=0. Yes.
+Cycle 30: q13=1? S30: q13=1. Yes.
+Cycle 31: q13=0? S31: q13=0. Yes.
+Cycle 32: q13=1? S32: q13=1. Yes.
+Cycle 33: q13=0? S33: q13=0. Yes.
+Cycle 34: q13=1? S34: q13=1. Yes.
+Cycle 35: q13=1? S35: q13=1. Yes.
+Cycle 36: q13=0? S36: q13=0. Yes.
+Cycle 37: q13=1? S37: q13=1. Yes.
+Cycle 38: q13=0? S38: q13=0. Yes.
+Cycle 39: q13=1? S39: q13=1. Yes.
+
+q6:
+[1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1]
+
+Check:
+0:1, 1:0, 2:1, 3:1, 4:0, 5:1, 6:0, 7:1, 8:0, 9:1, 10:1, 11:0, 12:1, 13:0, 14:1, 15:0, 16:1, 17:1, 18:1, 19:1, 20:1, 21:1, 22:1, 23:1, 24:0, 25:1, 26:0, 27:1, 28:0, 29:1, 30:1, 31:1, 32:1, 33:0, 34:1, 35:0, 36:1, 37:1, 38:0, 39:1.
+
+Verify:
+Cycle 3: q6=1? S3: q6=1. Yes.
+Cycle 4: q6=0? S4: q6=0. Yes.
+Cycle 7: q6=1? S7: q6=1. Yes.
+Cycle 8: q6=0? S8: q6=0. Yes.
+Cycle 10: q6=1? S10: q6=1. Yes.
+Cycle 11: q6=0? S11: q6=0. Yes.
+Cycle 12: q6=1? S12: q6=1. Yes.
+Cycle 13: q6=0? S13: q6=0. Yes.
+Cycle 14: q6=1? S14: q6=1. Yes.
+Cycle 15: q6=0? S15: q6=0. Yes.
+Cycle 16: q6=1? S16: q6=1. Yes.
+Cycle 17: q6=1? S17: q6=1. Yes.
+Cycle 18: q6=1? S18: q6=1. Yes.
+Cycle 19: q6=1? S19: q6=1. Yes.
+Cycle 20: q6=1? S20: q6=1. Yes.
+Cycle 21: q6=1? S21: q6=1. Yes.
+Cycle 22: q6=1? S22: q6=1. Yes.
+Cycle 23: q6=1? S23: q6=1. Yes.
+Cycle 24: q6=0? S24: q6=0. Yes.
+Cycle 25: q6=1? S25: q6=1. Yes.
+Cycle 26: q6=0? S26: q6=0. Yes.
+Cycle 27: q6=1? S27: q6=1. Yes.
+Cycle 28: q6=0? S28: q6=0. Yes.
+Cycle 29: q6=1? S29: q6=1. Yes.
+Cycle 30: q6=1? S30: q6=1. Yes.
+Cycle 31: q6=1? S31: q6=1. Yes.
+Cycle 32: q6=1? S32: q6=1. Yes.
+Cycle 33: q6=0? S33: q6=0. Yes.
+Cycle 34: q6=1? S34: q6=1. Yes.
+Cycle 35: q6=0? S35: q6=0. Yes.
+Cycle 36: q6=1? S36: q6=1. Yes.
+Cycle 37: q6=1? S37: q6=1. Yes.
+Cycle 38: q6=0? S38: q6=0. Yes.
+Cycle 39: q6=1? S39: q6=1. Yes.
+
+q8:
+[1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 1]
+
+Check:
+0:1, 1:1, 2:1, 3:0, 4:1, 5:1, 6:1, 7:1, 8:1, 9:1, 10:0, 11:1, 12:0, 13:1, 14:1, 15:1, 16:1, 17:0, 18:1, 19:0, 20:1, 21:0, 22:1, 23:0, 24:1, 25:0, 26:1, 27:1, 28:1, 29:1, 30:0, 31:1, 32:0, 33:1, 34:1, 35:1, 36:1, 37:0, 38:1, 39:1.
+
+Verify:
+Cycle 3: q8=0? S3: q8=0. Yes.
+Cycle 4: q8=1? S4: q8=1. Yes.
+Cycle 10: q8=0? S10: q8=0. Yes.
+Cycle 11: q8=1? S11: q8=1. Yes.
+Cycle 12: q8=0? S12: q8=0. Yes.
+Cycle 13: q8=1? S13: q8=1. Yes.
+Cycle 16: q8=1? S16: q8=1. Yes.
+Cycle 17: q8=0? S17: q8=0? S17: [1,1,0,0,1,1,1,0,0,0,1,0,1,1,1,0] => q8=0. Yes.
+Cycle 18: q8=1? S18: q8=1. Yes.
+Cycle 19: q8=0? S19: q8=0. Yes.
+Cycle 20: q8=1? S20: q8=1. Yes.
+Cycle 21: q8=0? S21: q8=0. Yes.
+Cycle 22: q8=1? S22: q8=1. Yes.
+Cycle 23: q8=0? S23: q8=0. Yes.
+Cycle 24: q8=1? S24: q8=1. Yes.
+Cycle 25: q8=0? S25: q8=0. Yes.
+Cycle 26: q8=1? S26: q8=1. Yes.
+Cycle 27: q8=1? S27: q8=1. Yes.
+Cycle 28: q8=1? S28: q8=1. Yes.
+Cycle 29: q8=1? S29: q8=1. Yes.
+Cycle 30: q8=0? S30: q8=0. Yes.
+Cycle 31: q8=1? S31: q8=1. Yes.
+Cycle 32: q8=0? S32: q8=0. Yes.
+Cycle 33: q8=1? S33: q8=1. Yes.
+Cycle 34: q8=1? S34: q8=1. Yes.
+Cycle 35: q8=1? S35: q8=1. Yes.
+Cycle 36: q8=1? S36: q8=1. Yes.
+Cycle 37: q8=0? S37: q8=0? S37: q8=0. Yes.
+Cycle 38: q8=1? S38: q8=1. Yes.
+Cycle 39: q8=1? S39: q8=1. Yes.
+
+All seem consistent. I will now format the JSON block as requested.
+
+=== response ===
+```json
+{
+  "q0": [1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  "q10": [0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1],
+  "q12": [0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0],
+  "q13": [1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1],
+  "q6": [1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1],
+  "q8": [1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 1]
+}
+```

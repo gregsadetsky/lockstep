@@ -1,0 +1,57 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      fuzz_count:
+        description: "fuzz circuits to run (v2 families, fresh seeds)"
+        default: "280"
+  schedule:
+    - cron: "17 6 * * 1"  # weekly fuzz: every clean run tightens the
+                          # rule-of-three bound on the divergence rate
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: install verilog toolchain
+        run: sudo apt-get update && sudo apt-get install -y iverilog verilator
+      - name: versions
+        run: iverilog -V | head -1 && verilator --version
+      - name: sync
+        run: uv sync --frozen
+      - name: lint
+        run: uv run ruff check . && uv run mypy
+      - name: tests
+        run: uv run pytest -q
+      - name: rescore every stored record offline
+        run: uv run python scripts/rescore.py
+      - name: all 63 circuits through all nine evaluators (~14 min)
+        if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+        run: uv run python -m lockstep.harness circuits/*.json circuits/*/*.json
+
+  fuzz:
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: install verilog toolchain
+        run: sudo apt-get update && sudo apt-get install -y iverilog verilator
+      - name: sync
+        run: uv sync --frozen
+      - name: fuzz fresh seeds through all nine evaluators (~1h)
+        # seed base = run id, so every scheduled run explores new circuits
+        run: >
+          uv run python -m lockstep.harness
+          --fuzz-v2 ${{ inputs.fuzz_count || 280 }}
+          --seed $((${{ github.run_id }} % 1000000000))
+          --build build-ci-fuzz --verdict-log fuzz-ci-verdicts.jsonl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-verdicts-${{ github.run_id }}
+          path: fuzz-ci-verdicts.jsonl

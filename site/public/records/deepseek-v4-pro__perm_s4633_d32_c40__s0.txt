@@ -1,0 +1,2696 @@
+model: deepseek/deepseek-v4-pro
+circuit: perm_s4633_d32_c40
+score: {'status': 'ok', 'prefix_cycles': 40, 'pointwise': 1.0, 'exact': True}
+
+=== reasoning ===
+We need to simulate a circuit with only DFFs (no gates). The circuit has inputs in0, in1, and 32 internal flip-flops q0..q31, and outputs q13, q18, q22, q24, q25, q26, q28, q7.
+
+There are no NAND gates. So all nets are just directly connected: each DFF d input is some net, q output is some net. The "gates" field is empty.
+
+The simulation semantics: For each cycle t=0..39:
+1. Input nets take trace values for cycle t. DFF q nets hold current state (init at t=0).
+2. All gates settle instantly (no gates, so nothing to do).
+3. Value of every net in outputs recorded.
+4. Clock edge: every DFF simultaneously loads settled value of its d net.
+
+Order: At start of cycle, inputs are set, DFFs hold previous state (init initially). Then we compute the values of all nets. Since there are no gates, the net values are just the DFF q values and input values. But note: d inputs of DFFs are references to other nets. The "settling" step just means we evaluate the combinatorial logic (none here). But wait: The DFF d nets are connected to other nets. Are there any combinational cycles? The rule: "the gate-only graph must be acyclic. feedback is legal only through a dff." Since there are no gates, there's no gate graph, so no acyclic requirement needed. The DFFs themselves are state elements, and they update simultaneously. So during step 2, the values of nets like q30, in0, q13, etc. are just the current values from inputs and DFF outputs. There is no further propagation needed because no logic gates. So the value of each d net is simply the current value of the net it references. Then step 4 updates all DFF q outputs to those d values.
+
+So effectively, at each cycle: 
+- Outputs are recorded based on current DFF q values (since outputs are q13, q18, etc. which are DFF q outputs).
+- Then DFF states are updated: new_qX = current value of net dX, where dX is a reference to some net (could be input, or another q).
+
+But careful: The update is simultaneous. So we need to know the values of all nets after inputs are applied but before DFFs update. Then record outputs. Then update all DFFs using those values.
+
+Since there are no gates, the values of all nets are exactly: 
+- For each input: the trace value at cycle t.
+- For each DFF q: the current state (from previous cycle or init).
+
+So step 2: net values = {input: trace[t], qX: state[t][X]}.
+Then output recording: output_y = value of that net.
+Then state[t+1][X] = value of net referenced by d of that DFF.
+
+So we just need to track an array of 32 DFF states, and at each cycle, read outputs from current states, then compute next states by looking up the reference.
+
+Let's list all DFFs with their d net and init:
+
+We have:
+q0: d = q30, init=0
+q1: d = in0, init=1
+q2: d = q13, init=1
+q3: d = q3, init=1  (self-loop: q3 stays 1 forever? Actually d=q3, so q3 updates to its own value, so it stays whatever it was. Init=1, so always 1.)
+q4: d = q18, init=0
+q5: d = q31, init=1
+q6: d = q8, init=1
+q7: d = q5, init=1
+q8: d = q28, init=1
+q9: d = q11, init=0
+q10: d = q19, init=1
+q11: d = q15, init=1
+q12: d = in1, init=1
+q13: d = q29, init=1
+q14: d = q6, init=1
+q15: d = q2, init=1
+q16: d = q25, init=1
+q17: d = q21, init=0
+q18: d = q23, init=0
+q19: d = q20, init=1
+q20: d = q26, init=0
+q21: d = q10, init=0
+q22: d = q0, init=1
+q23: d = q12, init=1
+q24: d = q16, init=1
+q25: d = q22, init=0
+q26: d = q9, init=1
+q27: d = q7, init=0
+q28: d = q17, init=0
+q29: d = q1, init=1
+q30: d = q24, init=0
+q31: d = q4, init=0
+
+Outputs: q13, q18, q22, q24, q25, q26, q28, q7.
+
+We need to simulate for 40 cycles. Input traces:
+in0: 0,0,1,1,0,0,0,1,1,0,1,1,0,0,0,0,0,1,1,0,0,0,1,0,0,1,0,0,1,0,0,1,1,1,1,1,0,0,1,0
+in1: 1,1,1,1,0,1,1,1,0,1,0,1,0,0,0,1,0,0,1,1,1,0,0,1,0,0,0,1,1,1,1,1,0,0,0,1,1,0,0,1
+
+Let's initialize state array:
+q0=0
+q1=1
+q2=1
+q3=1
+q4=0
+q5=1
+q6=1
+q7=1
+q8=1
+q9=0
+q10=1
+q11=1
+q12=1
+q13=1
+q14=1
+q15=1
+q16=1
+q17=0
+q18=0
+q19=1
+q20=0
+q21=0
+q22=1
+q23=1
+q24=1
+q25=0
+q26=1
+q27=0
+q28=0
+q29=1
+q30=0
+q31=0
+
+All q0..q31 initialized.
+
+We need to simulate for cycles 0 to 39. At each cycle:
+- Record outputs: q13, q18, q22, q24, q25, q26, q28, q7 (current states).
+- Compute next states: new_qX = current value of net referenced by d_X.
+  Net values: inputs = trace[t]; qY = current state[Y].
+- Update states.
+
+Let's do it step by step manually. To avoid mistakes, I'll build a table carefully.
+
+Cycle 0:
+Inputs: in0=0, in1=1.
+Current states (init):
+q0=0, q1=1, q2=1, q3=1, q4=0, q5=1, q6=1, q7=1, q8=1, q9=0, q10=1, q11=1, q12=1, q13=1, q14=1, q15=1, q16=1, q17=0, q18=0, q19=1, q20=0, q21=0, q22=1, q23=1, q24=1, q25=0, q26=1, q27=0, q28=0, q29=1, q30=0, q31=0.
+
+Outputs for cycle 0:
+q13=1, q18=0, q22=1, q24=1, q25=0, q26=1, q28=0, q7=1.
+Next states (evaluate d nets):
+q0: d=q30 -> 0
+q1: d=in0 -> 0
+q2: d=q13 -> 1
+q3: d=q3 -> 1
+q4: d=q18 -> 0
+q5: d=q31 -> 0
+q6: d=q8 -> 1
+q7: d=q5 -> 1
+q8: d=q28 -> 0
+q9: d=q11 -> 1
+q10: d=q19 -> 1
+q11: d=q15 -> 1
+q12: d=in1 -> 1
+q13: d=q29 -> 1
+q14: d=q6 -> 1
+q15: d=q2 -> 1
+q16: d=q25 -> 0
+q17: d=q21 -> 0
+q18: d=q23 -> 1
+q19: d=q20 -> 0
+q20: d=q26 -> 1
+q21: d=q10 -> 1
+q22: d=q0 -> 0
+q23: d=q12 -> 1
+q24: d=q16 -> 1
+q25: d=q22 -> 1
+q26: d=q9 -> 0
+q27: d=q7 -> 1
+q28: d=q17 -> 0
+q29: d=q1 -> 1
+q30: d=q24 -> 1
+q31: d=q4 -> 0
+
+So new states after cycle 0:
+q0=0, q1=0, q2=1, q3=1, q4=0, q5=0, q6=1, q7=1, q8=0, q9=1, q10=1, q11=1, q12=1, q13=1, q14=1, q15=1, q16=0, q17=0, q18=1, q19=0, q20=1, q21=1, q22=0, q23=1, q24=1, q25=1, q26=0, q27=1, q28=0, q29=1, q30=1, q31=0.
+
+Cycle 1:
+Inputs: in0=0, in1=1.
+Current states: as above.
+Outputs:
+q13=1, q18=1, q22=0, q24=1, q25=1, q26=0, q28=0, q7=1.
+Next states:
+q0: d=q30 -> 1
+q1: d=in0 -> 0
+q2: d=q13 -> 1
+q3: d=q3 -> 1
+q4: d=q18 -> 1
+q5: d=q31 -> 0
+q6: d=q8 -> 0
+q7: d=q5 -> 0
+q8: d=q28 -> 0
+q9: d=q11 -> 1
+q10: d=q19 -> 0
+q11: d=q15 -> 1
+q12: d=in1 -> 1
+q13: d=q29 -> 1
+q14: d=q6 -> 1
+q15: d=q2 -> 1
+q16: d=q25 -> 1
+q17: d=q21 -> 1
+q18: d=q23 -> 1
+q19: d=q20 -> 1
+q20: d=q26 -> 0
+q21: d=q10 -> 1
+q22: d=q0 -> 0
+q23: d=q12 -> 1
+q24: d=q16 -> 0
+q25: d=q22 -> 0
+q26: d=q9 -> 1
+q27: d=q7 -> 1
+q28: d=q17 -> 0
+q29: d=q1 -> 0
+q30: d=q24 -> 1
+q31: d=q4 -> 0
+
+New states after cycle 1:
+q0=1, q1=0, q2=1, q3=1, q4=1, q5=0, q6=0, q7=0, q8=0, q9=1, q10=0, q11=1, q12=1, q13=1, q14=1, q15=1, q16=1, q17=1, q18=1, q19=1, q20=0, q21=1, q22=0, q23=1, q24=0, q25=0, q26=1, q27=1, q28=0, q29=0, q30=1, q31=0.
+
+Cycle 2:
+Inputs: in0=1, in1=1.
+Current states: q0=1, q1=0, q2=1, q3=1, q4=1, q5=0, q6=0, q7=0, q8=0, q9=1, q10=0, q11=1, q12=1, q13=1, q14=1, q15=1, q16=1, q17=1, q18=1, q19=1, q20=0, q21=1, q22=0, q23=1, q24=0, q25=0, q26=1, q27=1, q28=0, q29=0, q30=1, q31=0.
+Outputs: q13=1, q18=1, q22=0, q24=0, q25=0, q26=1, q28=0, q7=0.
+Next states:
+q0: d=q30 -> 1
+q1: d=in0 -> 1
+q2: d=q13 -> 1
+q3: d=q3 -> 1
+q4: d=q18 -> 1
+q5: d=q31 -> 0
+q6: d=q8 -> 0
+q7: d=q5 -> 0
+q8: d=q28 -> 0
+q9: d=q11 -> 1
+q10: d=q19 -> 1
+q11: d=q15 -> 1
+q12: d=in1 -> 1
+q13: d=q29 -> 0
+q14: d=q6 -> 0
+q15: d=q2 -> 1
+q16: d=q25 -> 0
+q17: d=q21 -> 1
+q18: d=q23 -> 1
+q19: d=q20 -> 0
+q20: d=q26 -> 1
+q21: d=q10 -> 0
+q22: d=q0 -> 1
+q23: d=q12 -> 1
+q24: d=q16 -> 1
+q25: d=q22 -> 0
+q26: d=q9 -> 1
+q27: d=q7 -> 0
+q28: d=q17 -> 1
+q29: d=q1 -> 0
+q30: d=q24 -> 0
+q31: d=q4 -> 1
+
+New states after cycle 2:
+q0=1, q1=1, q2=1, q3=1, q4=1, q5=0, q6=0, q7=0, q8=0, q9=1, q10=1, q11=1, q12=1, q13=0, q14=0, q15=1, q16=0, q17=1, q18=1, q19=0, q20=1, q21=0, q22=1, q23=1, q24=1, q25=0, q26=1, q27=0, q28=1, q29=0, q30=0, q31=1.
+
+Cycle 3:
+Inputs: in0=1, in1=1.
+Current states: q0=1, q1=1, q2=1, q3=1, q4=1, q5=0, q6=0, q7=0, q8=0, q9=1, q10=1, q11=1, q12=1, q13=0, q14=0, q15=1, q16=0, q17=1, q18=1, q19=0, q20=1, q21=0, q22=1, q23=1, q24=1, q25=0, q26=1, q27=0, q28=1, q29=0, q30=0, q31=1.
+Outputs: q13=0, q18=1, q22=1, q24=1, q25=0, q26=1, q28=1, q7=0.
+Next states:
+q0: d=q30 -> 0
+q1: d=in0 -> 1
+q2: d=q13 -> 0
+q3: d=q3 -> 1
+q4: d=q18 -> 1
+q5: d=q31 -> 1
+q6: d=q8 -> 0
+q7: d=q5 -> 0
+q8: d=q28 -> 1
+q9: d=q11 -> 1
+q10: d=q19 -> 0
+q11: d=q15 -> 1
+q12: d=in1 -> 1
+q13: d=q29 -> 0
+q14: d=q6 -> 0
+q15: d=q2 -> 1
+q16: d=q25 -> 0
+q17: d=q21 -> 0
+q18: d=q23 -> 1
+q19: d=q20 -> 1
+q20: d=q26 -> 1
+q21: d=q10 -> 1
+q22: d=q0 -> 1
+q23: d=q12 -> 1
+q24: d=q16 -> 0
+q25: d=q22 -> 1
+q26: d=q9 -> 1
+q27: d=q7 -> 0
+q28: d=q17 -> 1
+q29: d=q1 -> 1
+q30: d=q24 -> 1
+q31: d=q4 -> 1
+
+New states after cycle 3:
+q0=0, q1=1, q2=0, q3=1, q4=1, q5=1, q6=0, q7=0, q8=1, q9=1, q10=0, q11=1, q12=1, q13=0, q14=0, q15=1, q16=0, q17=0, q18=1, q19=1, q20=1, q21=1, q22=1, q23=1, q24=0, q25=1, q26=1, q27=0, q28=1, q29=1, q30=1, q31=1.
+
+Cycle 4:
+Inputs: in0=0, in1=0.
+Current states: q0=0, q1=1, q2=0, q3=1, q4=1, q5=1, q6=0, q7=0, q8=1, q9=1, q10=0, q11=1, q12=1, q13=0, q14=0, q15=1, q16=0, q17=0, q18=1, q19=1, q20=1, q21=1, q22=1, q23=1, q24=0, q25=1, q26=1, q27=0, q28=1, q29=1, q30=1, q31=1.
+Outputs: q13=0, q18=1, q22=1, q24=0, q25=1, q26=1, q28=1, q7=0.
+Next states:
+q0: d=q30 -> 1
+q1: d=in0 -> 0
+q2: d=q13 -> 0
+q3: d=q3 -> 1
+q4: d=q18 -> 1
+q5: d=q31 -> 1
+q6: d=q8 -> 1
+q7: d=q5 -> 1
+q8: d=q28 -> 1
+q9: d=q11 -> 1
+q10: d=q19 -> 1
+q11: d=q15 -> 1
+q12: d=in1 -> 0
+q13: d=q29 -> 1
+q14: d=q6 -> 0
+q15: d=q2 -> 0
+q16: d=q25 -> 1
+q17: d=q21 -> 1
+q18: d=q23 -> 1
+q19: d=q20 -> 1
+q20: d=q26 -> 1
+q21: d=q10 -> 0
+q22: d=q0 -> 0
+q23: d=q12 -> 1
+q24: d=q16 -> 0
+q25: d=q22 -> 1
+q26: d=q9 -> 1
+q27: d=q7 -> 0
+q28: d=q17 -> 0
+q29: d=q1 -> 1
+q30: d=q24 -> 0
+q31: d=q4 -> 1
+
+New states after cycle 4:
+q0=1, q1=0, q2=0, q3=1, q4=1, q5=1, q6=1, q7=1, q8=1, q9=1, q10=1, q11=1, q12=0, q13=1, q14=0, q15=0, q16=1, q17=1, q18=1, q19=1, q20=1, q21=0, q22=0, q23=1, q24=0, q25=1, q26=1, q27=0, q28=0, q29=1, q30=0, q31=1.
+
+Cycle 5:
+Inputs: in0=0, in1=1.
+Current states: q0=1, q1=0, q2=0, q3=1, q4=1, q5=1, q6=1, q7=1, q8=1, q9=1, q10=1, q11=1, q12=0, q13=1, q14=0, q15=0, q16=1, q17=1, q18=1, q19=1, q20=1, q21=0, q22=0, q23=1, q24=0, q25=1, q26=1, q27=0, q28=0, q29=1, q30=0, q31=1.
+Outputs: q13=1, q18=1, q22=0, q24=0, q25=1, q26=1, q28=0, q7=1.
+Next states:
+q0: d=q30 -> 0
+q1: d=in0 -> 0
+q2: d=q13 -> 1
+q3: d=q3 -> 1
+q4: d=q18 -> 1
+q5: d=q31 -> 1
+q6: d=q8 -> 1
+q7: d=q5 -> 1
+q8: d=q28 -> 0
+q9: d=q11 -> 1
+q10: d=q19 -> 1
+q11: d=q15 -> 0
+q12: d=in1 -> 1
+q13: d=q29 -> 1
+q14: d=q6 -> 1
+q15: d=q2 -> 0
+q16: d=q25 -> 1
+q17: d=q21 -> 0
+q18: d=q23 -> 1
+q19: d=q20 -> 1
+q20: d=q26 -> 1
+q21: d=q10 -> 1
+q22: d=q0 -> 1
+q23: d=q12 -> 0
+q24: d=q16 -> 1
+q25: d=q22 -> 0
+q26: d=q9 -> 1
+q27: d=q7 -> 1
+q28: d=q17 -> 1
+q29: d=q1 -> 0
+q30: d=q24 -> 0
+q31: d=q4 -> 1
+
+Wait, q13 d is q29 = 1, so q13 next = 1. (I had q13=1 already, fine.)
+q15 d is q2 = 0, so q15 next = 0.
+q24 d is q16 = 1, so q24 next = 1.
+Let's list new states:
+q0=0
+q1=0
+q2=1
+q3=1
+q4=1
+q5=1
+q6=1
+q7=1
+q8=0
+q9=1
+q10=1
+q11=0
+q12=1
+q13=1
+q14=1
+q15=0
+q16=1
+q17=0
+q18=1
+q19=1
+q20=1
+q21=1
+q22=1
+q23=0
+q24=1
+q25=0
+q26=1
+q27=1
+q28=1
+q29=0
+q30=0
+q31=1
+
+Cycle 6:
+Inputs: in0=0, in1=1.
+States: q0=0, q1=0, q2=1, q3=1, q4=1, q5=1, q6=1, q7=1, q8=0, q9=1, q10=1, q11=0, q12=1, q13=1, q14=1, q15=0, q16=1, q17=0, q18=1, q19=1, q20=1, q21=1, q22=1, q23=0, q24=1, q25=0, q26=1, q27=1, q28=1, q29=0, q30=0, q31=1.
+Outputs: q13=1, q18=1, q22=1, q24=1, q25=0, q26=1, q28=1, q7=1.
+Next states:
+q0: d=q30 -> 0
+q1: d=in0 -> 0
+q2: d=q13 -> 1
+q3: d=q3 -> 1
+q4: d=q18 -> 1
+q5: d=q31 -> 1
+q6: d=q8 -> 0
+q7: d=q5 -> 1
+q8: d=q28 -> 1
+q9: d=q11 -> 0
+q10: d=q19 -> 1
+q11: d=q15 -> 0
+q12: d=in1 -> 1
+q13: d=q29 -> 0
+q14: d=q6 -> 1
+q15: d=q2 -> 1
+q16: d=q25 -> 0
+q17: d=q21 -> 1
+q18: d=q23 -> 0
+q19: d=q20 -> 1
+q20: d=q26 -> 1
+q21: d=q10 -> 1
+q22: d=q0 -> 0
+q23: d=q12 -> 1
+q24: d=q16 -> 1
+q25: d=q22 -> 1
+q26: d=q9 -> 1
+q27: d=q7 -> 1
+q28: d=q17 -> 0
+q29: d=q1 -> 0
+q30: d=q24 -> 1
+q31: d=q4 -> 1
+
+New states:
+q0=0
+q1=0
+q2=1
+q3=1
+q4=1
+q5=1
+q6=0
+q7=1
+q8=1
+q9=0
+q10=1
+q11=0
+q12=1
+q13=0
+q14=1
+q15=1
+q16=0
+q17=1
+q18=0
+q19=1
+q20=1
+q21=1
+q22=0
+q23=1
+q24=1
+q25=1
+q26=1
+q27=1
+q28=0
+q29=0
+q30=1
+q31=1
+
+Cycle 7:
+Inputs: in0=1, in1=1.
+States: q0=0, q1=0, q2=1, q3=1, q4=1, q5=1, q6=0, q7=1, q8=1, q9=0, q10=1, q11=0, q12=1, q13=0, q14=1, q15=1, q16=0, q17=1, q18=0, q19=1, q20=1, q21=1, q22=0, q23=1, q24=1, q25=1, q26=1, q27=1, q28=0, q29=0, q30=1, q31=1.
+Outputs: q13=0, q18=0, q22=0, q24=1, q25=1, q26=1, q28=0, q7=1.
+Next states:
+q0: d=q30 -> 1
+q1: d=in0 -> 1
+q2: d=q13 -> 0
+q3: d=q3 -> 1
+q4: d=q18 -> 0
+q5: d=q31 -> 1
+q6: d=q8 -> 1
+q7: d=q5 -> 1
+q8: d=q28 -> 0
+q9: d=q11 -> 0
+q10: d=q19 -> 1
+q11: d=q15 -> 1
+q12: d=in1 -> 1
+q13: d=q29 -> 0
+q14: d=q6 -> 0
+q15: d=q2 -> 1
+q16: d=q25 -> 1
+q17: d=q21 -> 1
+q18: d=q23 -> 1
+q19: d=q20 -> 1
+q20: d=q26 -> 1
+q21: d=q10 -> 1
+q22: d=q0 -> 0
+q23: d=q12 -> 1
+q24: d=q16 -> 0
+q25: d=q22 -> 0
+q26: d=q9 -> 0
+q27: d=q7 -> 1
+q28: d=q17 -> 1
+q29: d=q1 -> 0
+q30: d=q24 -> 1
+q31: d=q4 -> 1
+
+New states:
+q0=1, q1=1, q2=0, q3=1, q4=0, q5=1, q6=1, q7=1, q8=0, q9=0, q10=1, q11=1, q12=1, q13=0, q14=0, q15=1, q16=1, q17=1, q18=1, q19=1, q20=1, q21=1, q22=0, q23=1, q24=0, q25=0, q26=0, q27=1, q28=1, q29=0, q30=1, q31=1.
+
+Cycle 8:
+Inputs: in0=1, in1=0.
+States: q0=1, q1=1, q2=0, q3=1, q4=0, q5=1, q6=1, q7=1, q8=0, q9=0, q10=1, q11=1, q12=1, q13=0, q14=0, q15=1, q16=1, q17=1, q18=1, q19=1, q20=1, q21=1, q22=0, q23=1, q24=0, q25=0, q26=0, q27=1, q28=1, q29=0, q30=1, q31=1.
+Outputs: q13=0, q18=1, q22=0, q24=0, q25=0, q26=0, q28=1, q7=1.
+Next states:
+q0: d=q30 -> 1
+q1: d=in0 -> 1
+q2: d=q13 -> 0
+q3: d=q3 -> 1
+q4: d=q18 -> 1
+q5: d=q31 -> 1
+q6: d=q8 -> 0
+q7: d=q5 -> 1
+q8: d=q28 -> 1
+q9: d=q11 -> 1
+q10: d=q19 -> 1
+q11: d=q15 -> 1
+q12: d=in1 -> 0
+q13: d=q29 -> 0
+q14: d=q6 -> 1
+q15: d=q2 -> 0
+q16: d=q25 -> 0
+q17: d=q21 -> 1
+q18: d=q23 -> 1
+q19: d=q20 -> 1
+q20: d=q26 -> 0
+q21: d=q10 -> 1
+q22: d=q0 -> 1
+q23: d=q12 -> 1
+q24: d=q16 -> 1
+q25: d=q22 -> 0
+q26: d=q9 -> 0
+q27: d=q7 -> 1
+q28: d=q17 -> 1
+q29: d=q1 -> 1
+q30: d=q24 -> 0
+q31: d=q4 -> 0
+
+New states:
+q0=1, q1=1, q2=0, q3=1, q4=1, q5=1, q6=0, q7=1, q8=1, q9=1, q10=1, q11=1, q12=0, q13=0, q14=1, q15=0, q16=0, q17=1, q18=1, q19=1, q20=0, q21=1, q22=1, q23=1, q24=1, q25=0, q26=0, q27=1, q28=1, q29=1, q30=0, q31=0.
+
+Cycle 9:
+Inputs: in0=0, in1=1.
+States: q0=1, q1=1, q2=0, q3=1, q4=1, q5=1, q6=0, q7=1, q8=1, q9=1, q10=1, q11=1, q12=0, q13=0, q14=1, q15=0, q16=0, q17=1, q18=1, q19=1, q20=0, q21=1, q22=1, q23=1, q24=1, q25=0, q26=0, q27=1, q28=1, q29=1, q30=0, q31=0.
+Outputs: q13=0, q18=1, q22=1, q24=1, q25=0, q26=0, q28=1, q7=1.
+Next states:
+q0: d=q30 -> 0
+q1: d=in0 -> 0
+q2: d=q13 -> 0
+q3: d=q3 -> 1
+q4: d=q18 -> 1
+q5: d=q31 -> 0
+q6: d=q8 -> 1
+q7: d=q5 -> 1
+q8: d=q28 -> 1
+q9: d=q11 -> 1
+q10: d=q19 -> 1
+q11: d=q15 -> 0
+q12: d=in1 -> 1
+q13: d=q29 -> 1
+q14: d=q6 -> 0
+q15: d=q2 -> 0
+q16: d=q25 -> 0
+q17: d=q21 -> 1
+q18: d=q23 -> 1
+q19: d=q20 -> 0
+q20: d=q26 -> 0
+q21: d=q10 -> 1
+q22: d=q0 -> 1
+q23: d=q12 -> 0
+q24: d=q16 -> 0
+q25: d=q22 -> 1
+q26: d=q9 -> 1
+q27: d=q7 -> 1
+q28: d=q17 -> 1
+q29: d=q1 -> 1
+q30: d=q24 -> 1
+q31: d=q4 -> 1
+
+New states:
+q0=0, q1=0, q2=0, q3=1, q4=1, q5=0, q6=1, q7=1, q8=1, q9=1, q10=1, q11=0, q12=1, q13=1, q14=0, q15=0, q16=0, q17=1, q18=1, q19=0, q20=0, q21=1, q22=1, q23=0, q24=0, q25=1, q26=1, q27=1, q28=1, q29=1, q30=1, q31=1.
+
+Cycle 10:
+Inputs: in0=1, in1=0.
+States: q0=0, q1=0, q2=0, q3=1, q4=1, q5=0, q6=1, q7=1, q8=1, q9=1, q10=1, q11=0, q12=1, q13=1, q14=0, q15=0, q16=0, q17=1, q18=1, q19=0, q20=0, q21=1, q22=1, q23=0, q24=0, q25=1, q26=1, q27=1, q28=1, q29=1, q30=1, q31=1.
+Outputs: q13=1, q18=1, q22=1, q24=0, q25=1, q26=1, q28=1, q7=1.
+Next states:
+q0: d=q30 -> 1
+q1: d=in0 -> 1
+q2: d=q13 -> 1
+q3: d=q3 -> 1
+q4: d=q18 -> 1
+q5: d=q31 -> 1
+q6: d=q8 -> 1
+q7: d=q5 -> 0
+q8: d=q28 -> 1
+q9: d=q11 -> 0
+q10: d=q19 -> 0
+q11: d=q15 -> 0
+q12: d=in1 -> 0
+q13: d=q29 -> 1
+q14: d=q6 -> 1
+q15: d=q2 -> 0
+q16: d=q25 -> 1
+q17: d=q21 -> 1
+q18: d=q23 -> 0
+q19: d=q20 -> 0
+q20: d=q26 -> 1
+q21: d=q10 -> 1
+q22: d=q0 -> 0
+q23: d=q12 -> 1
+q24: d=q16 -> 0
+q25: d=q22 -> 1
+q26: d=q9 -> 1
+q27: d=q7 -> 1
+q28: d=q17 -> 1
+q29: d=q1 -> 0
+q30: d=q24 -> 0
+q31: d=q4 -> 1
+
+New states:
+q0=1, q1=1, q2=1, q3=1, q4=1, q5=1, q6=1, q7=0, q8=1, q9=0, q10=0, q11=0, q12=0, q13=1, q14=1, q15=0, q16=1, q17=1, q18=0, q19=0, q20=1, q21=1, q22=0, q23=1, q24=0, q25=1, q26=1, q27=1, q28=1, q29=0, q30=0, q31=1.
+
+Cycle 11:
+Inputs: in0=1, in1=1.
+States: q0=1, q1=1, q2=1, q3=1, q4=1, q5=1, q6=1, q7=0, q8=1, q9=0, q10=0, q11=0, q12=0, q13=1, q14=1, q15=0, q16=1, q17=1, q18=0, q19=0, q20=1, q21=1, q22=0, q23=1, q24=0, q25=1, q26=1, q27=1, q28=1, q29=0, q30=0, q31=1.
+Outputs: q13=1, q18=0, q22=0, q24=0, q25=1, q26=1, q28=1, q7=0.
+Next states:
+q0: d=q30 -> 0
+q1: d=in0 -> 1
+q2: d=q13 -> 1
+q3: d=q3 -> 1
+q4: d=q18 -> 0
+q5: d=q31 -> 1
+q6: d=q8 -> 1
+q7: d=q5 -> 1
+q8: d=q28 -> 1
+q9: d=q11 -> 0
+q10: d=q19 -> 0
+q11: d=q15 -> 0
+q12: d=in1 -> 1
+q13: d=q29 -> 0
+q14: d=q6 -> 1
+q15: d=q2 -> 1
+q16: d=q25 -> 1
+q17: d=q21 -> 1
+q18: d=q23 -> 1
+q19: d=q20 -> 1
+q20: d=q26 -> 1
+q21: d=q10 -> 0
+q22: d=q0 -> 1
+q23: d=q12 -> 0
+q24: d=q16 -> 1
+q25: d=q22 -> 0
+q26: d=q9 -> 0
+q27: d=q7 -> 0
+q28: d=q17 -> 1
+q29: d=q1 -> 1
+q30: d=q24 -> 0
+q31: d=q4 -> 1
+
+New states:
+q0=0, q1=1, q2=1, q3=1, q4=0, q5=1, q6=1, q7=1, q8=1, q9=0, q10=0, q11=0, q12=1, q13=0, q14=1, q15=1, q16=1, q17=1, q18=1, q19=1, q20=1, q21=0, q22=1, q23=0, q24=1, q25=0, q26=0, q27=0, q28=1, q29=1, q30=0, q31=1.
+
+Cycle 12:
+Inputs: in0=0, in1=0.
+States: q0=0, q1=1, q2=1, q3=1, q4=0, q5=1, q6=1, q7=1, q8=1, q9=0, q10=0, q11=0, q12=1, q13=0, q14=1, q15=1, q16=1, q17=1, q18=1, q19=1, q20=1, q21=0, q22=1, q23=0, q24=1, q25=0, q26=0, q27=0, q28=1, q29=1, q30=0, q31=1.
+Outputs: q13=0, q18=1, q22=1, q24=1, q25=0, q26=0, q28=1, q7=1.
+Next states:
+q0: d=q30 -> 0
+q1: d=in0 -> 0
+q2: d=q13 -> 0
+q3: d=q3 -> 1
+q4: d=q18 -> 1
+q5: d=q31 -> 1
+q6: d=q8 -> 1
+q7: d=q5 -> 1
+q8: d=q28 -> 1
+q9: d=q11 -> 0
+q10: d=q19 -> 1
+q11: d=q15 -> 1
+q12: d=in1 -> 0
+q13: d=q29 -> 1
+q14: d=q6 -> 1
+q15: d=q2 -> 1
+q16: d=q25 -> 0
+q17: d=q21 -> 0
+q18: d=q23 -> 0
+q19: d=q20 -> 1
+q20: d=q26 -> 0
+q21: d=q10 -> 0
+q22: d=q0 -> 0
+q23: d=q12 -> 1
+q24: d=q16 -> 1
+q25: d=q22 -> 1
+q26: d=q9 -> 0
+q27: d=q7 -> 1
+q28: d=q17 -> 1
+q29: d=q1 -> 1
+q30: d=q24 -> 1
+q31: d=q4 -> 0
+
+New states:
+q0=0, q1=0, q2=0, q3=1, q4=1, q5=1, q6=1, q7=1, q8=1, q9=0, q10=1, q11=1, q12=0, q13=1, q14=1, q15=1, q16=0, q17=0, q18=0, q19=1, q20=0, q21=0, q22=0, q23=1, q24=1, q25=1, q26=0, q27=1, q28=1, q29=1, q30=1, q31=0.
+
+Cycle 13:
+Inputs: in0=0, in1=0.
+States: q0=0, q1=0, q2=0, q3=1, q4=1, q5=1, q6=1, q7=1, q8=1, q9=0, q10=1, q11=1, q12=0, q13=1, q14=1, q15=1, q16=0, q17=0, q18=0, q19=1, q20=0, q21=0, q22=0, q23=1, q24=1, q25=1, q26=0, q27=1, q28=1, q29=1, q30=1, q31=0.
+Outputs: q13=1, q18=0, q22=0, q24=1, q25=1, q26=0, q28=1, q7=1.
+Next states:
+q0: d=q30 -> 1
+q1: d=in0 -> 0
+q2: d=q13 -> 1
+q3: d=q3 -> 1
+q4: d=q18 -> 0
+q5: d=q31 -> 0
+q6: d=q8 -> 1
+q7: d=q5 -> 1
+q8: d=q28 -> 1
+q9: d=q11 -> 1
+q10: d=q19 -> 1
+q11: d=q15 -> 1
+q12: d=in1 -> 0
+q13: d=q29 -> 1
+q14: d=q6 -> 1
+q15: d=q2 -> 0
+q16: d=q25 -> 1
+q17: d=q21 -> 0
+q18: d=q23 -> 1
+q19: d=q20 -> 0
+q20: d=q26 -> 0
+q21: d=q10 -> 1
+q22: d=q0 -> 0
+q23: d=q12 -> 0
+q24: d=q16 -> 0
+q25: d=q22 -> 0
+q26: d=q9 -> 0
+q27: d=q7 -> 1
+q28: d=q17 -> 0
+q29: d=q1 -> 0
+q30: d=q24 -> 1
+q31: d=q4 -> 1
+
+New states:
+q0=1, q1=0, q2=1, q3=1, q4=0, q5=0, q6=1, q7=1, q8=1, q9=1, q10=1, q11=1, q12=0, q13=1, q14=1, q15=0, q16=1, q17=0, q18=1, q19=0, q20=0, q21=1, q22=0, q23=0, q24=0, q25=0, q26=0, q27=1, q28=0, q29=0, q30=1, q31=1.
+
+Cycle 14:
+Inputs: in0=0, in1=0.
+States: q0=1, q1=0, q2=1, q3=1, q4=0, q5=0, q6=1, q7=1, q8=1, q9=1, q10=1, q11=1, q12=0, q13=1, q14=1, q15=0, q16=1, q17=0, q18=1, q19=0, q20=0, q21=1, q22=0, q23=0, q24=0, q25=0, q26=0, q27=1, q28=0, q29=0, q30=1, q31=1.
+Outputs: q13=1, q18=1, q22=0, q24=0, q25=0, q26=0, q28=0, q7=1.
+Next states:
+q0: d=q30 -> 1
+q1: d=in0 -> 0
+q2: d=q13 -> 1
+q3: d=q3 -> 1
+q4: d=q18 -> 1
+q5: d=q31 -> 1
+q6: d=q8 -> 1
+q7: d=q5 -> 0
+q8: d=q28 -> 0
+q9: d=q11 -> 1
+q10: d=q19 -> 0
+q11: d=q15 -> 0
+q12: d=in1 -> 0
+q13: d=q29 -> 0
+q14: d=q6 -> 1
+q15: d=q2 -> 1
+q16: d=q25 -> 0
+q17: d=q21 -> 1
+q18: d=q23 -> 0
+q19: d=q20 -> 0
+q20: d=q26 -> 0
+q21: d=q10 -> 1
+q22: d=q0 -> 1
+q23: d=q12 -> 0
+q24: d=q16 -> 1
+q25: d=q22 -> 0
+q26: d=q9 -> 1
+q27: d=q7 -> 1
+q28: d=q17 -> 0
+q29: d=q1 -> 0
+q30: d=q24 -> 0
+q31: d=q4 -> 0
+
+New states:
+q0=1, q1=0, q2=1, q3=1, q4=1, q5=1, q6=1, q7=0, q8=0, q9=1, q10=0, q11=0, q12=0, q13=0, q14=1, q15=1, q16=0, q17=1, q18=0, q19=0, q20=0, q21=1, q22=1, q23=0, q24=1, q25=0, q26=1, q27=1, q28=0, q29=0, q30=0, q31=0.
+
+Cycle 15:
+Inputs: in0=0, in1=1.
+States: q0=1, q1=0, q2=1, q3=1, q4=1, q5=1, q6=1, q7=0, q8=0, q9=1, q10=0, q11=0, q12=0, q13=0, q14=1, q15=1, q16=0, q17=1, q18=0, q19=0, q20=0, q21=1, q22=1, q23=0, q24=1, q25=0, q26=1, q27=1, q28=0, q29=0, q30=0, q31=0.
+Outputs: q13=0, q18=0, q22=1, q24=1, q25=0, q26=1, q28=0, q7=0.
+Next states:
+q0: d=q30 -> 0
+q1: d=in0 -> 0
+q2: d=q13 -> 0
+q3: d=q3 -> 1
+q4: d=q18 -> 0
+q5: d=q31 -> 0
+q6: d=q8 -> 0
+q7: d=q5 -> 1
+q8: d=q28 -> 0
+q9: d=q11 -> 0
+q10: d=q19 -> 0
+q11: d=q15 -> 1
+q12: d=in1 -> 1
+q13: d=q29 -> 0
+q14: d=q6 -> 1
+q15: d=q2 -> 1
+q16: d=q25 -> 0
+q17: d=q21 -> 1
+q18: d=q23 -> 0
+q19: d=q20 -> 0
+q20: d=q26 -> 1
+q21: d=q10 -> 0
+q22: d=q0 -> 1
+q23: d=q12 -> 0
+q24: d=q16 -> 0
+q25: d=q22 -> 1
+q26: d=q9 -> 1
+q27: d=q7 -> 0
+q28: d=q17 -> 1
+q29: d=q1 -> 0
+q30: d=q24 -> 1
+q31: d=q4 -> 1
+
+New states:
+q0=0, q1=0, q2=0, q3=1, q4=0, q5=0, q6=0, q7=1, q8=0, q9=0, q10=0, q11=1, q12=1, q13=0, q14=1, q15=1, q16=0, q17=1, q18=0, q19=0, q20=1, q21=0, q22=1, q23=0, q24=0, q25=1, q26=1, q27=0, q28=1, q29=0, q30=1, q31=1.
+
+Cycle 16:
+Inputs: in0=0, in1=0.
+States: q0=0, q1=0, q2=0, q3=1, q4=0, q5=0, q6=0, q7=1, q8=0, q9=0, q10=0, q11=1, q12=1, q13=0, q14=1, q15=1, q16=0, q17=1, q18=0, q19=0, q20=1, q21=0, q22=1, q23=0, q24=0, q25=1, q26=1, q27=0, q28=1, q29=0, q30=1, q31=1.
+Outputs: q13=0, q18=0, q22=1, q24=0, q25=1, q26=1, q28=1, q7=1.
+Next states:
+q0: d=q30 -> 1
+q1: d=in0 -> 0
+q2: d=q13 -> 0
+q3: d=q3 -> 1
+q4: d=q18 -> 0
+q5: d=q31 -> 1
+q6: d=q8 -> 0
+q7: d=q5 -> 0
+q8: d=q28 -> 1
+q9: d=q11 -> 1
+q10: d=q19 -> 0
+q11: d=q15 -> 1
+q12: d=in1 -> 0
+q13: d=q29 -> 0
+q14: d=q6 -> 0
+q15: d=q2 -> 0
+q16: d=q25 -> 1
+q17: d=q21 -> 0
+q18: d=q23 -> 0
+q19: d=q20 -> 1
+q20: d=q26 -> 1
+q21: d=q10 -> 0
+q22: d=q0 -> 0
+q23: d=q12 -> 1
+q24: d=q16 -> 0
+q25: d=q22 -> 1
+q26: d=q9 -> 0
+q27: d=q7 -> 1
+q28: d=q17 -> 1
+q29: d=q1 -> 0
+q30: d=q24 -> 0
+q31: d=q4 -> 0
+
+New states:
+q0=1, q1=0, q2=0, q3=1, q4=0, q5=1, q6=0, q7=0, q8=1, q9=1, q10=0, q11=1, q12=0, q13=0, q14=0, q15=0, q16=1, q17=0, q18=0, q19=1, q20=1, q21=0, q22=0, q23=1, q24=0, q25=1, q26=0, q27=1, q28=1, q29=0, q30=0, q31=0.
+
+Cycle 17:
+Inputs: in0=1, in1=0.
+States: q0=1, q1=0, q2=0, q3=1, q4=0, q5=1, q6=0, q7=0, q8=1, q9=1, q10=0, q11=1, q12=0, q13=0, q14=0, q15=0, q16=1, q17=0, q18=0, q19=1, q20=1, q21=0, q22=0, q23=1, q24=0, q25=1, q26=0, q27=1, q28=1, q29=0, q30=0, q31=0.
+Outputs: q13=0, q18=0, q22=0, q24=0, q25=1, q26=0, q28=1, q7=0.
+Next states:
+q0: d=q30 -> 0
+q1: d=in0 -> 1
+q2: d=q13 -> 0
+q3: d=q3 -> 1
+q4: d=q18 -> 0
+q5: d=q31 -> 0
+q6: d=q8 -> 1
+q7: d=q5 -> 1
+q8: d=q28 -> 1
+q9: d=q11 -> 1
+q10: d=q19 -> 1
+q11: d=q15 -> 0
+q12: d=in1 -> 0
+q13: d=q29 -> 0
+q14: d=q6 -> 0
+q15: d=q2 -> 0
+q16: d=q25 -> 1
+q17: d=q21 -> 0
+q18: d=q23 -> 1
+q19: d=q20 -> 1
+q20: d=q26 -> 0
+q21: d=q10 -> 0
+q22: d=q0 -> 1
+q23: d=q12 -> 0
+q24: d=q16 -> 1
+q25: d=q22 -> 0
+q26: d=q9 -> 1
+q27: d=q7 -> 0
+q28: d=q17 -> 0
+q29: d=q1 -> 0
+q30: d=q24 -> 0
+q31: d=q4 -> 0
+
+New states:
+q0=0, q1=1, q2=0, q3=1, q4=0, q5=0, q6=1, q7=1, q8=1, q9=1, q10=1, q11=0, q12=0, q13=0, q14=0, q15=0, q16=1, q17=0, q18=1, q19=1, q20=0, q21=0, q22=1, q23=0, q24=1, q25=0, q26=1, q27=0, q28=0, q29=0, q30=0, q31=0.
+
+Cycle 18:
+Inputs: in0=1, in1=1.
+States: q0=0, q1=1, q2=0, q3=1, q4=0, q5=0, q6=1, q7=1, q8=1, q9=1, q10=1, q11=0, q12=0, q13=0, q14=0, q15=0, q16=1, q17=0, q18=1, q19=1, q20=0, q21=0, q22=1, q23=0, q24=1, q25=0, q26=1, q27=0, q28=0, q29=0, q30=0, q31=0.
+Outputs: q13=0, q18=1, q22=1, q24=1, q25=0, q26=1, q28=0, q7=1.
+Next states:
+q0: d=q30 -> 0
+q1: d=in0 -> 1
+q2: d=q13 -> 0
+q3: d=q3 -> 1
+q4: d=q18 -> 1
+q5: d=q31 -> 0
+q6: d=q8 -> 1
+q7: d=q5 -> 0
+q8: d=q28 -> 0
+q9: d=q11 -> 0
+q10: d=q19 -> 1
+q11: d=q15 -> 0
+q12: d=in1 -> 1
+q13: d=q29 -> 0
+q14: d=q6 -> 1
+q15: d=q2 -> 0
+q16: d=q25 -> 0
+q17: d=q21 -> 0
+q18: d=q23 -> 0
+q19: d=q20 -> 0
+q20: d=q26 -> 1
+q21: d=q10 -> 1
+q22: d=q0 -> 0
+q23: d=q12 -> 0
+q24: d=q16 -> 1
+q25: d=q22 -> 1
+q26: d=q9 -> 1
+q27: d=q7 -> 1
+q28: d=q17 -> 0
+q29: d=q1 -> 1
+q30: d=q24 -> 1
+q31: d=q4 -> 0
+
+New states:
+q0=0, q1=1, q2=0, q3=1, q4=1, q5=0, q6=1, q7=0, q8=0, q9=0, q10=1, q11=0, q12=1, q13=0, q14=1, q15=0, q16=0, q17=0, q18=0, q19=0, q20=1, q21=1, q22=0, q23=0, q24=1, q25=1, q26=1, q27=1, q28=0, q29=1, q30=1, q31=0.
+
+Cycle 19:
+Inputs: in0=0, in1=1.
+States: q0=0, q1=1, q2=0, q3=1, q4=1, q5=0, q6=1, q7=0, q8=0, q9=0, q10=1, q11=0, q12=1, q13=0, q14=1, q15=0, q16=0, q17=0, q18=0, q19=0, q20=1, q21=1, q22=0, q23=0, q24=1, q25=1, q26=1, q27=1, q28=0, q29=1, q30=1, q31=0.
+Outputs: q13=0, q18=0, q22=0, q24=1, q25=1, q26=1, q28=0, q7=0.
+Next states:
+q0: d=q30 -> 1
+q1: d=in0 -> 0
+q2: d=q13 -> 0
+q3: d=q3 -> 1
+q4: d=q18 -> 0
+q5: d=q31 -> 0
+q6: d=q8 -> 0
+q7: d=q5 -> 0
+q8: d=q28 -> 0
+q9: d=q11 -> 0
+q10: d=q19 -> 0
+q11: d=q15 -> 0
+q12: d=in1 -> 1
+q13: d=q29 -> 1
+q14: d=q6 -> 1
+q15: d=q2 -> 0
+q16: d=q25 -> 1
+q17: d=q21 -> 1
+q18: d=q23 -> 0
+q19: d=q20 -> 1
+q20: d=q26 -> 1
+q21: d=q10 -> 1
+q22: d=q0 -> 0
+q23: d=q12 -> 1
+q24: d=q16 -> 0
+q25: d=q22 -> 0
+q26: d=q9 -> 0
+q27: d=q7 -> 0
+q28: d=q17 -> 0
+q29: d=q1 -> 1
+q30: d=q24 -> 1
+q31: d=q4 -> 1
+
+New states:
+q0=1, q1=0, q2=0, q3=1, q4=0, q5=0, q6=0, q7=0, q8=0, q9=0, q10=0, q11=0, q12=1, q13=1, q14=1, q15=0, q16=1, q17=1, q18=0, q19=1, q20=1, q21=1, q22=0, q23=1, q24=0, q25=0, q26=0, q27=0, q28=0, q29=1, q30=1, q31=1.
+
+Cycle 20:
+Inputs: in0=0, in1=1.
+States: q0=1, q1=0, q2=0, q3=1, q4=0, q5=0, q6=0, q7=0, q8=0, q9=0, q10=0, q11=0, q12=1, q13=1, q14=1, q15=0, q16=1, q17=1, q18=0, q19=1, q20=1, q21=1, q22=0, q23=1, q24=0, q25=0, q26=0, q27=0, q28=0, q29=1, q30=1, q31=1.
+Outputs: q13=1, q18=0, q22=0, q24=0, q25=0, q26=0, q28=0, q7=0.
+Next states:
+q0: d=q30 -> 1
+q1: d=in0 -> 0
+q2: d=q13 -> 1
+q3: d=q3 -> 1
+q4: d=q18 -> 0
+q5: d=q31 -> 1
+q6: d=q8 -> 0
+q7: d=q5 -> 0
+q8: d=q28 -> 0
+q9: d=q11 -> 0
+q10: d=q19 -> 1
+q11: d=q15 -> 0
+q12: d=in1 -> 1
+q13: d=q29 -> 1
+q14: d=q6 -> 0
+q15: d=q2 -> 0
+q16: d=q25 -> 0
+q17: d=q21 -> 1
+q18: d=q23 -> 1
+q19: d=q20 -> 1
+q20: d=q26 -> 0
+q21: d=q10 -> 0
+q22: d=q0 -> 1
+q23: d=q12 -> 1
+q24: d=q16 -> 1
+q25: d=q22 -> 0
+q26: d=q9 -> 0
+q27: d=q7 -> 0
+q28: d=q17 -> 1
+q29: d=q1 -> 0
+q30: d=q24 -> 0
+q31: d=q4 -> 0
+
+New states:
+q0=1, q1=0, q2=1, q3=1, q4=0, q5=1, q6=0, q7=0, q8=0, q9=0, q10=1, q11=0, q12=1, q13=1, q14=0, q15=0, q16=0, q17=1, q18=1, q19=1, q20=0, q21=0, q22=1, q23=1, q24=1, q25=0, q26=0, q27=0, q28=1, q29=0, q30=0, q31=0.
+
+Cycle 21:
+Inputs: in0=0, in1=0.
+States: q0=1, q1=0, q2=1, q3=1, q4=0, q5=1, q6=0, q7=0, q8=0, q9=0, q10=1, q11=0, q12=1, q13=1, q14=0, q15=0, q16=0, q17=1, q18=1, q19=1, q20=0, q21=0, q22=1, q23=1, q24=1, q25=0, q26=0, q27=0, q28=1, q29=0, q30=0, q31=0.
+Outputs: q13=1, q18=1, q22=1, q24=1, q25=0, q26=0, q28=1, q7=0.
+Next states:
+q0: d=q30 -> 0
+q1: d=in0 -> 0
+q2: d=q13 -> 1
+q3: d=q3 -> 1
+q4: d=q18 -> 1
+q5: d=q31 -> 0
+q6: d=q8 -> 0
+q7: d=q5 -> 1
+q8: d=q28 -> 1
+q9: d=q11 -> 0
+q10: d=q19 -> 1
+q11: d=q15 -> 0
+q12: d=in1 -> 0
+q13: d=q29 -> 0
+q14: d=q6 -> 0
+q15: d=q2 -> 1
+q16: d=q25 -> 0
+q17: d=q21 -> 0
+q18: d=q23 -> 1
+q19: d=q20 -> 0
+q20: d=q26 -> 0
+q21: d=q10 -> 1
+q22: d=q0 -> 1
+q23: d=q12 -> 1
+q24: d=q16 -> 0
+q25: d=q22 -> 1
+q26: d=q9 -> 0
+q27: d=q7 -> 0
+q28: d=q17 -> 1
+q29: d=q1 -> 0
+q30: d=q24 -> 1
+q31: d=q4 -> 0
+
+New states:
+q0=0, q1=0, q2=1, q3=1, q4=1, q5=0, q6=0, q7=1, q8=1, q9=0, q10=1, q11=0, q12=0, q13=0, q14=0, q15=1, q16=0, q17=0, q18=1, q19=0, q20=0, q21=1, q22=1, q23=1, q24=0, q25=1, q26=0, q27=0, q28=1, q29=0, q30=1, q31=0.
+
+Cycle 22:
+Inputs: in0=1, in1=0.
+States: q0=0, q1=0, q2=1, q3=1, q4=1, q5=0, q6=0, q7=1, q8=1, q9=0, q10=1, q11=0, q12=0, q13=0, q14=0, q15=1, q16=0, q17=0, q18=1, q19=0, q20=0, q21=1, q22=1, q23=1, q24=0, q25=1, q26=0, q27=0, q28=1, q29=0, q30=1, q31=0.
+Outputs: q13=0, q18=1, q22=1, q24=0, q25=1, q26=0, q28=1, q7=1.
+Next states:
+q0: d=q30 -> 1
+q1: d=in0 -> 1
+q2: d=q13 -> 0
+q3: d=q3 -> 1
+q4: d=q18 -> 1
+q5: d=q31 -> 0
+q6: d=q8 -> 1
+q7: d=q5 -> 0
+q8: d=q28 -> 1
+q9: d=q11 -> 0
+q10: d=q19 -> 0
+q11: d=q15 -> 1
+q12: d=in1 -> 0
+q13: d=q29 -> 0
+q14: d=q6 -> 0
+q15: d=q2 -> 1
+q16: d=q25 -> 1
+q17: d=q21 -> 1
+q18: d=q23 -> 1
+q19: d=q20 -> 0
+q20: d=q26 -> 0
+q21: d=q10 -> 1
+q22: d=q0 -> 0
+q23: d=q12 -> 0
+q24: d=q16 -> 0
+q25: d=q22 -> 1
+q26: d=q9 -> 0
+q27: d=q7 -> 1
+q28: d=q17 -> 0
+q29: d=q1 -> 0
+q30: d=q24 -> 0
+q31: d=q4 -> 1
+
+New states:
+q0=1, q1=1, q2=0, q3=1, q4=1, q5=0, q6=1, q7=0, q8=1, q9=0, q10=0, q11=1, q12=0, q13=0, q14=0, q15=1, q16=1, q17=1, q18=1, q19=0, q20=0, q21=1, q22=0, q23=0, q24=0, q25=1, q26=0, q27=1, q28=0, q29=0, q30=0, q31=1.
+
+Cycle 23:
+Inputs: in0=0, in1=1.
+States: q0=1, q1=1, q2=0, q3=1, q4=1, q5=0, q6=1, q7=0, q8=1, q9=0, q10=0, q11=1, q12=0, q13=0, q14=0, q15=1, q16=1, q17=1, q18=1, q19=0, q20=0, q21=1, q22=0, q23=0, q24=0, q25=1, q26=0, q27=1, q28=0, q29=0, q30=0, q31=1.
+Outputs: q13=0, q18=1, q22=0, q24=0, q25=1, q26=0, q28=0, q7=0.
+Next states:
+q0: d=q30 -> 0
+q1: d=in0 -> 0
+q2: d=q13 -> 0
+q3: d=q3 -> 1
+q4: d=q18 -> 1
+q5: d=q31 -> 1
+q6: d=q8 -> 1
+q7: d=q5 -> 0
+q8: d=q28 -> 0
+q9: d=q11 -> 1
+q10: d=q19 -> 0
+q11: d=q15 -> 1
+q12: d=in1 -> 1
+q13: d=q29 -> 0
+q14: d=q6 -> 1
+q15: d=q2 -> 0
+q16: d=q25 -> 1
+q17: d=q21 -> 1
+q18: d=q23 -> 0
+q19: d=q20 -> 0
+q20: d=q26 -> 0
+q21: d=q10 -> 0
+q22: d=q0 -> 1
+q23: d=q12 -> 0
+q24: d=q16 -> 1
+q25: d=q22 -> 0
+q26: d=q9 -> 0
+q27: d=q7 -> 0
+q28: d=q17 -> 1
+q29: d=q1 -> 1
+q30: d=q24 -> 0
+q31: d=q4 -> 1
+
+New states:
+q0=0, q1=0, q2=0, q3=1, q4=1, q5=1, q6=1, q7=0, q8=0, q9=1, q10=0, q11=1, q12=1, q13=0, q14=1, q15=0, q16=1, q17=1, q18=0, q19=0, q20=0, q21=0, q22=1, q23=0, q24=1, q25=0, q26=0, q27=0, q28=1, q29=1, q30=0, q31=1.
+
+Cycle 24:
+Inputs: in0=0, in1=0.
+States: q0=0, q1=0, q2=0, q3=1, q4=1, q5=1, q6=1, q7=0, q8=0, q9=1, q10=0, q11=1, q12=1, q13=0, q14=1, q15=0, q16=1, q17=1, q18=0, q19=0, q20=0, q21=0, q22=1, q23=0, q24=1, q25=0, q26=0, q27=0, q28=1, q29=1, q30=0, q31=1.
+Outputs: q13=0, q18=0, q22=1, q24=1, q25=0, q26=0, q28=1, q7=0.
+Next states:
+q0: d=q30 -> 0
+q1: d=in0 -> 0
+q2: d=q13 -> 0
+q3: d=q3 -> 1
+q4: d=q18 -> 0
+q5: d=q31 -> 1
+q6: d=q8 -> 0
+q7: d=q5 -> 1
+q8: d=q28 -> 1
+q9: d=q11 -> 1
+q10: d=q19 -> 0
+q11: d=q15 -> 0
+q12: d=in1 -> 0
+q13: d=q29 -> 1
+q14: d=q6 -> 1
+q15: d=q2 -> 0
+q16: d=q25 -> 0
+q17: d=q21 -> 0
+q18: d=q23 -> 0
+q19: d=q20 -> 0
+q20: d=q26 -> 0
+q21: d=q10 -> 0
+q22: d=q0 -> 0
+q23: d=q12 -> 1
+q24: d=q16 -> 1
+q25: d=q22 -> 1
+q26: d=q9 -> 1
+q27: d=q7 -> 0
+q28: d=q17 -> 1
+q29: d=q1 -> 0
+q30: d=q24 -> 1
+q31: d=q4 -> 1
+
+New states:
+q0=0, q1=0, q2=0, q3=1, q4=0, q5=1, q6=0, q7=1, q8=1, q9=1, q10=0, q11=0, q12=0, q13=1, q14=1, q15=0, q16=0, q17=0, q18=0, q19=0, q20=0, q21=0, q22=0, q23=1, q24=1, q25=1, q26=1, q27=0, q28=1, q29=0, q30=1, q31=1.
+
+Cycle 25:
+Inputs: in0=1, in1=0.
+States: q0=0, q1=0, q2=0, q3=1, q4=0, q5=1, q6=0, q7=1, q8=1, q9=1, q10=0, q11=0, q12=0, q13=1, q14=1, q15=0, q16=0, q17=0, q18=0, q19=0, q20=0, q21=0, q22=0, q23=1, q24=1, q25=1, q26=1, q27=0, q28=1, q29=0, q30=1, q31=1.
+Outputs: q13=1, q18=0, q22=0, q24=1, q25=1, q26=1, q28=1, q7=1.
+Next states:
+q0: d=q30 -> 1
+q1: d=in0 -> 1
+q2: d=q13 -> 1
+q3: d=q3 -> 1
+q4: d=q18 -> 0
+q5: d=q31 -> 1
+q6: d=q8 -> 1
+q7: d=q5 -> 1
+q8: d=q28 -> 1
+q9: d=q11 -> 0
+q10: d=q19 -> 0
+q11: d=q15 -> 0
+q12: d=in1 -> 0
+q13: d=q29 -> 0
+q14: d=q6 -> 0
+q15: d=q2 -> 0
+q16: d=q25 -> 1
+q17: d=q21 -> 0
+q18: d=q23 -> 1
+q19: d=q20 -> 0
+q20: d=q26 -> 1
+q21: d=q10 -> 0
+q22: d=q0 -> 0
+q23: d=q12 -> 0
+q24: d=q16 -> 0
+q25: d=q22 -> 0
+q26: d=q9 -> 1
+q27: d=q7 -> 1
+q28: d=q17 -> 0
+q29: d=q1 -> 0
+q30: d=q24 -> 1
+q31: d=q4 -> 0
+
+New states:
+q0=1, q1=1, q2=1, q3=1, q4=0, q5=1, q6=1, q7=1, q8=1, q9=0, q10=0, q11=0, q12=0, q13=0, q14=0, q15=0, q16=1, q17=0, q18=1, q19=0, q20=1, q21=0, q22=0, q23=0, q24=0, q25=0, q26=1, q27=1, q28=0, q29=0, q30=1, q31=0.
+
+Cycle 26:
+Inputs: in0=0, in1=0.
+States: q0=1, q1=1, q2=1, q3=1, q4=0, q5=1, q6=1, q7=1, q8=1, q9=0, q10=0, q11=0, q12=0, q13=0, q14=0, q15=0, q16=1, q17=0, q18=1, q19=0, q20=1, q21=0, q22=0, q23=0, q24=0, q25=0, q26=1, q27=1, q28=0, q29=0, q30=1, q31=0.
+Outputs: q13=0, q18=1, q22=0, q24=0, q25=0, q26=1, q28=0, q7=1.
+Next states:
+q0: d=q30 -> 1
+q1: d=in0 -> 0
+q2: d=q13 -> 0
+q3: d=q3 -> 1
+q4: d=q18 -> 1
+q5: d=q31 -> 0
+q6: d=q8 -> 1
+q7: d=q5 -> 1
+q8: d=q28 -> 0
+q9: d=q11 -> 0
+q10: d=q19 -> 0
+q11: d=q15 -> 0
+q12: d=in1 -> 0
+q13: d=q29 -> 0
+q14: d=q6 -> 1
+q15: d=q2 -> 1
+q16: d=q25 -> 0
+q17: d=q21 -> 0
+q18: d=q23 -> 0
+q19: d=q20 -> 1
+q20: d=q26 -> 1
+q21: d=q10 -> 0
+q22: d=q0 -> 1
+q23: d=q12 -> 0
+q24: d=q16 -> 1
+q25: d=q22 -> 0
+q26: d=q9 -> 0
+q27: d=q7 -> 1
+q28: d=q17 -> 0
+q29: d=q1 -> 1
+q30: d=q24 -> 0
+q31: d=q4 -> 0
+
+New states:
+q0=1, q1=0, q2=0, q3=1, q4=1, q5=0, q6=1, q7=1, q8=0, q9=0, q10=0, q11=0, q12=0, q13=0, q14=1, q15=1, q16=0, q17=0, q18=0, q19=1, q20=1, q21=0, q22=1, q23=0, q24=1, q25=0, q26=0, q27=1, q28=0, q29=1, q30=0, q31=0.
+
+Cycle 27:
+Inputs: in0=0, in1=1.
+States: q0=1, q1=0, q2=0, q3=1, q4=1, q5=0, q6=1, q7=1, q8=0, q9=0, q10=0, q11=0, q12=0, q13=0, q14=1, q15=1, q16=0, q17=0, q18=0, q19=1, q20=1, q21=0, q22=1, q23=0, q24=1, q25=0, q26=0, q27=1, q28=0, q29=1, q30=0, q31=0.
+Outputs: q13=0, q18=0, q22=1, q24=1, q25=0, q26=0, q28=0, q7=1.
+Next states:
+q0: d=q30 -> 0
+q1: d=in0 -> 0
+q2: d=q13 -> 0
+q3: d=q3 -> 1
+q4: d=q18 -> 0
+q5: d=q31 -> 0
+q6: d=q8 -> 0
+q7: d=q5 -> 0
+q8: d=q28 -> 0
+q9: d=q11 -> 0
+q10: d=q19 -> 1
+q11: d=q15 -> 1
+q12: d=in1 -> 1
+q13: d=q29 -> 1
+q14: d=q6 -> 1
+q15: d=q2 -> 0
+q16: d=q25 -> 0
+q17: d=q21 -> 0
+q18: d=q23 -> 0
+q19: d=q20 -> 1
+q20: d=q26 -> 0
+q21: d=q10 -> 0
+q22: d=q0 -> 1
+q23: d=q12 -> 0
+q24: d=q16 -> 0
+q25: d=q22 -> 1
+q26: d=q9 -> 0
+q27: d=q7 -> 1
+q28: d=q17 -> 0
+q29: d=q1 -> 0
+q30: d=q24 -> 1
+q31: d=q4 -> 1
+
+New states:
+q0=0, q1=0, q2=0, q3=1, q4=0, q5=0, q6=0, q7=0, q8=0, q9=0, q10=1, q11=1, q12=1, q13=1, q14=1, q15=0, q16=0, q17=0, q18=0, q19=1, q20=0, q21=0, q22=1, q23=0, q24=0, q25=1, q26=0, q27=1, q28=0, q29=0, q30=1, q31=1.
+
+Cycle 28:
+Inputs: in0=1, in1=1.
+States: q0=0, q1=0, q2=0, q3=1, q4=0, q5=0, q6=0, q7=0, q8=0, q9=0, q10=1, q11=1, q12=1, q13=1, q14=1, q15=0, q16=0, q17=0, q18=0, q19=1, q20=0, q21=0, q22=1, q23=0, q24=0, q25=1, q26=0, q27=1, q28=0, q29=0, q30=1, q31=1.
+Outputs: q13=1, q18=0, q22=1, q24=0, q25=1, q26=0, q28=0, q7=0.
+Next states:
+q0: d=q30 -> 1
+q1: d=in0 -> 1
+q2: d=q13 -> 1
+q3: d=q3 -> 1
+q4: d=q18 -> 0
+q5: d=q31 -> 1
+q6: d=q8 -> 0
+q7: d=q5 -> 0
+q8: d=q28 -> 0
+q9: d=q11 -> 1
+q10: d=q19 -> 1
+q11: d=q15 -> 0
+q12: d=in1 -> 1
+q13: d=q29 -> 0
+q14: d=q6 -> 0
+q15: d=q2 -> 0
+q16: d=q25 -> 1
+q17: d=q21 -> 0
+q18: d=q23 -> 0
+q19: d=q20 -> 0
+q20: d=q26 -> 0
+q21: d=q10 -> 1
+q22: d=q0 -> 0
+q23: d=q12 -> 1
+q24: d=q16 -> 0
+q25: d=q22 -> 1
+q26: d=q9 -> 0
+q27: d=q7 -> 0
+q28: d=q17 -> 0
+q29: d=q1 -> 0
+q30: d=q24 -> 0
+q31: d=q4 -> 0
+
+New states:
+q0=1, q1=1, q2=1, q3=1, q4=0, q5=1, q6=0, q7=0, q8=0, q9=1, q10=1, q11=0, q12=1, q13=0, q14=0, q15=0, q16=1, q17=0, q18=0, q19=0, q20=0, q21=1, q22=0, q23=1, q24=0, q25=1, q26=0, q27=0, q28=0, q29=0, q30=0, q31=0.
+
+Cycle 29:
+Inputs: in0=0, in1=1.
+States: q0=1, q1=1, q2=1, q3=1, q4=0, q5=1, q6=0, q7=0, q8=0, q9=1, q10=1, q11=0, q12=1, q13=0, q14=0, q15=0, q16=1, q17=0, q18=0, q19=0, q20=0, q21=1, q22=0, q23=1, q24=0, q25=1, q26=0, q27=0, q28=0, q29=0, q30=0, q31=0.
+Outputs: q13=0, q18=0, q22=0, q24=0, q25=1, q26=0, q28=0, q7=0.
+Next states:
+q0: d=q30 -> 0
+q1: d=in0 -> 0
+q2: d=q13 -> 0
+q3: d=q3 -> 1
+q4: d=q18 -> 0
+q5: d=q31 -> 0
+q6: d=q8 -> 0
+q7: d=q5 -> 1
+q8: d=q28 -> 0
+q9: d=q11 -> 0
+q10: d=q19 -> 0
+q11: d=q15 -> 0
+q12: d=in1 -> 1
+q13: d=q29 -> 0
+q14: d=q6 -> 0
+q15: d=q2 -> 1
+q16: d=q25 -> 1
+q17: d=q21 -> 1
+q18: d=q23 -> 1
+q19: d=q20 -> 0
+q20: d=q26 -> 0
+q21: d=q10 -> 1
+q22: d=q0 -> 1
+q23: d=q12 -> 1
+q24: d=q16 -> 1
+q25: d=q22 -> 0
+q26: d=q9 -> 1
+q27: d=q7 -> 0
+q28: d=q17 -> 0
+q29: d=q1 -> 1
+q30: d=q24 -> 0
+q31: d=q4 -> 0
+
+New states:
+q0=0, q1=0, q2=0, q3=1, q4=0, q5=0, q6=0, q7=1, q8=0, q9=0, q10=0, q11=0, q12=1, q13=0, q14=0, q15=1, q16=1, q17=1, q18=1, q19=0, q20=0, q21=1, q22=1, q23=1, q24=1, q25=0, q26=1, q27=0, q28=0, q29=1, q30=0, q31=0.
+
+Cycle 30:
+Inputs: in0=0, in1=1.
+States: q0=0, q1=0, q2=0, q3=1, q4=0, q5=0, q6=0, q7=1, q8=0, q9=0, q10=0, q11=0, q12=1, q13=0, q14=0, q15=1, q16=1, q17=1, q18=1, q19=0, q20=0, q21=1, q22=1, q23=1, q24=1, q25=0, q26=1, q27=0, q28=0, q29=1, q30=0, q31=0.
+Outputs: q13=0, q18=1, q22=1, q24=1, q25=0, q26=1, q28=0, q7=1.
+Next states:
+q0: d=q30 -> 0
+q1: d=in0 -> 0
+q2: d=q13 -> 0
+q3: d=q3 -> 1
+q4: d=q18 -> 1
+q5: d=q31 -> 0
+q6: d=q8 -> 0
+q7: d=q5 -> 0
+q8: d=q28 -> 0
+q9: d=q11 -> 0
+q10: d=q19 -> 0
+q11: d=q15 -> 1
+q12: d=in1 -> 1
+q13: d=q29 -> 1
+q14: d=q6 -> 0
+q15: d=q2 -> 0
+q16: d=q25 -> 0
+q17: d=q21 -> 1
+q18: d=q23 -> 1
+q19: d=q20 -> 0
+q20: d=q26 -> 1
+q21: d=q10 -> 0
+q22: d=q0 -> 0
+q23: d=q12 -> 1
+q24: d=q16 -> 1
+q25: d=q22 -> 1
+q26: d=q9 -> 0
+q27: d=q7 -> 1
+q28: d=q17 -> 1
+q29: d=q1 -> 0
+q30: d=q24 -> 1
+q31: d=q4 -> 0
+
+New states:
+q0=0, q1=0, q2=0, q3=1, q4=1, q5=0, q6=0, q7=0, q8=0, q9=0, q10=0, q11=1, q12=1, q13=1, q14=0, q15=0, q16=0, q17=1, q18=1, q19=0, q20=1, q21=0, q22=0, q23=1, q24=1, q25=1, q26=0, q27=1, q28=1, q29=0, q30=1, q31=0.
+
+Cycle 31:
+Inputs: in0=1, in1=1.
+States: q0=0, q1=0, q2=0, q3=1, q4=1, q5=0, q6=0, q7=0, q8=0, q9=0, q10=0, q11=1, q12=1, q13=1, q14=0, q15=0, q16=0, q17=1, q18=1, q19=0, q20=1, q21=0, q22=0, q23=1, q24=1, q25=1, q26=0, q27=1, q28=1, q29=0, q30=1, q31=0.
+Outputs: q13=1, q18=1, q22=0, q24=1, q25=1, q26=0, q28=1, q7=0.
+Next states:
+q0: d=q30 -> 1
+q1: d=in0 -> 1
+q2: d=q13 -> 1
+q3: d=q3 -> 1
+q4: d=q18 -> 1
+q5: d=q31 -> 0
+q6: d=q8 -> 0
+q7: d=q5 -> 0
+q8: d=q28 -> 1
+q9: d=q11 -> 1
+q10: d=q19 -> 0
+q11: d=q15 -> 0
+q12: d=in1 -> 1
+q13: d=q29 -> 0
+q14: d=q6 -> 0
+q15: d=q2 -> 0
+q16: d=q25 -> 1
+q17: d=q21 -> 0
+q18: d=q23 -> 1
+q19: d=q20 -> 1
+q20: d=q26 -> 0
+q21: d=q10 -> 0
+q22: d=q0 -> 0
+q23: d=q12 -> 1
+q24: d=q16 -> 0
+q25: d=q22 -> 0
+q26: d=q9 -> 0
+q27: d=q7 -> 0
+q28: d=q17 -> 1
+q29: d=q1 -> 0
+q30: d=q24 -> 1
+q31: d=q4 -> 1
+
+New states:
+q0=1, q1=1, q2=1, q3=1, q4=1, q5=0, q6=0, q7=0, q8=1, q9=1, q10=0, q11=0, q12=1, q13=0, q14=0, q15=0, q16=1, q17=0, q18=1, q19=1, q20=0, q21=0, q22=0, q23=1, q24=0, q25=0, q26=0, q27=0, q28=1, q29=0, q30=1, q31=1.
+
+Cycle 32:
+Inputs: in0=1, in1=0.
+States: q0=1, q1=1, q2=1, q3=1, q4=1, q5=0, q6=0, q7=0, q8=1, q9=1, q10=0, q11=0, q12=1, q13=0, q14=0, q15=0, q16=1, q17=0, q18=1, q19=1, q20=0, q21=0, q22=0, q23=1, q24=0, q25=0, q26=0, q27=0, q28=1, q29=0, q30=1, q31=1.
+Outputs: q13=0, q18=1, q22=0, q24=0, q25=0, q26=0, q28=1, q7=0.
+Next states:
+q0: d=q30 -> 1
+q1: d=in0 -> 1
+q2: d=q13 -> 0
+q3: d=q3 -> 1
+q4: d=q18 -> 1
+q5: d=q31 -> 1
+q6: d=q8 -> 1
+q7: d=q5 -> 0
+q8: d=q28 -> 1
+q9: d=q11 -> 0
+q10: d=q19 -> 1
+q11: d=q15 -> 0
+q12: d=in1 -> 0
+q13: d=q29 -> 0
+q14: d=q6 -> 0
+q15: d=q2 -> 1
+q16: d=q25 -> 0
+q17: d=q21 -> 0
+q18: d=q23 -> 1
+q19: d=q20 -> 0
+q20: d=q26 -> 0
+q21: d=q10 -> 0
+q22: d=q0 -> 1
+q23: d=q12 -> 1
+q24: d=q16 -> 1
+q25: d=q22 -> 0
+q26: d=q9 -> 1
+q27: d=q7 -> 0
+q28: d=q17 -> 0
+q29: d=q1 -> 1
+q30: d=q24 -> 0
+q31: d=q4 -> 1
+
+New states:
+q0=1, q1=1, q2=0, q3=1, q4=1, q5=1, q6=1, q7=0, q8=1, q9=0, q10=1, q11=0, q12=0, q13=0, q14=0, q15=1, q16=0, q17=0, q18=1, q19=0, q20=0, q21=0, q22=1, q23=1, q24=1, q25=0, q26=1, q27=0, q28=0, q29=1, q30=0, q31=1.
+
+Cycle 33:
+Inputs: in0=1, in1=0.
+States: q0=1, q1=1, q2=0, q3=1, q4=1, q5=1, q6=1, q7=0, q8=1, q9=0, q10=1, q11=0, q12=0, q13=0, q14=0, q15=1, q16=0, q17=0, q18=1, q19=0, q20=0, q21=0, q22=1, q23=1, q24=1, q25=0, q26=1, q27=0, q28=0, q29=1, q30=0, q31=1.
+Outputs: q13=0, q18=1, q22=1, q24=1, q25=0, q26=1, q28=0, q7=0.
+Next states:
+q0: d=q30 -> 0
+q1: d=in0 -> 1
+q2: d=q13 -> 0
+q3: d=q3 -> 1
+q4: d=q18 -> 1
+q5: d=q31 -> 1
+q6: d=q8 -> 1
+q7: d=q5 -> 1
+q8: d=q28 -> 0
+q9: d=q11 -> 0
+q10: d=q19 -> 0
+q11: d=q15 -> 1
+q12: d=in1 -> 0
+q13: d=q29 -> 1
+q14: d=q6 -> 1
+q15: d=q2 -> 0
+q16: d=q25 -> 0
+q17: d=q21 -> 0
+q18: d=q23 -> 1
+q19: d=q20 -> 0
+q20: d=q26 -> 1
+q21: d=q10 -> 1
+q22: d=q0 -> 1
+q23: d=q12 -> 0
+q24: d=q16 -> 0
+q25: d=q22 -> 1
+q26: d=q9 -> 0
+q27: d=q7 -> 0
+q28: d=q17 -> 0
+q29: d=q1 -> 1
+q30: d=q24 -> 1
+q31: d=q4 -> 1
+
+New states:
+q0=0, q1=1, q2=0, q3=1, q4=1, q5=1, q6=1, q7=1, q8=0, q9=0, q10=0, q11=1, q12=0, q13=1, q14=1, q15=0, q16=0, q17=0, q18=1, q19=0, q20=1, q21=1, q22=1, q23=0, q24=0, q25=1, q26=0, q27=0, q28=0, q29=1, q30=1, q31=1.
+
+Cycle 34:
+Inputs: in0=1, in1=0.
+States: q0=0, q1=1, q2=0, q3=1, q4=1, q5=1, q6=1, q7=1, q8=0, q9=0, q10=0, q11=1, q12=0, q13=1, q14=1, q15=0, q16=0, q17=0, q18=1, q19=0, q20=1, q21=1, q22=1, q23=0, q24=0, q25=1, q26=0, q27=0, q28=0, q29=1, q30=1, q31=1.
+Outputs: q13=1, q18=1, q22=1, q24=0, q25=1, q26=0, q28=0, q7=1.
+Next states:
+q0: d=q30 -> 1
+q1: d=in0 -> 1
+q2: d=q13 -> 1
+q3: d=q3 -> 1
+q4: d=q18 -> 1
+q5: d=q31 -> 1
+q6: d=q8 -> 0
+q7: d=q5 -> 1
+q8: d=q28 -> 0
+q9: d=q11 -> 1
+q10: d=q19 -> 0
+q11: d=q15 -> 0
+q12: d=in1 -> 0
+q13: d=q29 -> 1
+q14: d=q6 -> 1
+q15: d=q2 -> 0
+q16: d=q25 -> 1
+q17: d=q21 -> 1
+q18: d=q23 -> 0
+q19: d=q20 -> 1
+q20: d=q26 -> 0
+q21: d=q10 -> 0
+q22: d=q0 -> 0
+q23: d=q12 -> 0
+q24: d=q16 -> 0
+q25: d=q22 -> 1
+q26: d=q9 -> 0
+q27: d=q7 -> 1
+q28: d=q17 -> 0
+q29: d=q1 -> 1
+q30: d=q24 -> 0
+q31: d=q4 -> 1
+
+New states:
+q0=1, q1=1, q2=1, q3=1, q4=1, q5=1, q6=0, q7=1, q8=0, q9=1, q10=0, q11=0, q12=0, q13=1, q14=1, q15=0, q16=1, q17=1, q18=0, q19=1, q20=0, q21=0, q22=0, q23=0, q24=0, q25=1, q26=0, q27=1, q28=0, q29=1, q30=0, q31=1.
+
+Cycle 35:
+Inputs: in0=1, in1=1.
+States: q0=1, q1=1, q2=1, q3=1, q4=1, q5=1, q6=0, q7=1, q8=0, q9=1, q10=0, q11=0, q12=0, q13=1, q14=1, q15=0, q16=1, q17=1, q18=0, q19=1, q20=0, q21=0, q22=0, q23=0, q24=0, q25=1, q26=0, q27=1, q28=0, q29=1, q30=0, q31=1.
+Outputs: q13=1, q18=0, q22=0, q24=0, q25=1, q26=0, q28=0, q7=1.
+Next states:
+q0: d=q30 -> 0
+q1: d=in0 -> 1
+q2: d=q13 -> 1
+q3: d=q3 -> 1
+q4: d=q18 -> 0
+q5: d=q31 -> 1
+q6: d=q8 -> 0
+q7: d=q5 -> 1
+q8: d=q28 -> 0
+q9: d=q11 -> 0
+q10: d=q19 -> 1
+q11: d=q15 -> 0
+q12: d=in1 -> 1
+q13: d=q29 -> 1
+q14: d=q6 -> 0
+q15: d=q2 -> 1
+q16: d=q25 -> 1
+q17: d=q21 -> 0
+q18: d=q23 -> 0
+q19: d=q20 -> 0
+q20: d=q26 -> 0
+q21: d=q10 -> 0
+q22: d=q0 -> 1
+q23: d=q12 -> 0
+q24: d=q16 -> 1
+q25: d=q22 -> 0
+q26: d=q9 -> 1
+q27: d=q7 -> 1
+q28: d=q17 -> 1
+q29: d=q1 -> 1
+q30: d=q24 -> 0
+q31: d=q4 -> 1
+
+New states:
+q0=0, q1=1, q2=1, q3=1, q4=0, q5=1, q6=0, q7=1, q8=0, q9=0, q10=1, q11=0, q12=1, q13=1, q14=0, q15=1, q16=1, q17=0, q18=0, q19=0, q20=0, q21=0, q22=1, q23=0, q24=1, q25=0, q26=1, q27=1, q28=1, q29=1, q30=0, q31=1.
+
+Cycle 36:
+Inputs: in0=0, in1=1.
+States: q0=0, q1=1, q2=1, q3=1, q4=0, q5=1, q6=0, q7=1, q8=0, q9=0, q10=1, q11=0, q12=1, q13=1, q14=0, q15=1, q16=1, q17=0, q18=0, q19=0, q20=0, q21=0, q22=1, q23=0, q24=1, q25=0, q26=1, q27=1, q28=1, q29=1, q30=0, q31=1.
+Outputs: q13=1, q18=0, q22=1, q24=1, q25=0, q26=1, q28=1, q7=1.
+Next states:
+q0: d=q30 -> 0
+q1: d=in0 -> 0
+q2: d=q13 -> 1
+q3: d=q3 -> 1
+q4: d=q18 -> 0
+q5: d=q31 -> 1
+q6: d=q8 -> 0
+q7: d=q5 -> 1
+q8: d=q28 -> 1
+q9: d=q11 -> 0
+q10: d=q19 -> 0
+q11: d=q15 -> 1
+q12: d=in1 -> 1
+q13: d=q29 -> 1
+q14: d=q6 -> 0
+q15: d=q2 -> 1
+q16: d=q25 -> 0
+q17: d=q21 -> 0
+q18: d=q23 -> 0
+q19: d=q20 -> 0
+q20: d=q26 -> 1
+q21: d=q10 -> 1
+q22: d=q0 -> 0
+q23: d=q12 -> 1
+q24: d=q16 -> 1
+q25: d=q22 -> 1
+q26: d=q9 -> 0
+q27: d=q7 -> 1
+q28: d=q17 -> 0
+q29: d=q1 -> 1
+q30: d=q24 -> 1
+q31: d=q4 -> 0
+
+New states:
+q0=0, q1=0, q2=1, q3=1, q4=0, q5=1, q6=0, q7=1, q8=1, q9=0, q10=0, q11=1, q12=1, q13=1, q14=0, q15=1, q16=0, q17=0, q18=0, q19=0, q20=1, q21=1, q22=0, q23=1, q24=1, q25=1, q26=0, q27=1, q28=0, q29=1, q30=1, q31=0.
+
+Cycle 37:
+Inputs: in0=0, in1=0.
+States: q0=0, q1=0, q2=1, q3=1, q4=0, q5=1, q6=0, q7=1, q8=1, q9=0, q10=0, q11=1, q12=1, q13=1, q14=0, q15=1, q16=0, q17=0, q18=0, q19=0, q20=1, q21=1, q22=0, q23=1, q24=1, q25=1, q26=0, q27=1, q28=0, q29=1, q30=1, q31=0.
+Outputs: q13=1, q18=0, q22=0, q24=1, q25=1, q26=0, q28=0, q7=1.
+Next states:
+q0: d=q30 -> 1
+q1: d=in0 -> 0
+q2: d=q13 -> 1
+q3: d=q3 -> 1
+q4: d=q18 -> 0
+q5: d=q31 -> 0
+q6: d=q8 -> 1
+q7: d=q5 -> 1
+q8: d=q28 -> 0
+q9: d=q11 -> 1
+q10: d=q19 -> 0
+q11: d=q15 -> 1
+q12: d=in1 -> 0
+q13: d=q29 -> 1
+q14: d=q6 -> 0
+q15: d=q2 -> 1
+q16: d=q25 -> 1
+q17: d=q21 -> 1
+q18: d=q23 -> 1
+q19: d=q20 -> 1
+q20: d=q26 -> 0
+q21: d=q10 -> 0
+q22: d=q0 -> 0
+q23: d=q12 -> 1
+q24: d=q16 -> 0
+q25: d=q22 -> 0
+q26: d=q9 -> 0
+q27: d=q7 -> 1
+q28: d=q17 -> 0
+q29: d=q1 -> 0
+q30: d=q24 -> 1
+q31: d=q4 -> 0
+
+New states:
+q0=1, q1=0, q2=1, q3=1, q4=0, q5=0, q6=1, q7=1, q8=0, q9=1, q10=0, q11=1, q12=0, q13=1, q14=0, q15=1, q16=1, q17=1, q18=1, q19=1, q20=0, q21=0, q22=0, q23=1, q24=0, q25=0, q26=0, q27=1, q28=0, q29=0, q30=1, q31=0.
+
+Cycle 38:
+Inputs: in0=1, in1=0.
+States: q0=1, q1=0, q2=1, q3=1, q4=0, q5=0, q6=1, q7=1, q8=0, q9=1, q10=0, q11=1, q12=0, q13=1, q14=0, q15=1, q16=1, q17=1, q18=1, q19=1, q20=0, q21=0, q22=0, q23=1, q24=0, q25=0, q26=0, q27=1, q28=0, q29=0, q30=1, q31=0.
+Outputs: q13=1, q18=1, q22=0, q24=0, q25=0, q26=0, q28=0, q7=1.
+Next states:
+q0: d=q30 -> 1
+q1: d=in0 -> 1
+q2: d=q13 -> 1
+q3: d=q3 -> 1
+q4: d=q18 -> 1
+q5: d=q31 -> 0
+q6: d=q8 -> 0
+q7: d=q5 -> 0
+q8: d=q28 -> 0
+q9: d=q11 -> 1
+q10: d=q19 -> 1
+q11: d=q15 -> 1
+q12: d=in1 -> 0
+q13: d=q29 -> 0
+q14: d=q6 -> 1
+q15: d=q2 -> 1
+q16: d=q25 -> 0
+q17: d=q21 -> 0
+q18: d=q23 -> 1
+q19: d=q20 -> 0
+q20: d=q26 -> 0
+q21: d=q10 -> 0
+q22: d=q0 -> 1
+q23: d=q12 -> 0
+q24: d=q16 -> 1
+q25: d=q22 -> 0
+q26: d=q9 -> 1
+q27: d=q7 -> 1
+q28: d=q17 -> 1
+q29: d=q1 -> 0
+q30: d=q24 -> 0
+q31: d=q4 -> 0
+
+New states:
+q0=1, q1=1, q2=1, q3=1, q4=1, q5=0, q6=0, q7=0, q8=0, q9=1, q10=1, q11=1, q12=0, q13=0, q14=1, q15=1, q16=0, q17=0, q18=1, q19=0, q20=0, q21=0, q22=1, q23=0, q24=1, q25=0, q26=1, q27=1, q28=1, q29=0, q30=0, q31=0.
+
+Cycle 39:
+Inputs: in0=0, in1=1.
+States: q0=1, q1=1, q2=1, q3=1, q4=1, q5=0, q6=0, q7=0, q8=0, q9=1, q10=1, q11=1, q12=0, q13=0, q14=1, q15=1, q16=0, q17=0, q18=1, q19=0, q20=0, q21=0, q22=1, q23=0, q24=1, q25=0, q26=1, q27=1, q28=1, q29=0, q30=0, q31=0.
+Outputs: q13=0, q18=1, q22=1, q24=1, q25=0, q26=1, q28=1, q7=0.
+
+(We don't need next states for cycle 39 because it's the last cycle; we just record outputs.)
+
+Now, compile the output traces for each output signal:
+
+q13: cycle outputs
+0: 1
+1: 1
+2: 1
+3: 0
+4: 0
+5: 1
+6: 1
+7: 0
+8: 0
+9: 0
+10: 1
+11: 1
+12: 0
+13: 1
+14: 1
+15: 0
+16: 0
+17: 0
+18: 0
+19: 0
+20: 1
+21: 1
+22: 0
+23: 0
+24: 0
+25: 1
+26: 0
+27: 0
+28: 1
+29: 0
+30: 0
+31: 1
+32: 0
+33: 0
+34: 1
+35: 1
+36: 1
+37: 1
+38: 1
+39: 0
+
+q13: [1,1,1,0,0,1,1,0,0,0,1,1,0,1,1,0,0,0,0,0,1,1,0,0,0,1,0,0,1,0,0,1,0,0,1,1,1,1,1,0]
+
+q18:
+0: 0
+1: 1
+2: 1
+3: 1
+4: 1
+5: 1
+6: 1
+7: 0
+8: 1
+9: 1
+10: 1
+11: 0
+12: 1
+13: 0
+14: 1
+15: 0
+16: 0
+17: 0
+18: 1
+19: 0
+20: 0
+21: 1
+22: 1
+23: 1
+24: 0
+25: 0
+26: 1
+27: 0
+28: 0
+29: 0
+30: 1
+31: 1
+32: 1
+33: 1
+34: 1
+35: 0
+36: 0
+37: 0
+38: 1
+39: 1
+
+q18: [0,1,1,1,1,1,1,0,1,1,1,0,1,0,1,0,0,0,1,0,0,1,1,1,0,0,1,0,0,0,1,1,1,1,1,0,0,0,1,1]
+
+q22:
+0: 1
+1: 0
+2: 0
+3: 1
+4: 1
+5: 0
+6: 1
+7: 0
+8: 0
+9: 1
+10: 1
+11: 0
+12: 1
+13: 0
+14: 0
+15: 1
+16: 1
+17: 0
+18: 1
+19: 0
+20: 0
+21: 1
+22: 1
+23: 0
+24: 1
+25: 0
+26: 0
+27: 1
+28: 1
+29: 0
+30: 1
+31: 0
+32: 0
+33: 1
+34: 1
+35: 0
+36: 1
+37: 0
+38: 0
+39: 1
+
+Wait, let's re-verify cycle 39 q22: state before cycle 39 had q22=1? Yes, q22 was 1 at end of cycle 38. So cycle 39 output q22=1. Listed as 1. Let's check cycle 38: q22 was 0? Cycle 38 output: q22=0. Cycle 37: q22=0. Cycle 36: q22=1. Cycle 35: q22=0. I need to double-check my recordings carefully. I'll re-scan the output list I made for each cycle.
+
+Cycle 0: q22=1
+1: 0
+2: 0
+3: 1
+4: 1
+5: 0
+6: 1
+7: 0
+8: 0
+9: 1
+10: 1
+11: 0
+12: 1
+13: 0
+14: 0
+15: 1
+16: 1
+17: 0
+18: 1
+19: 0
+20: 0
+21: 1
+22: 1
+23: 0
+24: 1
+25: 0
+26: 0
+27: 1
+28: 1
+29: 0
+30: 1
+31: 0
+32: 0
+33: 1
+34: 1
+35: 0
+36: 1
+37: 0
+38: 0
+39: 1
+
+So q22: [1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1] — interesting pattern?
+
+q24:
+0: 1
+1: 1
+2: 0
+3: 1
+4: 0
+5: 0
+6: 1
+7: 1
+8: 0
+9: 1
+10: 0
+11: 0
+12: 1
+13: 1
+14: 0
+15: 1
+16: 0
+17: 0
+18: 1
+19: 1
+20: 0
+21: 1
+22: 0
+23: 0
+24: 1
+25: 1
+26: 0
+27: 1
+28: 0
+29: 0
+30: 1
+31: 1
+32: 0
+33: 1
+34: 0
+35: 0
+36: 1
+37: 1
+38: 0
+39: 1
+
+Wait, cycle 2: q24=0? Yes, cycle 2 states had q24=0. Cycle 3: q24=1. Let's list exactly:
+0: 1
+1: 1
+2: 0
+3: 1
+4: 0
+5: 0
+6: 1
+7: 1
+8: 0
+9: 1
+10: 0
+11: 0
+12: 1
+13: 1
+14: 0
+15: 1
+16: 0
+17: 0
+18: 1
+19: 1
+20: 0
+21: 1
+22: 0
+23: 0
+24: 1
+25: 1
+26: 0
+27: 1
+28: 0
+29: 0
+30: 1
+31: 1
+32: 0
+33: 1
+34: 0
+35: 0
+36: 1
+37: 1
+38: 0
+39: 1
+
+Let's re-verify cycle 5: q24=0? Cycle 5 states before clock: q24=0. Yes.
+Cycle 6: q24=1.
+Cycle 7: q24=1.
+Cycle 8: q24=0.
+Cycle 9: q24=1.
+Cycle 10: q24=0.
+Cycle 11: q24=0.
+Cycle 12: q24=1.
+Cycle 13: q24=1.
+Cycle 14: q24=0.
+Cycle 15: q24=1.
+Cycle 16: q24=0.
+Cycle 17: q24=0.
+Cycle 18: q24=1.
+Cycle 19: q24=1.
+Cycle 20: q24=0.
+Cycle 21: q24=1.
+Cycle 22: q24=0.
+Cycle 23: q24=0.
+Cycle 24: q24=1.
+Cycle 25: q24=1.
+Cycle 26: q24=0.
+Cycle 27: q24=1.
+Cycle 28: q24=0.
+Cycle 29: q24=0.
+Cycle 30: q24=1.
+Cycle 31: q24=1.
+Cycle 32: q24=0.
+Cycle 33: q24=1.
+Cycle 34: q24=0.
+Cycle 35: q24=0.
+Cycle 36: q24=1.
+Cycle 37: q24=1.
+Cycle 38: q24=0.
+Cycle 39: q24=1.
+
+q24: [1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1]
+
+q25:
+0: 0
+1: 1
+2: 0
+3: 0
+4: 1
+5: 1
+6: 0
+7: 1
+8: 0
+9: 0
+10: 1
+11: 1
+12: 0
+13: 1
+14: 0
+15: 0
+16: 1
+17: 1
+18: 0
+19: 1
+20: 0
+21: 0
+22: 1
+23: 1
+24: 0
+25: 1
+26: 0
+27: 0
+28: 1
+29: 1
+30: 0
+31: 1
+32: 0
+33: 0
+34: 1
+35: 1
+36: 0
+37: 1
+38: 0
+39: 0
+
+Let's verify quickly:
+Cycle 0: q25=0
+1: 1
+2: 0
+3: 0
+4: 1
+5: 1
+6: 0
+7: 1
+8: 0
+9: 0
+10: 1
+11: 1
+12: 0
+13: 1
+14: 0
+15: 0
+16: 1
+17: 1
+18: 0
+19: 1
+20: 0
+21: 0
+22: 1
+23: 1
+24: 0
+25: 1
+26: 0
+27: 0
+28: 1
+29: 1
+30: 0
+31: 1
+32: 0
+33: 0
+34: 1
+35: 1
+36: 0
+37: 1
+38: 0
+39: 0
+
+q25: [0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0]
+
+q26:
+0: 1
+1: 0
+2: 1
+3: 1
+4: 1
+5: 1
+6: 1
+7: 1
+8: 0
+9: 0
+10: 1
+11: 1
+12: 0
+13: 0
+14: 0
+15: 1
+16: 1
+17: 0
+18: 1
+19: 1
+20: 0
+21: 0
+22: 0
+23: 0
+24: 0
+25: 1
+26: 1
+27: 0
+28: 0
+29: 0
+30: 1
+31: 0
+32: 0
+33: 1
+34: 0
+35: 0
+36: 1
+37: 0
+38: 0
+39: 1
+
+Let's check cycle-by-cycle from my notes:
+0: 1
+1: 0
+2: 1
+3: 1
+4: 1
+5: 1
+6: 1
+7: 1
+8: 0
+9: 0
+10: 1
+11: 1
+12: 0
+13: 0
+14: 0
+15: 1
+16: 1
+17: 0
+18: 1
+19: 1
+20: 0
+21: 0
+22: 0
+23: 0
+24: 0
+25: 1
+26: 1
+27: 0
+28: 0
+29: 0
+30: 1
+31: 0
+32: 0
+33: 1
+34: 0
+35: 0
+36: 1
+37: 0
+38: 0
+39: 1
+
+Wait, cycle 2: q26=1? In cycle 2 output: q26=1. Yes.
+Cycle 3: q26=1.
+Cycle 4: q26=1.
+Cycle 5: q26=1.
+Cycle 6: q26=1.
+Cycle 7: q26=1.
+Cycle 8: q26=0.
+Cycle 9: q26=0.
+Cycle 10: q26=1.
+Cycle 11: q26=1.
+Cycle 12: q26=0.
+Cycle 13: q26=0.
+Cycle 14: q26=0.
+Cycle 15: q26=1.
+Cycle 16: q26=1.
+Cycle 17: q26=0.
+Cycle 18: q26=1.
+Cycle 19: q26=1.
+Cycle 20: q26=0.
+Cycle 21: q26=0.
+Cycle 22: q26=0.
+Cycle 23: q26=0.
+Cycle 24: q26=0.
+Cycle 25: q26=1.
+Cycle 26: q26=1.
+Cycle 27: q26=0.
+Cycle 28: q26=0.
+Cycle 29: q26=0.
+Cycle 30: q26=1.
+Cycle 31: q26=0.
+Cycle 32: q26=0.
+Cycle 33: q26=1.
+Cycle 34: q26=0.
+Cycle 35: q26=0.
+Cycle 36: q26=1.
+Cycle 37: q26=0.
+Cycle 38: q26=0.
+Cycle 39: q26=1.
+
+q26: [1,0,1,1,1,1,1,1,0,0,1,1,0,0,0,1,1,0,1,1,0,0,0,0,0,1,1,0,0,0,1,0,0,1,0,0,1,0,0,1]
+
+q28:
+0: 0
+1: 0
+2: 0
+3: 1
+4: 1
+5: 0
+6: 1
+7: 0
+8: 1
+9: 1
+10: 1
+11: 1
+12: 1
+13: 1
+14: 0
+15: 0
+16: 1
+17: 1
+18: 0
+19: 0
+20: 0
+21: 1
+22: 1
+23: 0
+24: 1
+25: 1
+26: 0
+27: 0
+28: 0
+29: 0
+30: 0
+31: 1
+32: 1
+33: 0
+34: 0
+35: 0
+36: 1
+37: 0
+38: 0
+39: 1
+
+Let's verify from notes:
+Cycle 0: q28=0
+1: 0
+2: 0
+3: 1
+4: 1
+5: 0
+6: 1
+7: 0
+8: 1
+9: 1
+10: 1
+11: 1
+12: 1
+13: 1
+14: 0
+15: 0
+16: 1
+17: 1
+18: 0
+19: 0
+20: 0
+21: 1
+22: 1
+23: 0
+24: 1
+25: 1
+26: 0
+27: 0
+28: 0
+29: 0
+30: 0
+31: 1
+32: 1
+33: 0
+34: 0
+35: 0
+36: 1
+37: 0
+38: 0
+39: 1
+
+Check cycle 3: q28=1? Output: q28=1. Yes.
+Cycle 4: q28=1.
+Cycle 5: q28=0.
+Cycle 6: q28=1.
+Cycle 7: q28=0.
+Cycle 8: q28=1.
+Cycle 9: q28=1.
+Cycle 10: q28=1.
+Cycle 11: q28=1.
+Cycle 12: q28=1.
+Cycle 13: q28=1.
+Cycle 14: q28=0.
+Cycle 15: q28=0.
+Cycle 16: q28=1.
+Cycle 17: q28=1.
+Cycle 18: q28=0.
+Cycle 19: q28=0.
+Cycle 20: q28=0.
+Cycle 21: q28=1.
+Cycle 22: q28=1.
+Cycle 23: q28=0.
+Cycle 24: q28=1.
+Cycle 25: q28=1.
+Cycle 26: q28=0.
+Cycle 27: q28=0.
+Cycle 28: q28=0.
+Cycle 29: q28=0.
+Cycle 30: q28=0.
+Cycle 31: q28=1.
+Cycle 32: q28=1.
+Cycle 33: q28=0.
+Cycle 34: q28=0.
+Cycle 35: q28=0.
+Cycle 36: q28=1.
+Cycle 37: q28=0.
+Cycle 38: q28=0.
+Cycle 39: q28=1.
+
+q28: [0,0,0,1,1,0,1,0,1,1,1,1,1,1,0,0,1,1,0,0,0,1,1,0,1,1,0,0,0,0,0,1,1,0,0,0,1,0,0,1]
+
+q7:
+0: 1
+1: 1
+2: 0
+3: 0
+4: 0
+5: 1
+6: 1
+7: 1
+8: 1
+9: 1
+10: 1
+11: 0
+12: 1
+13: 1
+14: 1
+15: 0
+16: 1
+17: 0
+18: 1
+19: 0
+20: 0
+21: 0
+22: 1
+23: 0
+24: 0
+25: 1
+26: 1
+27: 1
+28: 0
+29: 0
+30: 1
+31: 0
+32: 0
+33: 0
+34: 1
+35: 1
+36: 1
+37: 1
+38: 1
+39: 0
+
+Let's verify:
+0: 1
+1: 1
+2: 0
+3: 0
+4: 0
+5: 1
+6: 1
+7: 1
+8: 1
+9: 1
+10: 1
+11: 0
+12: 1
+13: 1
+14: 1
+15: 0
+16: 1
+17: 0
+18: 1
+19: 0
+20: 0
+21: 0
+22: 1
+23: 0
+24: 0
+25: 1
+26: 1
+27: 1
+28: 0
+29: 0
+30: 1
+31: 0
+32: 0
+33: 0
+34: 1
+35: 1
+36: 1
+37: 1
+38: 1
+39: 0
+
+Check cycle 2: q7=0. Cycle 3: q7=0. Cycle 4: q7=0. Cycle 5: q7=1. Cycle 6: q7=1. Cycle 7: q7=1. Cycle 8: q7=1. Cycle 9: q7=1. Cycle 10: q7=1. Cycle 11: q7=0. Cycle 12: q7=1. Cycle 13: q7=1. Cycle 14: q7=1. Cycle 15: q7=0. Cycle 16: q7=1. Cycle 17: q7=0. Cycle 18: q7=1. Cycle 19: q7=0. Cycle 20: q7=0. Cycle 21: q7=0. Cycle 22: q7=1. Cycle 23: q7=0. Cycle 24: q7=0. Cycle 25: q7=1. Cycle 26: q7=1. Cycle 27: q7=1. Cycle 28: q7=0. Cycle 29: q7=0. Cycle 30: q7=1. Cycle 31: q7=0. Cycle 32: q7=0. Cycle 33: q7=0. Cycle 34: q7=1. Cycle 35: q7=1. Cycle 36: q7=1. Cycle 37: q7=1. Cycle 38: q7=1. Cycle 39: q7=0.
+
+q7: [1,1,0,0,0,1,1,1,1,1,1,0,1,1,1,0,1,0,1,0,0,0,1,0,0,1,1,1,0,0,1,0,0,0,1,1,1,1,1,0]
+
+Double-check some edge cases:
+- Cycle 10 output q7: I have 1. In cycle 10, state before clock: q7=1. Yes.
+- Cycle 11: q7=0. State before clock: q7=0? After cycle 10, new q7=0. So cycle 11 output q7=0. Yes.
+- Cycle 12: q7=1. After cycle 11, new q7=1. So cycle 12 output q7=1. Yes.
+- Cycle 15: q7=0? After cycle 14, new q7=0, so cycle 15 output q7=0. Yes.
+- Cycle 18: q7=1? After cycle 17, new q7=1, so cycle 18 output q7=1. Yes.
+- Cycle 19: q7=0? After cycle 18, new q7=0, so cycle 19 output q7=0. Yes.
+- Cycle 20: q7=0? After cycle 19, new q7=0? Wait, cycle 19 next states: q7 d=q5=0, so new q7=0. So cycle 20 output q7=0. Yes.
+- Cycle 21: q7=0? Cycle 20 next states: q7 d=q5=0? Cycle 20 states: q5=1? Let's check cycle 20 states: q5=1, q7=0. Output cycle 20 q7=0. Next states cycle 20: q7 d=q5=1? Wait, cycle 20: I have q5=1? States at start of cycle 20: q5=1. q7 d=q5, so new q7=1. So cycle 21 output q7=1? But my list for cycle 21 q7 is 0. Let's re-check carefully.
+
+Let's re-evaluate around cycles 19-21 because I might have copied wrong.
+
+Cycle 19 states (before clock):
+q0=0, q1=1, q2=0, q3=1, q4=1, q5=0, q6=1, q7=0, q8=0, q9=0, q10=1, q11=0, q12=1, q13=0, q14=1, q15=0, q16=0, q17=0, q18=0, q19=0, q20=1, q21=1, q22=0, q23=0, q24=1, q25=1, q26=1, q27=1, q28=0, q29=1, q30=1, q31=0.
+Outputs: q7=0. Correct.
+
+Next states for cycle 19 (after clock):
+q0: d=q30 -> 1
+q1: d=in0 -> 0 (cycle 19 in0=0)
+q2: d=q13 -> 0
+q3: d=q3 -> 1
+q4: d=q18 -> 0
+q5: d=q31 -> 0
+q6: d=q8 -> 0
+q7: d=q5 -> 0
+q8: d=q28 -> 0
+q9: d=q11 -> 0
+q10: d=q19 -> 0
+q11: d=q15 -> 0
+q12: d=in1 -> 1 (cycle 19 in1=1)
+q13: d=q29 -> 1
+q14: d=q6 -> 1
+q15: d=q2 -> 0
+q16: d=q25 -> 1
+q17: d=q21 -> 1
+q18: d=q23 -> 0
+q19: d=q20 -> 1
+q20: d=q26 -> 1
+q21: d=q10 -> 1
+q22: d=q0 -> 0
+q23: d=q12 -> 1
+q24: d=q16 -> 0
+q25: d=q22 -> 0
+q26: d=q9 -> 0
+q27: d=q7 -> 0
+q28: d=q17 -> 0
+q29: d=q1 -> 1
+q30: d=q24 -> 1
+q31: d=q4 -> 1
+
+So new q7 = 0. So cycle 20 state q7=0. Output cycle 20 q7=0. Correct.
+
+Cycle 20 states (before clock):
+q0=1, q1=0, q2=0, q3=1, q4=0, q5=0, q6=0, q7=0, q8=0, q9=0, q10=0, q11=0, q12=1, q13=1, q14=1, q15=0, q16=1, q17=1, q18=0, q19=1, q20=1, q21=1, q22=0, q23=1, q24=0, q25=0, q26=0, q27=0, q28=0, q29=1, q30=1, q31=1.
+Wait: q5=0 from previous next state? Yes, q5=0. q7=0.
+Outputs cycle 20: q7=0. Correct.
+
+Next states cycle 20:
+in0=0, in1=1.
+q0: d=q30 -> 1
+q1: d=in0 -> 0
+q2: d=q13 -> 1
+q3: d=q3 -> 1
+q4: d=q18 -> 0
+q5: d=q31 -> 1
+q6: d=q8 -> 0
+q7: d=q5 -> 0  (q5 is 0, so new q7=0? Wait, q5 is 0, so d=q5=0. So new q7=0.)
+q8: d=q28 -> 0
+q9: d=q11 -> 0
+q10: d=q19 -> 1
+q11: d=q15 -> 0
+q12: d=in1 -> 1
+q13: d=q29 -> 1
+q14: d=q6 -> 0
+q15: d=q2 -> 0
+q16: d=q25 -> 0
+q17: d=q21 -> 1
+q18: d=q23 -> 1
+q19: d=q20 -> 1
+q20: d=q26 -> 0
+q21: d=q10 -> 0
+q22: d=q0 -> 1
+q23: d=q12 -> 1
+q24: d=q16 -> 1
+q25: d=q22 -> 0
+q26: d=q9 -> 0
+q27: d=q7 -> 0
+q28: d=q17 -> 1
+q29: d=q1 -> 0
+q30: d=q24 -> 0
+q31: d=q4 -> 0
+
+So new q7 = 0. So cycle 21 state q7=0. Output cycle 21 q7=0. My list says 0. Correct.
+
+Cycle 21 states:
+q0=1, q1=0, q2=1, q3=1, q4=0, q5=1, q6=0, q7=0, q8=0, q9=0, q10=1, q11=0, q12=1, q13=1, q14=0, q15=0, q16=0, q17=1, q18=1, q19=1, q20=0, q21=0, q22=1, q23=1, q24=1, q25=0, q26=0, q27=0, q28=1, q29=0, q30=0, q31=0.
+Outputs: q7=0. Correct.
+
+Next states cycle 21 (in0=0, in1=0):
+q0: d=q30 -> 0
+q1: d=in0 -> 0
+q2: d=q13 -> 1
+q3: d=q3 -> 1
+q4: d=q18 -> 1
+q5: d=q31 -> 0
+q6: d=q8 -> 0
+q7: d=q5 -> 1 (q5 is 1, so new q7=1)
+q8: d=q28 -> 1
+q9: d=q11 -> 0
+q10: d=q19 -> 1
+q11: d=q15 -> 0
+q12: d=in1 -> 0
+q13: d=q29 -> 0
+q14: d=q6 -> 0
+q15: d=q2 -> 1
+q16: d=q25 -> 0
+q17: d=q21 -> 0
+q18: d=q23 -> 1
+q19: d=q20 -> 0
+q20: d=q26 -> 0
+q21: d=q10 -> 1
+q22: d=q0 -> 1
+q23: d=q12 -> 1
+q24: d=q16 -> 0
+q25: d=q22 -> 1
+q26: d=q9 -> 0
+q27: d=q7 -> 0
+q28: d=q17 -> 1
+q29: d=q1 -> 0
+q30: d=q24 -> 1
+q31: d=q4 -> 0
+
+New q7 = 1. So cycle 22 state q7=1. Output cycle 22 q7=1. My list says 1. Correct.
+
+Cycle 22 outputs: q7=1. Good.
+
+So my list for q7 is correct.
+
+Now I should assemble all output traces into the required JSON format.
+
+Outputs: q13, q18, q22, q24, q25, q26, q28, q7.
+
+Traces:
+q13: [1,1,1,0,0,1,1,0,0,0,1,1,0,1,1,0,0,0,0,0,1,1,0,0,0,1,0,0,1,0,0,1,0,0,1,1,1,1,1,0]
+q18: [0,1,1,1,1,1,1,0,1,1,1,0,1,0,1,0,0,0,1,0,0,1,1,1,0,0,1,0,0,0,1,1,1,1,1,0,0,0,1,1]
+q22: [1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1]
+q24: [1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1]
+q25: [0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0]
+q26: [1,0,1,1,1,1,1,1,0,0,1,1,0,0,0,1,1,0,1,1,0,0,0,0,0,1,1,0,0,0,1,0,0,1,0,0,1,0,0,1]
+q28: [0,0,0,1,1,0,1,0,1,1,1,1,1,1,0,0,1,1,0,0,0,1,1,0,1,1,0,0,0,0,0,1,1,0,0,0,1,0,0,1]
+q7: [1,1,0,0,0,1,1,1,1,1,1,0,1,1,1,0,1,0,1,0,0,0,1,0,0,1,1,1,0,0,1,0,0,0,1,1,1,1,1,0]
+
+Make sure length is 40 for each.
+
+Count q13: 1,1,1,0,0,1,1,0,0,0,1,1,0,1,1,0,0,0,0,0,1,1,0,0,0,1,0,0,1,0,0,1,0,0,1,1,1,1,1,0 -> 40.
+q18: 0,1,1,1,1,1,1,0,1,1,1,0,1,0,1,0,0,0,1,0,0,1,1,1,0,0,1,0,0,0,1,1,1,1,1,0,0,0,1,1 -> 40.
+q22: 1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1 -> 40.
+q24: 1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1 -> 40.
+q25: 0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0 -> 40.
+q26: 1,0,1,1,1,1,1,1,0,0,1,1,0,0,0,1,1,0,1,1,0,0,0,0,0,1,1,0,0,0,1,0,0,1,0,0,1,0,0,1 -> 40.
+q28: 0,0,0,1,1,0,1,0,1,1,1,1,1,1,0,0,1,1,0,0,0,1,1,0,1,1,0,0,0,0,0,1,1,0,0,0,1,0,0,1 -> 40.
+q7: 1,1,0,0,0,1,1,1,1,1,1,0,1,1,1,0,1,0,1,0,0,0,1,0,0,1,1,1,0,0,1,0,0,0,1,1,1,1,1,0 -> 40.
+
+All good.
+
+Now I'll output the JSON block.
+
+=== response ===
+```json
+{
+  "q13": [1,1,1,0,0,1,1,0,0,0,1,1,0,1,1,0,0,0,0,0,1,1,0,0,0,1,0,0,1,0,0,1,0,0,1,1,1,1,1,0],
+  "q18": [0,1,1,1,1,1,1,0,1,1,1,0,1,0,1,0,0,0,1,0,0,1,1,1,0,0,1,0,0,0,1,1,1,1,1,0,0,0,1,1],
+  "q22": [1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1],
+  "q24": [1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1],
+  "q25": [0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1,0,0],
+  "q26": [1,0,1,1,1,1,1,1,0,0,1,1,0,0,0,1,1,0,1,1,0,0,0,0,0,1,1,0,0,0,1,0,0,1,0,0,1,0,0,1],
+  "q28": [0,0,0,1,1,0,1,0,1,1,1,1,1,1,0,0,1,1,0,0,0,1,1,0,1,1,0,0,0,0,0,1,1,0,0,0,1,0,0,1],
+  "q7":  [1,1,0,0,0,1,1,1,1,1,1,0,1,1,1,0,1,0,1,0,0,0,1,0,0,1,1,1,0,0,1,0,0,0,1,1,1,1,1,0]
+}
+```

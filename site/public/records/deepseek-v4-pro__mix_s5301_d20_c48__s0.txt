@@ -1,0 +1,6606 @@
+model: deepseek/deepseek-v4-pro
+circuit: mix_s5301_d20_c48
+score: {'status': 'ok', 'prefix_cycles': 10, 'pointwise': 0.6319444444444444, 'exact': False}
+
+=== reasoning ===
+We need to simulate a netlist with 20 DFFs (q0 through q19), 2 inputs (in0, in1), and 20 gates? Wait, there are gates c0 to c19, each is a chain of 5 NANDs? Actually each "cN" has 5 NAND gates: cN_0, cN_1, cN_2, cN_3, cN_4. So 20 * 5 = 100 gates total. The gates are combinational; outputs of some gates feed into DFFs. Inputs in0, in1 have traces given for 48 cycles. We need to compute the values of outputs: q12, q15, q17, q4, q5, q6 (which are DFF outputs, so they are just the state of those DFFs after each clock edge? Wait: "the value of every net in outputs is recorded. this is the observed trace for cycle t." Then "clock edge: every dff simultaneously loads the settled value of its d net." So outputs are recorded *before* the clock edge in each cycle. That means for cycle t, output is the current state q of the DFF (which at t=0 is the init value). Then after recording, the DFF updates to the new d value, which will be the state for cycle t+1. So yes, output trace for a q output is just its state during that cycle.
+
+We need to simulate 48 cycles. I don't have code execution, must do it manually? 48 cycles is a lot to do manually. But maybe there's a pattern or we can reason about the logic? The netlist is a complex state machine with 20 DFFs. Doing 48 cycles by hand is practically impossible without computer assistance. But maybe I can try to simulate step by step? I can't run code, but I can simulate logically. Wait, the prompt says: "You cannot run code; do it by reasoning." That implies that I must simulate it manually, perhaps there's a trick or it's a known circuit that produces a predictable output? Alternatively, I am an AI and can simulate it in my head? That's unrealistic for 48 cycles with 20 flip-flops and 100 gates. Maybe I can write a quick mental simulation? I could try to build a table step by step. However, 48 cycles * 20 DFFs * 5 gate levels per chain is many evaluations. I could try to deduce the state machine behavior? The names are like "mix_s5301_d20_c48". That might be a randomly generated benchmark? Possibly the circuit is from a benchmark suite. But I can't run code. Perhaps I can just try my best to simulate a few cycles? But I need to output exactly the 48 cycles. As an AI, I don't have the ability to execute Python code, but I can simulate it step by step logically using reasoning? My reasoning capability is not infinite; I can't keep 20 bits in memory across 48 cycles without making errors. Maybe there is a simpler way: the NAND gates and DFFs form a specific function. Perhaps I can derive the Boolean logic for each next-state function? The gates are 5 NANDs per chain. Each chain: cN_0 = NAND(a0, b0), then cN_1 = NAND(cN_0, b1) = NOT (cN_0 & b1) = NOT ( NOT(a0&b0) & b1 ) = (a0&b0) OR NOT b1? Wait, NAND is 1 - (a&b). So NAND(a,b) = NOT (a AND b). So a chain of NANDs can compute functions.
+
+Let's analyze a chain of 5 NANDs. The circuit has 20 identical chains, each 5 NANDs deep. Inputs to each chain are two DFF/in/net signals, then each subsequent NAND takes the output of previous and another DFF/in/net signal.
+
+Chain N:
+cN_0 = NAND(a, b) where a and b are nets.
+cN_1 = NAND(cN_0, c)
+cN_2 = NAND(cN_1, d)
+cN_3 = NAND(cN_2, e)
+cN_4 = NAND(cN_3, f) -> this goes to DFF qN? Wait, DFF list maps d: cN_4 to qN for N=0..19. So each chain's final output drives DFF qN.
+
+Because we have 20 DFFs, and each chain uses various DFF outputs and inputs. This is a state machine where next state of qN = cN_4 = f( current state, inputs ).
+
+I need to compute the next state for each of the 20 DFFs, 48 cycles. Doing it manually is tedious but maybe I can find a way to automate it mentally? I could simulate cycle by cycle, writing down the state bits. But there are 48 cycles, so I'd need to do 48 * 20 = 960 next-state computations. That's too many to do by hand without errors.
+
+Alternatively, perhaps I am allowed to simulate using reasoning? As a language model, I can't actually execute code, but I can perform a step-by-step simulation by reasoning through the logic methodically. But given the context length and my own limitations, it's risky. However, the prompt is from a benchmark that tests LLM's ability to simulate hardware. The expectation might be that the LLM actually simulates it. Some LLMs have been trained to simulate circuits. I can attempt to write a mental simulation table. I'll try to do it systematically.
+
+Let's list all DFFs and their init:
+q0: 0
+q1: 0
+q2: 0
+q3: 1
+q4: 1
+q5: 1
+q6: 1
+q7: 1
+q8: 1
+q9: 0
+q10: 0
+q11: 1
+q12: 1
+q13: 1
+q14: 0
+q15: 1
+q16: 1
+q17: 1
+q18: 0
+q19: 0
+
+Input traces:
+in0: [0,1,0,1,0,0,1,0,0,1,0,1,1,1,1,0,0,0,1,1,0,1,1,1,0,0,1,1,0,0,1,1,1,1,0,0,0,1,1,0,0,0,1,1,1,1,1,1]
+in1: [0,0,1,1,1,0,0,1,0,1,0,0,0,1,1,0,1,0,0,1,1,0,0,0,1,1,1,1,0,0,0,0,0,0,1,1,1,0,1,1,1,1,1,0,0,0,0,0]
+
+Gates: we have 20 sets of 5 gates.
+I'll label each chain's inputs:
+c0: a=q15, b=in1 -> c0_0; then c0_1: a=c0_0, b=q2; c0_2: a=c0_1, b=q15; c0_3: a=c0_2, b=q13; c0_4: a=c0_3, b=q13. Output -> q0.
+c1: a=q1, b=in0 -> c1_0; then c1_1: a=c1_0, b=q12; c1_2: a=c1_1, b=q4; c1_3: a=c1_2, b=q19; c1_4: a=c1_3, b=q5 -> q1.
+c2: a=q10, b=q5 -> c2_0; c2_1: a=c2_0, b=q2; c2_2: a=c2_1, b=q4; c2_3: a=c2_2, b=q18; c2_4: a=c2_3, b=q16 -> q2.
+c3: a=q5, b=q4 -> c3_0; c3_1: a=c3_0, b=q7; c3_2: a=c3_1, b=q0; c3_3: a=c3_2, b=in0; c3_4: a=c3_3, b=q7 -> q3.
+c4: a=q19, b=q8 -> c4_0; c4_1: a=c4_0, b=q16; c4_2: a=c4_1, b=q13; c4_3: a=c4_2, b=q0; c4_4: a=c4_3, b=q4 -> q4.
+c5: a=q9, b=q2 -> c5_0; c5_1: a=c5_0, b=q17; c5_2: a=c5_1, b=q14; c5_3: a=c5_2, b=q13; c5_4: a=c5_3, b=q8 -> q5.
+c6: a=q15, b=q2 -> c6_0; c6_1: a=c6_0, b=q1; c6_2: a=c6_1, b=q7; c6_3: a=c6_2, b=in1; c6_4: a=c6_3, b=q10 -> q6.
+c7: a=q6, b=q7 -> c7_0; c7_1: a=c7_0, b=q4; c7_2: a=c7_1, b=q10; c7_3: a=c7_2, b=q19; c7_4: a=c7_3, b=q15 -> q7.
+c8: a=q9, b=q1 -> c8_0; c8_1: a=c8_0, b=q19; c8_2: a=c8_1, b=q19; c8_3: a=c8_2, b=q18; c8_4: a=c8_3, b=q17 -> q8.
+c9: a=q16, b=q19 -> c9_0; c9_1: a=c9_0, b=q3; c9_2: a=c9_1, b=q5; c9_3: a=c9_2, b=q16; c9_4: a=c9_3, b=q12 -> q9.
+c10: a=q11, b=q19 -> c10_0; c10_1: a=c10_0, b=q13; c10_2: a=c10_1, b=in1; c10_3: a=c10_2, b=q14; c10_4: a=c10_3, b=q10 -> q10.
+c11: a=q2, b=in0 -> c11_0; c11_1: a=c11_0, b=q5; c11_2: a=c11_1, b=q1; c11_3: a=c11_2, b=q0; c11_4: a=c11_3, b=in0 -> q11.
+c12: a=q10, b=q8 -> c12_0; c12_1: a=c12_0, b=q13; c12_2: a=c12_1, b=q15; c12_3: a=c12_2, b=q5; c12_4: a=c12_3, b=q7 -> q12.
+c13: a=q17, b=q7 -> c13_0; c13_1: a=c13_0, b=q8; c13_2: a=c13_1, b=q19; c13_3: a=c13_2, b=q12; c13_4: a=c13_3, b=in0 -> q13.
+c14: a=q12, b=q12 -> c14_0 (this is NAND(q12,q12) = NOT q12); c14_1: a=c14_0, b=q19; c14_2: a=c14_1, b=in0; c14_3: a=c14_2, b=q1; c14_4: a=c14_3, b=q16 -> q14.
+c15: a=q1, b=q7 -> c15_0; c15_1: a=c15_0, b=in1; c15_2: a=c15_1, b=q15; c15_3: a=c15_2, b=q5; c15_4: a=c15_3, b=in1 -> q15.
+c16: a=q5, b=q6 -> c16_0; c16_1: a=c16_0, b=q11; c16_2: a=c16_1, b=q4; c16_3: a=c16_2, b=q9; c16_4: a=c16_3, b=q14 -> q16.
+c17: a=q1, b=q10 -> c17_0; c17_1: a=c17_0, b=q19; c17_2: a=c17_1, b=q14; c17_3: a=c17_2, b=q0; c17_4: a=c17_3, b=q15 -> q17.
+c18: a=q11, b=q4 -> c18_0; c18_1: a=c18_0, b=q3; c18_2: a=c18_1, b=q1; c18_3: a=c18_2, b=q0; c18_4: a=c18_3, b=q15 -> q18.
+c19: a=in0, b=q1 -> c19_0; c19_1: a=c19_0, b=q2; c19_2: a=c19_1, b=q7; c19_3: a=c19_2, b=q4; c19_4: a=c19_3, b=q18 -> q19.
+
+This is a Boolean network. Since NAND is universal, each chain computes some function. But evaluating manually is insane. I'll try to simulate systematically. But maybe I can use a trick: I can simulate it mentally by maintaining a spreadsheet? I can't run code, but I can do manual computation. With great care, maybe I can get through 48 cycles. I'll start with cycle 0.
+
+First, I'll write down state bits: q0..q19. I'll use a vector of 20 bits.
+Initial state at start of cycle 0 (before clock):
+[ q0:0, q1:0, q2:0, q3:1, q4:1, q5:1, q6:1, q7:1, q8:1, q9:0, q10:0, q11:1, q12:1, q13:1, q14:0, q15:1, q16:1, q17:1, q18:0, q19:0 ]
+
+Inputs for cycle 0: in0=0, in1=0.
+
+Now compute each gate chain.
+Let's define a function for NAND: NAND(a,b) = NOT (a AND b) = (a && b) ? 0 : 1.
+I'll compute step by step for each chain.
+
+Chain 0:
+a=q15=1, b=in1=0 -> c0_0 = NAND(1,0)=1.
+c0_1: a=c0_0=1, b=q2=0 -> NAND(1,0)=1.
+c0_2: a=c0_1=1, b=q15=1 -> NAND(1,1)=0.
+c0_3: a=c0_2=0, b=q13=1 -> NAND(0,1)=1.
+c0_4: a=c0_3=1, b=q13=1 -> NAND(1,1)=0.
+Next q0 = 0.
+
+Chain 1:
+a=q1=0, b=in0=0 -> c1_0 = NAND(0,0)=1.
+c1_1: a=1, b=q12=1 -> NAND(1,1)=0.
+c1_2: a=0, b=q4=1 -> NAND(0,1)=1.
+c1_3: a=1, b=q19=0 -> NAND(1,0)=1.
+c1_4: a=1, b=q5=1 -> NAND(1,1)=0.
+Next q1 = 0.
+
+Chain 2:
+a=q10=0, b=q5=1 -> c2_0 = NAND(0,1)=1.
+c2_1: a=1, b=q2=0 -> NAND(1,0)=1.
+c2_2: a=1, b=q4=1 -> NAND(1,1)=0.
+c2_3: a=0, b=q18=0 -> NAND(0,0)=1.
+c2_4: a=1, b=q16=1 -> NAND(1,1)=0.
+Next q2 = 0.
+
+Chain 3:
+a=q5=1, b=q4=1 -> c3_0 = NAND(1,1)=0.
+c3_1: a=0, b=q7=1 -> NAND(0,1)=1.
+c3_2: a=1, b=q0=0 -> NAND(1,0)=1.
+c3_3: a=1, b=in0=0 -> NAND(1,0)=1.
+c3_4: a=1, b=q7=1 -> NAND(1,1)=0.
+Next q3 = 0.
+
+Chain 4:
+a=q19=0, b=q8=1 -> c4_0 = NAND(0,1)=1.
+c4_1: a=1, b=q16=1 -> NAND(1,1)=0.
+c4_2: a=0, b=q13=1 -> NAND(0,1)=1.
+c4_3: a=1, b=q0=0 -> NAND(1,0)=1.
+c4_4: a=1, b=q4=1 -> NAND(1,1)=0.
+Next q4 = 0.
+
+Chain 5:
+a=q9=0, b=q2=0 -> c5_0 = NAND(0,0)=1.
+c5_1: a=1, b=q17=1 -> NAND(1,1)=0.
+c5_2: a=0, b=q14=0 -> NAND(0,0)=1.
+c5_3: a=1, b=q13=1 -> NAND(1,1)=0.
+c5_4: a=0, b=q8=1 -> NAND(0,1)=1.
+Next q5 = 1.
+
+Chain 6:
+a=q15=1, b=q2=0 -> c6_0 = NAND(1,0)=1.
+c6_1: a=1, b=q1=0 -> NAND(1,0)=1.
+c6_2: a=1, b=q7=1 -> NAND(1,1)=0.
+c6_3: a=0, b=in1=0 -> NAND(0,0)=1.
+c6_4: a=1, b=q10=0 -> NAND(1,0)=1.
+Next q6 = 1.
+
+Chain 7:
+a=q6=1, b=q7=1 -> c7_0 = NAND(1,1)=0.
+c7_1: a=0, b=q4=1 -> NAND(0,1)=1.
+c7_2: a=1, b=q10=0 -> NAND(1,0)=1.
+c7_3: a=1, b=q19=0 -> NAND(1,0)=1.
+c7_4: a=1, b=q15=1 -> NAND(1,1)=0.
+Next q7 = 0.
+
+Chain 8:
+a=q9=0, b=q1=0 -> c8_0 = NAND(0,0)=1.
+c8_1: a=1, b=q19=0 -> NAND(1,0)=1.
+c8_2: a=1, b=q19=0 -> NAND(1,0)=1.
+c8_3: a=1, b=q18=0 -> NAND(1,0)=1.
+c8_4: a=1, b=q17=1 -> NAND(1,1)=0.
+Next q8 = 0.
+
+Chain 9:
+a=q16=1, b=q19=0 -> c9_0 = NAND(1,0)=1.
+c9_1: a=1, b=q3=1 -> NAND(1,1)=0.
+c9_2: a=0, b=q5=1 -> NAND(0,1)=1.
+c9_3: a=1, b=q16=1 -> NAND(1,1)=0.
+c9_4: a=0, b=q12=1 -> NAND(0,1)=1.
+Next q9 = 1.
+
+Chain 10:
+a=q11=1, b=q19=0 -> c10_0 = NAND(1,0)=1.
+c10_1: a=1, b=q13=1 -> NAND(1,1)=0.
+c10_2: a=0, b=in1=0 -> NAND(0,0)=1.
+c10_3: a=1, b=q14=0 -> NAND(1,0)=1.
+c10_4: a=1, b=q10=0 -> NAND(1,0)=1.
+Next q10 = 1.
+
+Chain 11:
+a=q2=0, b=in0=0 -> c11_0 = NAND(0,0)=1.
+c11_1: a=1, b=q5=1 -> NAND(1,1)=0.
+c11_2: a=0, b=q1=0 -> NAND(0,0)=1.
+c11_3: a=1, b=q0=0 -> NAND(1,0)=1.
+c11_4: a=1, b=in0=0 -> NAND(1,0)=1.
+Next q11 = 1.
+
+Chain 12:
+a=q10=0, b=q8=1 -> c12_0 = NAND(0,1)=1.
+c12_1: a=1, b=q13=1 -> NAND(1,1)=0.
+c12_2: a=0, b=q15=1 -> NAND(0,1)=1.
+c12_3: a=1, b=q5=1 -> NAND(1,1)=0.
+c12_4: a=0, b=q7=1 -> NAND(0,1)=1.
+Next q12 = 1.
+
+Chain 13:
+a=q17=1, b=q7=1 -> c13_0 = NAND(1,1)=0.
+c13_1: a=0, b=q8=1 -> NAND(0,1)=1.
+c13_2: a=1, b=q19=0 -> NAND(1,0)=1.
+c13_3: a=1, b=q12=1 -> NAND(1,1)=0.
+c13_4: a=0, b=in0=0 -> NAND(0,0)=1.
+Next q13 = 1.
+
+Chain 14:
+a=q12=1, b=q12=1 -> c14_0 = NAND(1,1)=0.
+c14_1: a=0, b=q19=0 -> NAND(0,0)=1.
+c14_2: a=1, b=in0=0 -> NAND(1,0)=1.
+c14_3: a=1, b=q1=0 -> NAND(1,0)=1.
+c14_4: a=1, b=q16=1 -> NAND(1,1)=0.
+Next q14 = 0.
+
+Chain 15:
+a=q1=0, b=q7=1 -> c15_0 = NAND(0,1)=1.
+c15_1: a=1, b=in1=0 -> NAND(1,0)=1.
+c15_2: a=1, b=q15=1 -> NAND(1,1)=0.
+c15_3: a=0, b=q5=1 -> NAND(0,1)=1.
+c15_4: a=1, b=in1=0 -> NAND(1,0)=1.
+Next q15 = 1.
+
+Chain 16:
+a=q5=1, b=q6=1 -> c16_0 = NAND(1,1)=0.
+c16_1: a=0, b=q11=1 -> NAND(0,1)=1.
+c16_2: a=1, b=q4=1 -> NAND(1,1)=0.
+c16_3: a=0, b=q9=0 -> NAND(0,0)=1.
+c16_4: a=1, b=q14=0 -> NAND(1,0)=1.
+Next q16 = 1.
+
+Chain 17:
+a=q1=0, b=q10=0 -> c17_0 = NAND(0,0)=1.
+c17_1: a=1, b=q19=0 -> NAND(1,0)=1.
+c17_2: a=1, b=q14=0 -> NAND(1,0)=1.
+c17_3: a=1, b=q0=0 -> NAND(1,0)=1.
+c17_4: a=1, b=q15=1 -> NAND(1,1)=0.
+Next q17 = 0.
+
+Chain 18:
+a=q11=1, b=q4=1 -> c18_0 = NAND(1,1)=0.
+c18_1: a=0, b=q3=1 -> NAND(0,1)=1.
+c18_2: a=1, b=q1=0 -> NAND(1,0)=1.
+c18_3: a=1, b=q0=0 -> NAND(1,0)=1.
+c18_4: a=1, b=q15=1 -> NAND(1,1)=0.
+Next q18 = 0.
+
+Chain 19:
+a=in0=0, b=q1=0 -> c19_0 = NAND(0,0)=1.
+c19_1: a=1, b=q2=0 -> NAND(1,0)=1.
+c19_2: a=1, b=q7=1 -> NAND(1,1)=0.
+c19_3: a=0, b=q4=1 -> NAND(0,1)=1.
+c19_4: a=1, b=q18=0 -> NAND(1,0)=1.
+Next q19 = 1.
+
+So after cycle 0, the next state (which will be loaded at the clock edge) is:
+q0:0, q1:0, q2:0, q3:0, q4:0, q5:1, q6:1, q7:0, q8:0, q9:1, q10:1, q11:1, q12:1, q13:1, q14:0, q15:1, q16:1, q17:0, q18:0, q19:1.
+
+But outputs recorded for cycle 0 are the initial state: q12=1, q15=1, q17=1, q4=1, q5=1, q6=1.
+
+Now cycle 1. State at start: the next state we just computed.
+Inputs: in0=1, in1=0.
+State:
+q0:0
+q1:0
+q2:0
+q3:0
+q4:0
+q5:1
+q6:1
+q7:0
+q8:0
+q9:1
+q10:1
+q11:1
+q12:1
+q13:1
+q14:0
+q15:1
+q16:1
+q17:0
+q18:0
+q19:1
+
+Compute chains.
+
+c0:
+a=q15=1, b=in1=0 -> c0_0 = NAND(1,0)=1
+c0_1: a=1, b=q2=0 -> NAND(1,0)=1
+c0_2: a=1, b=q15=1 -> NAND(1,1)=0
+c0_3: a=0, b=q13=1 -> NAND(0,1)=1
+c0_4: a=1, b=q13=1 -> NAND(1,1)=0 -> q0_next=0
+
+c1:
+a=q1=0, b=in0=1 -> c1_0 = NAND(0,1)=1
+c1_1: a=1, b=q12=1 -> NAND(1,1)=0
+c1_2: a=0, b=q4=0 -> NAND(0,0)=1
+c1_3: a=1, b=q19=1 -> NAND(1,1)=0
+c1_4: a=0, b=q5=1 -> NAND(0,1)=1 -> q1_next=1
+
+c2:
+a=q10=1, b=q5=1 -> c2_0 = NAND(1,1)=0
+c2_1: a=0, b=q2=0 -> NAND(0,0)=1
+c2_2: a=1, b=q4=0 -> NAND(1,0)=1
+c2_3: a=1, b=q18=0 -> NAND(1,0)=1
+c2_4: a=1, b=q16=1 -> NAND(1,1)=0 -> q2_next=0
+
+c3:
+a=q5=1, b=q4=0 -> c3_0 = NAND(1,0)=1
+c3_1: a=1, b=q7=0 -> NAND(1,0)=1
+c3_2: a=1, b=q0=0 -> NAND(1,0)=1
+c3_3: a=1, b=in0=1 -> NAND(1,1)=0
+c3_4: a=0, b=q7=0 -> NAND(0,0)=1 -> q3_next=1
+
+c4:
+a=q19=1, b=q8=0 -> c4_0 = NAND(1,0)=1
+c4_1: a=1, b=q16=1 -> NAND(1,1)=0
+c4_2: a=0, b=q13=1 -> NAND(0,1)=1
+c4_3: a=1, b=q0=0 -> NAND(1,0)=1
+c4_4: a=1, b=q4=0 -> NAND(1,0)=1 -> q4_next=1
+
+c5:
+a=q9=1, b=q2=0 -> c5_0 = NAND(1,0)=1
+c5_1: a=1, b=q17=0 -> NAND(1,0)=1
+c5_2: a=1, b=q14=0 -> NAND(1,0)=1
+c5_3: a=1, b=q13=1 -> NAND(1,1)=0
+c5_4: a=0, b=q8=0 -> NAND(0,0)=1 -> q5_next=1
+
+c6:
+a=q15=1, b=q2=0 -> c6_0 = NAND(1,0)=1
+c6_1: a=1, b=q1=0 -> NAND(1,0)=1
+c6_2: a=1, b=q7=0 -> NAND(1,0)=1
+c6_3: a=1, b=in1=0 -> NAND(1,0)=1
+c6_4: a=1, b=q10=1 -> NAND(1,1)=0 -> q6_next=0
+
+c7:
+a=q6=1, b=q7=0 -> c7_0 = NAND(1,0)=1
+c7_1: a=1, b=q4=0 -> NAND(1,0)=1
+c7_2: a=1, b=q10=1 -> NAND(1,1)=0
+c7_3: a=0, b=q19=1 -> NAND(0,1)=1
+c7_4: a=1, b=q15=1 -> NAND(1,1)=0 -> q7_next=0
+
+c8:
+a=q9=1, b=q1=0 -> c8_0 = NAND(1,0)=1
+c8_1: a=1, b=q19=1 -> NAND(1,1)=0
+c8_2: a=0, b=q19=1 -> NAND(0,1)=1
+c8_3: a=1, b=q18=0 -> NAND(1,0)=1
+c8_4: a=1, b=q17=0 -> NAND(1,0)=1 -> q8_next=1
+
+c9:
+a=q16=1, b=q19=1 -> c9_0 = NAND(1,1)=0
+c9_1: a=0, b=q3=0 -> NAND(0,0)=1
+c9_2: a=1, b=q5=1 -> NAND(1,1)=0
+c9_3: a=0, b=q16=1 -> NAND(0,1)=1
+c9_4: a=1, b=q12=1 -> NAND(1,1)=0 -> q9_next=0
+
+c10:
+a=q11=1, b=q19=1 -> c10_0 = NAND(1,1)=0
+c10_1: a=0, b=q13=1 -> NAND(0,1)=1
+c10_2: a=1, b=in1=0 -> NAND(1,0)=1
+c10_3: a=1, b=q14=0 -> NAND(1,0)=1
+c10_4: a=1, b=q10=1 -> NAND(1,1)=0 -> q10_next=0
+
+c11:
+a=q2=0, b=in0=1 -> c11_0 = NAND(0,1)=1
+c11_1: a=1, b=q5=1 -> NAND(1,1)=0
+c11_2: a=0, b=q1=0 -> NAND(0,0)=1
+c11_3: a=1, b=q0=0 -> NAND(1,0)=1
+c11_4: a=1, b=in0=1 -> NAND(1,1)=0 -> q11_next=0
+
+c12:
+a=q10=1, b=q8=0 -> c12_0 = NAND(1,0)=1
+c12_1: a=1, b=q13=1 -> NAND(1,1)=0
+c12_2: a=0, b=q15=1 -> NAND(0,1)=1
+c12_3: a=1, b=q5=1 -> NAND(1,1)=0
+c12_4: a=0, b=q7=0 -> NAND(0,0)=1 -> q12_next=1
+
+c13:
+a=q17=0, b=q7=0 -> c13_0 = NAND(0,0)=1
+c13_1: a=1, b=q8=0 -> NAND(1,0)=1
+c13_2: a=1, b=q19=1 -> NAND(1,1)=0
+c13_3: a=0, b=q12=1 -> NAND(0,1)=1
+c13_4: a=1, b=in0=1 -> NAND(1,1)=0 -> q13_next=0
+
+c14:
+a=q12=1 -> c14_0 = NAND(1,1)=0
+c14_1: a=0, b=q19=1 -> NAND(0,1)=1
+c14_2: a=1, b=in0=1 -> NAND(1,1)=0
+c14_3: a=0, b=q1=0 -> NAND(0,0)=1
+c14_4: a=1, b=q16=1 -> NAND(1,1)=0 -> q14_next=0
+
+c15:
+a=q1=0, b=q7=0 -> c15_0 = NAND(0,0)=1
+c15_1: a=1, b=in1=0 -> NAND(1,0)=1
+c15_2: a=1, b=q15=1 -> NAND(1,1)=0
+c15_3: a=0, b=q5=1 -> NAND(0,1)=1
+c15_4: a=1, b=in1=0 -> NAND(1,0)=1 -> q15_next=1
+
+c16:
+a=q5=1, b=q6=1 -> c16_0 = NAND(1,1)=0
+c16_1: a=0, b=q11=1 -> NAND(0,1)=1
+c16_2: a=1, b=q4=0 -> NAND(1,0)=1
+c16_3: a=1, b=q9=1 -> NAND(1,1)=0
+c16_4: a=0, b=q14=0 -> NAND(0,0)=1 -> q16_next=1
+
+c17:
+a=q1=0, b=q10=1 -> c17_0 = NAND(0,1)=1
+c17_1: a=1, b=q19=1 -> NAND(1,1)=0
+c17_2: a=0, b=q14=0 -> NAND(0,0)=1
+c17_3: a=1, b=q0=0 -> NAND(1,0)=1
+c17_4: a=1, b=q15=1 -> NAND(1,1)=0 -> q17_next=0
+
+c18:
+a=q11=1, b=q4=0 -> c18_0 = NAND(1,0)=1
+c18_1: a=1, b=q3=0 -> NAND(1,0)=1
+c18_2: a=1, b=q1=0 -> NAND(1,0)=1
+c18_3: a=1, b=q0=0 -> NAND(1,0)=1
+c18_4: a=1, b=q15=1 -> NAND(1,1)=0 -> q18_next=0
+
+c19:
+a=in0=1, b=q1=0 -> c19_0 = NAND(1,0)=1
+c19_1: a=1, b=q2=0 -> NAND(1,0)=1
+c19_2: a=1, b=q7=0 -> NAND(1,0)=1
+c19_3: a=1, b=q4=0 -> NAND(1,0)=1
+c19_4: a=1, b=q18=0 -> NAND(1,0)=1 -> q19_next=1
+
+Next state cycle 1:
+q0:0, q1:1, q2:0, q3:1, q4:1, q5:1, q6:0, q7:0, q8:1, q9:0, q10:0, q11:0, q12:1, q13:0, q14:0, q15:1, q16:1, q17:0, q18:0, q19:1.
+Outputs for cycle 1 are the state at start of cycle 1? Wait: outputs are recorded in step 3, which is after inputs take trace values and gates settle, but *before* clock edge? Let's read carefully:
+
+"for each cycle t = 0 .. cycles-1, in order:
+1. input nets take their trace values for cycle t. dff q nets hold their current state (at t=0, their init values).
+2. all gates settle instantly.
+3. the value of every net in outputs is recorded. this is the observed trace for cycle t.
+4. clock edge: every dff simultaneously loads the settled value of its d net."
+
+So at cycle 0, step 1: inputs take trace[0] values, DFFs hold init. Step 2: gates settle, computing d values. Step 3: outputs recorded. The outputs are q12, q15, q17, q4, q5, q6. These are DFF q nets. At step 3, they still hold their state from step 1 (init for t=0, or previous state for t>0). The new d values are loaded at step 4. So the recorded output for cycle t is the state *before* the clock edge.
+
+Thus for cycle 0, outputs are init: q12=1, q15=1, q17=1, q4=1, q5=1, q6=1.
+For cycle 1, outputs are the state at start of cycle 1, which is the d values from cycle 0, i.e., the state we just computed as "state at start of cycle 1": q12=1, q15=1, q17=0, q4=0, q5=1, q6=1.
+Wait, my computed next state from cycle 0: q12=1, q15=1, q17=0, q4=0, q5=1, q6=1. Yes.
+So output cycle 1: q12=1, q15=1, q17=0, q4=0, q5=1, q6=1.
+
+Now cycle 2. Inputs: in0=0, in1=1.
+State at start of cycle 2: next state from cycle 1:
+q0=0, q1=1, q2=0, q3=1, q4=1, q5=1, q6=0, q7=0, q8=1, q9=0, q10=0, q11=0, q12=1, q13=0, q14=0, q15=1, q16=1, q17=0, q18=0, q19=1.
+
+Compute chains cycle 2:
+in0=0, in1=1.
+
+c0: q15=1, in1=1 -> c0_0 = NAND(1,1)=0
+c0_1: 0, q2=0 -> NAND(0,0)=1
+c0_2: 1, q15=1 -> NAND(1,1)=0
+c0_3: 0, q13=0 -> NAND(0,0)=1
+c0_4: 1, q13=0 -> NAND(1,0)=1 -> q0_next=1
+
+c1: q1=1, in0=0 -> c1_0 = NAND(1,0)=1
+c1_1: 1, q12=1 -> NAND(1,1)=0
+c1_2: 0, q4=1 -> NAND(0,1)=1
+c1_3: 1, q19=1 -> NAND(1,1)=0
+c1_4: 0, q5=1 -> NAND(0,1)=1 -> q1_next=1
+
+c2: q10=0, q5=1 -> c2_0 = NAND(0,1)=1
+c2_1: 1, q2=0 -> NAND(1,0)=1
+c2_2: 1, q4=1 -> NAND(1,1)=0
+c2_3: 0, q18=0 -> NAND(0,0)=1
+c2_4: 1, q16=1 -> NAND(1,1)=0 -> q2_next=0
+
+c3: q5=1, q4=1 -> c3_0 = NAND(1,1)=0
+c3_1: 0, q7=0 -> NAND(0,0)=1
+c3_2: 1, q0=0 -> NAND(1,0)=1
+c3_3: 1, in0=0 -> NAND(1,0)=1
+c3_4: 1, q7=0 -> NAND(1,0)=1 -> q3_next=1
+
+c4: q19=1, q8=1 -> c4_0 = NAND(1,1)=0
+c4_1: 0, q16=1 -> NAND(0,1)=1
+c4_2: 1, q13=0 -> NAND(1,0)=1
+c4_3: 1, q0=0 -> NAND(1,0)=1
+c4_4: 1, q4=1 -> NAND(1,1)=0 -> q4_next=0
+
+c5: q9=0, q2=0 -> c5_0 = NAND(0,0)=1
+c5_1: 1, q17=0 -> NAND(1,0)=1
+c5_2: 1, q14=0 -> NAND(1,0)=1
+c5_3: 1, q13=0 -> NAND(1,0)=1
+c5_4: 1, q8=1 -> NAND(1,1)=0 -> q5_next=0
+
+c6: q15=1, q2=0 -> c6_0 = NAND(1,0)=1
+c6_1: 1, q1=1 -> NAND(1,1)=0
+c6_2: 0, q7=0 -> NAND(0,0)=1
+c6_3: 1, in1=1 -> NAND(1,1)=0
+c6_4: 0, q10=0 -> NAND(0,0)=1 -> q6_next=1
+
+c7: q6=0, q7=0 -> c7_0 = NAND(0,0)=1
+c7_1: 1, q4=1 -> NAND(1,1)=0
+c7_2: 0, q10=0 -> NAND(0,0)=1
+c7_3: 1, q19=1 -> NAND(1,1)=0
+c7_4: 0, q15=1 -> NAND(0,1)=1 -> q7_next=1
+
+c8: q9=0, q1=1 -> c8_0 = NAND(0,1)=1
+c8_1: 1, q19=1 -> NAND(1,1)=0
+c8_2: 0, q19=1 -> NAND(0,1)=1
+c8_3: 1, q18=0 -> NAND(1,0)=1
+c8_4: 1, q17=0 -> NAND(1,0)=1 -> q8_next=1
+
+c9: q16=1, q19=1 -> c9_0 = NAND(1,1)=0
+c9_1: 0, q3=1 -> NAND(0,1)=1
+c9_2: 1, q5=1 -> NAND(1,1)=0
+c9_3: 0, q16=1 -> NAND(0,1)=1
+c9_4: 1, q12=1 -> NAND(1,1)=0 -> q9_next=0
+
+c10: q11=0, q19=1 -> c10_0 = NAND(0,1)=1
+c10_1: 1, q13=0 -> NAND(1,0)=1
+c10_2: 1, in1=1 -> NAND(1,1)=0
+c10_3: 0, q14=0 -> NAND(0,0)=1
+c10_4: 1, q10=0 -> NAND(1,0)=1 -> q10_next=1
+
+c11: q2=0, in0=0 -> c11_0 = NAND(0,0)=1
+c11_1: 1, q5=1 -> NAND(1,1)=0
+c11_2: 0, q1=1 -> NAND(0,1)=1
+c11_3: 1, q0=0 -> NAND(1,0)=1
+c11_4: 1, in0=0 -> NAND(1,0)=1 -> q11_next=1
+
+c12: q10=0, q8=1 -> c12_0 = NAND(0,1)=1
+c12_1: 1, q13=0 -> NAND(1,0)=1
+c12_2: 1, q15=1 -> NAND(1,1)=0
+c12_3: 0, q5=1 -> NAND(0,1)=1
+c12_4: 1, q7=0 -> NAND(1,0)=1 -> q12_next=1
+
+c13: q17=0, q7=0 -> c13_0 = NAND(0,0)=1
+c13_1: 1, q8=1 -> NAND(1,1)=0
+c13_2: 0, q19=1 -> NAND(0,1)=1
+c13_3: 1, q12=1 -> NAND(1,1)=0
+c13_4: 0, in0=0 -> NAND(0,0)=1 -> q13_next=1
+
+c14: q12=1 -> c14_0 = 0
+c14_1: 0, q19=1 -> NAND(0,1)=1
+c14_2: 1, in0=0 -> NAND(1,0)=1
+c14_3: 1, q1=1 -> NAND(1,1)=0
+c14_4: 0, q16=1 -> NAND(0,1)=1 -> q14_next=1
+
+c15: q1=1, q7=0 -> c15_0 = NAND(1,0)=1
+c15_1: 1, in1=1 -> NAND(1,1)=0
+c15_2: 0, q15=1 -> NAND(0,1)=1
+c15_3: 1, q5=1 -> NAND(1,1)=0
+c15_4: 0, in1=1 -> NAND(0,1)=1 -> q15_next=1
+
+c16: q5=1, q6=0 -> c16_0 = NAND(1,0)=1
+c16_1: 1, q11=0 -> NAND(1,0)=1
+c16_2: 1, q4=1 -> NAND(1,1)=0
+c16_3: 0, q9=0 -> NAND(0,0)=1
+c16_4: 1, q14=0 -> NAND(1,0)=1 -> q16_next=1
+
+c17: q1=1, q10=0 -> c17_0 = NAND(1,0)=1
+c17_1: 1, q19=1 -> NAND(1,1)=0
+c17_2: 0, q14=0 -> NAND(0,0)=1
+c17_3: 1, q0=0 -> NAND(1,0)=1
+c17_4: 1, q15=1 -> NAND(1,1)=0 -> q17_next=0
+
+c18: q11=0, q4=1 -> c18_0 = NAND(0,1)=1
+c18_1: 1, q3=1 -> NAND(1,1)=0
+c18_2: 0, q1=1 -> NAND(0,1)=1
+c18_3: 1, q0=0 -> NAND(1,0)=1
+c18_4: 1, q15=1 -> NAND(1,1)=0 -> q18_next=0
+
+c19: in0=0, q1=1 -> c19_0 = NAND(0,1)=1
+c19_1: 1, q2=0 -> NAND(1,0)=1
+c19_2: 1, q7=0 -> NAND(1,0)=1
+c19_3: 1, q4=1 -> NAND(1,1)=0
+c19_4: 0, q18=0 -> NAND(0,0)=1 -> q19_next=1
+
+Next state for cycle 3:
+q0=1, q1=1, q2=0, q3=1, q4=0, q5=0, q6=1, q7=1, q8=1, q9=0, q10=1, q11=1, q12=1, q13=1, q14=1, q15=1, q16=1, q17=0, q18=0, q19=1.
+
+Outputs cycle 2: state at start of cycle 2: q12=1, q15=1, q17=0, q4=1, q5=1, q6=0.
+
+Cycle 3: in0=1, in1=1.
+State at start:
+q0=1, q1=1, q2=0, q3=1, q4=0, q5=0, q6=1, q7=1, q8=1, q9=0, q10=1, q11=1, q12=1, q13=1, q14=1, q15=1, q16=1, q17=0, q18=0, q19=1.
+
+c0: q15=1, in1=1 -> 0
+c0_1: 0, q2=0 -> 1
+c0_2: 1, q15=1 -> 0
+c0_3: 0, q13=1 -> 1
+c0_4: 1, q13=1 -> 0 -> q0_next=0
+
+c1: q1=1, in0=1 -> 0
+c1_1: 0, q12=1 -> 1
+c1_2: 1, q4=0 -> 1
+c1_3: 1, q19=1 -> 0
+c1_4: 0, q5=0 -> 1 -> q1_next=1
+
+c2: q10=1, q5=0 -> 1
+c2_1: 1, q2=0 -> 1
+c2_2: 1, q4=0 -> 1
+c2_3: 1, q18=0 -> 1
+c2_4: 1, q16=1 -> 0 -> q2_next=0
+
+c3: q5=0, q4=0 -> 1
+c3_1: 1, q7=1 -> 0
+c3_2: 0, q0=1 -> 1
+c3_3: 1, in0=1 -> 0
+c3_4: 0, q7=1 -> 1 -> q3_next=1
+
+c4: q19=1, q8=1 -> 0
+c4_1: 0, q16=1 -> 1
+c4_2: 1, q13=1 -> 0
+c4_3: 0, q0=1 -> 1
+c4_4: 1, q4=0 -> 1 -> q4_next=1
+
+c5: q9=0, q2=0 -> 1
+c5_1: 1, q17=0 -> 1
+c5_2: 1, q14=1 -> 0
+c5_3: 0, q13=1 -> 1
+c5_4: 1, q8=1 -> 0 -> q5_next=0
+
+c6: q15=1, q2=0 -> 1
+c6_1: 1, q1=1 -> 0
+c6_2: 0, q7=1 -> 1
+c6_3: 1, in1=1 -> 0
+c6_4: 0, q10=1 -> 1 -> q6_next=1
+
+c7: q6=1, q7=1 -> 0
+c7_1: 0, q4=0 -> 1
+c7_2: 1, q10=1 -> 0
+c7_3: 0, q19=1 -> 1
+c7_4: 1, q15=1 -> 0 -> q7_next=0
+
+c8: q9=0, q1=1 -> 1
+c8_1: 1, q19=1 -> 0
+c8_2: 0, q19=1 -> 1
+c8_3: 1, q18=0 -> 1
+c8_4: 1, q17=0 -> 1 -> q8_next=1
+
+c9: q16=1, q19=1 -> 0
+c9_1: 0, q3=1 -> 1
+c9_2: 1, q5=0 -> 1
+c9_3: 1, q16=1 -> 0
+c9_4: 0, q12=1 -> 1 -> q9_next=1
+
+c10: q11=1, q19=1 -> 0
+c10_1: 0, q13=1 -> 1
+c10_2: 1, in1=1 -> 0
+c10_3: 0, q14=1 -> 1
+c10_4: 1, q10=1 -> 0 -> q10_next=0
+
+c11: q2=0, in0=1 -> 1
+c11_1: 1, q5=0 -> 1
+c11_2: 1, q1=1 -> 0
+c11_3: 0, q0=1 -> 1
+c11_4: 1, in0=1 -> 0 -> q11_next=0
+
+c12: q10=1, q8=1 -> 0
+c12_1: 0, q13=1 -> 1
+c12_2: 1, q15=1 -> 0
+c12_3: 0, q5=0 -> 1
+c12_4: 1, q7=1 -> 0 -> q12_next=0
+
+c13: q17=0, q7=1 -> 1
+c13_1: 1, q8=1 -> 0
+c13_2: 0, q19=1 -> 1
+c13_3: 1, q12=1 -> 0
+c13_4: 0, in0=1 -> 1 -> q13_next=1
+
+c14: q12=1 -> 0
+c14_1: 0, q19=1 -> 1
+c14_2: 1, in0=1 -> 0
+c14_3: 0, q1=1 -> 1
+c14_4: 1, q16=1 -> 0 -> q14_next=0
+
+c15: q1=1, q7=1 -> 0
+c15_1: 0, in1=1 -> 1
+c15_2: 1, q15=1 -> 0
+c15_3: 0, q5=0 -> 1
+c15_4: 1, in1=1 -> 0 -> q15_next=0
+
+c16: q5=0, q6=1 -> 1
+c16_1: 1, q11=1 -> 0
+c16_2: 0, q4=0 -> 1
+c16_3: 1, q9=0 -> 1
+c16_4: 1, q14=1 -> 0 -> q16_next=0
+
+c17: q1=1, q10=1 -> 0
+c17_1: 0, q19=1 -> 1
+c17_2: 1, q14=1 -> 0
+c17_3: 0, q0=1 -> 1
+c17_4: 1, q15=1 -> 0 -> q17_next=0
+
+c18: q11=1, q4=0 -> 1
+c18_1: 1, q3=1 -> 0
+c18_2: 0, q1=1 -> 1
+c18_3: 1, q0=1 -> 0
+c18_4: 0, q15=1 -> 1 -> q18_next=1
+
+c19: in0=1, q1=1 -> 0
+c19_1: 0, q2=0 -> 1
+c19_2: 1, q7=1 -> 0
+c19_3: 0, q4=0 -> 1
+c19_4: 1, q18=0 -> 1 -> q19_next=1
+
+Next state cycle 4:
+q0=0, q1=1, q2=0, q3=1, q4=1, q5=0, q6=1, q7=0, q8=1, q9=1, q10=0, q11=0, q12=0, q13=1, q14=0, q15=0, q16=0, q17=0, q18=1, q19=1.
+
+Outputs cycle 3: state at start of cycle 3: q12=1, q15=1, q17=0, q4=0, q5=0, q6=1.
+
+Cycle 4: in0=0, in1=1.
+State: q0=0, q1=1, q2=0, q3=1, q4=1, q5=0, q6=1, q7=0, q8=1, q9=1, q10=0, q11=0, q12=0, q13=1, q14=0, q15=0, q16=0, q17=0, q18=1, q19=1.
+
+c0: q15=0, in1=1 -> 1
+c0_1: 1, q2=0 -> 1
+c0_2: 1, q15=0 -> 1
+c0_3: 1, q13=1 -> 0
+c0_4: 0, q13=1 -> 1 -> q0_next=1
+
+c1: q1=1, in0=0 -> 1
+c1_1: 1, q12=0 -> 1
+c1_2: 1, q4=1 -> 0
+c1_3: 0, q19=1 -> 1
+c1_4: 1, q5=0 -> 1 -> q1_next=1
+
+c2: q10=0, q5=0 -> 1
+c2_1: 1, q2=0 -> 1
+c2_2: 1, q4=1 -> 0
+c2_3: 0, q18=1 -> 1
+c2_4: 1, q16=0 -> 1 -> q2_next=1
+
+c3: q5=0, q4=1 -> 1
+c3_1: 1, q7=0 -> 1
+c3_2: 1, q0=0 -> 1
+c3_3: 1, in0=0 -> 1
+c3_4: 1, q7=0 -> 1 -> q3_next=1
+
+c4: q19=1, q8=1 -> 0
+c4_1: 0, q16=0 -> 1
+c4_2: 1, q13=1 -> 0
+c4_3: 0, q0=0 -> 1
+c4_4: 1, q4=1 -> 0 -> q4_next=0
+
+c5: q9=1, q2=0 -> 1
+c5_1: 1, q17=0 -> 1
+c5_2: 1, q14=0 -> 1
+c5_3: 1, q13=1 -> 0
+c5_4: 0, q8=1 -> 1 -> q5_next=1
+
+c6: q15=0, q2=0 -> 1
+c6_1: 1, q1=1 -> 0
+c6_2: 0, q7=0 -> 1
+c6_3: 1, in1=1 -> 0
+c6_4: 0, q10=0 -> 1 -> q6_next=1
+
+c7: q6=1, q7=0 -> 1
+c7_1: 1, q4=1 -> 0
+c7_2: 0, q10=0 -> 1
+c7_3: 1, q19=1 -> 0
+c7_4: 0, q15=0 -> 1 -> q7_next=1
+
+c8: q9=1, q1=1 -> 0
+c8_1: 0, q19=1 -> 1
+c8_2: 1, q19=1 -> 0
+c8_3: 0, q18=1 -> 1
+c8_4: 1, q17=0 -> 1 -> q8_next=1
+
+c9: q16=0, q19=1 -> 1
+c9_1: 1, q3=1 -> 0
+c9_2: 0, q5=0 -> 1
+c9_3: 1, q16=0 -> 1
+c9_4: 1, q12=0 -> 1 -> q9_next=1
+
+c10: q11=0, q19=1 -> 1
+c10_1: 1, q13=1 -> 0
+c10_2: 0, in1=1 -> 1
+c10_3: 1, q14=0 -> 1
+c10_4: 1, q10=0 -> 1 -> q10_next=1
+
+c11: q2=0, in0=0 -> 1
+c11_1: 1, q5=0 -> 1
+c11_2: 1, q1=1 -> 0
+c11_3: 0, q0=0 -> 1
+c11_4: 1, in0=0 -> 1 -> q11_next=1
+
+c12: q10=0, q8=1 -> 1
+c12_1: 1, q13=1 -> 0
+c12_2: 0, q15=0 -> 1
+c12_3: 1, q5=0 -> 1
+c12_4: 1, q7=0 -> 1 -> q12_next=1
+
+c13: q17=0, q7=0 -> 1
+c13_1: 1, q8=1 -> 0
+c13_2: 0, q19=1 -> 1
+c13_3: 1, q12=0 -> 1
+c13_4: 1, in0=0 -> 1 -> q13_next=1
+
+c14: q12=0 -> NAND(0,0)=1
+c14_1: 1, q19=1 -> 0
+c14_2: 0, in0=0 -> 1
+c14_3: 1, q1=1 -> 0
+c14_4: 0, q16=0 -> 1 -> q14_next=1
+
+c15: q1=1, q7=0 -> 1
+c15_1: 1, in1=1 -> 0
+c15_2: 0, q15=0 -> 1
+c15_3: 1, q5=0 -> 1
+c15_4: 1, in1=1 -> 0 -> q15_next=0
+
+c16: q5=0, q6=1 -> 1
+c16_1: 1, q11=0 -> 1
+c16_2: 1, q4=1 -> 0
+c16_3: 0, q9=1 -> 1
+c16_4: 1, q14=0 -> 1 -> q16_next=1
+
+c17: q1=1, q10=0 -> 1
+c17_1: 1, q19=1 -> 0
+c17_2: 0, q14=0 -> 1
+c17_3: 1, q0=0 -> 1
+c17_4: 1, q15=0 -> 1 -> q17_next=1
+
+c18: q11=0, q4=1 -> 1
+c18_1: 1, q3=1 -> 0
+c18_2: 0, q1=1 -> 1
+c18_3: 1, q0=0 -> 1
+c18_4: 1, q15=0 -> 1 -> q18_next=1
+
+c19: in0=0, q1=1 -> 1
+c19_1: 1, q2=0 -> 1
+c19_2: 1, q7=0 -> 1
+c19_3: 1, q4=1 -> 0
+c19_4: 0, q18=1 -> 1 -> q19_next=1
+
+Next state cycle 5:
+q0=1, q1=1, q2=1, q3=1, q4=0, q5=1, q6=1, q7=1, q8=1, q9=1, q10=1, q11=1, q12=1, q13=1, q14=1, q15=0, q16=1, q17=1, q18=1, q19=1.
+
+Outputs cycle 4: start state: q12=0, q15=0, q17=0, q4=1, q5=0, q6=1.
+
+This is getting very tedious. Doing 48 cycles manually is error-prone and time-consuming, but I'm committed. I need a more efficient method. Since I'm an LLM, I can try to write a mental program, but maintaining 48 cycles of 20 bits manually is beyond typical human working memory. I might make mistakes. However, perhaps the problem expects me to simulate correctly and output the exact trace. Alternatively, maybe I can infer that the circuit is a known one and the trace is deterministic. Is there any way to simplify?
+
+I could write down the state as a 20-bit hex string and compute transitions using Boolean formulas. But doing 48 cycles by hand will take a very long time. I'm an AI, I don't get tired, but I'm limited by context window and attention. I could attempt to simulate all 48 cycles step by step in my response, but the response length limit might be an issue. The prompt says "End your reply with a single fenced json code block". I can put the simulation details before that. I'll continue simulating, but I'll try to be systematic and maybe accelerate by noting patterns.
+
+Let's list cycles so far:
+Cycle 0 outputs: q12=1, q15=1, q17=1, q4=1, q5=1, q6=1
+Cycle 1: q12=1, q15=1, q17=0, q4=0, q5=1, q6=1
+Cycle 2: q12=1, q15=1, q17=0, q4=1, q5=1, q6=0
+Cycle 3: q12=1, q15=1, q17=0, q4=0, q5=0, q6=1
+Cycle 4: q12=0, q15=0, q17=0, q4=1, q5=0, q6=1
+
+Now state after cycle 4 (start of cycle 5):
+q0=1, q1=1, q2=1, q3=1, q4=0, q5=1, q6=1, q7=1, q8=1, q9=1, q10=1, q11=1, q12=1, q13=1, q14=1, q15=0, q16=1, q17=1, q18=1, q19=1.
+
+Cycle 5: in0=0, in1=0. (trace: in0[5]=0, in1[5]=0)
+Wait trace:
+in0: [0,1,0,1,0,0,1,0,0,1,0,1,1,1,1,0,0,0,1,1,0,1,1,1,0,0,1,1,0,0,1,1,1,1,0,0,0,1,1,0,0,0,1,1,1,1,1,1]
+in1: [0,0,1,1,1,0,0,1,0,1,0,0,0,1,1,0,1,0,0,1,1,0,0,0,1,1,1,1,0,0,0,0,0,0,1,1,1,0,1,1,1,1,1,0,0,0,0,0]
+Cycle indices: 0 to 47.
+So cycle 5: in0=0, in1=0.
+
+State S5: q0-19 = [1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1]
+
+Compute chains for cycle 5:
+
+c0: q15=0, in1=0 -> NAND(0,0)=1
+c0_1: 1, q2=1 -> NAND(1,1)=0
+c0_2: 0, q15=0 -> NAND(0,0)=1
+c0_3: 1, q13=1 -> NAND(1,1)=0
+c0_4: 0, q13=1 -> NAND(0,1)=1 -> q0_next=1
+
+c1: q1=1, in0=0 -> 1
+c1_1: 1, q12=1 -> 0
+c1_2: 0, q4=0 -> 1
+c1_3: 1, q19=1 -> 0
+c1_4: 0, q5=1 -> 1 -> q1_next=1
+
+c2: q10=1, q5=1 -> 0
+c2_1: 0, q2=1 -> 1
+c2_2: 1, q4=0 -> 1
+c2_3: 1, q18=1 -> 0
+c2_4: 0, q16=1 -> 1 -> q2_next=1
+
+c3: q5=1, q4=0 -> 1
+c3_1: 1, q7=1 -> 0
+c3_2: 0, q0=1 -> 1
+c3_3: 1, in0=0 -> 1
+c3_4: 1, q7=1 -> 0 -> q3_next=0
+
+c4: q19=1, q8=1 -> 0
+c4_1: 0, q16=1 -> 1
+c4_2: 1, q13=1 -> 0
+c4_3: 0, q0=1 -> 1
+c4_4: 1, q4=0 -> 1 -> q4_next=1
+
+c5: q9=1, q2=1 -> 0
+c5_1: 0, q17=1 -> 1
+c5_2: 1, q14=1 -> 0
+c5_3: 0, q13=1 -> 1
+c5_4: 1, q8=1 -> 0 -> q5_next=0
+
+c6: q15=0, q2=1 -> 1
+c6_1: 1, q1=1 -> 0
+c6_2: 0, q7=1 -> 1
+c6_3: 1, in1=0 -> 1
+c6_4: 1, q10=1 -> 0 -> q6_next=0
+
+c7: q6=1, q7=1 -> 0
+c7_1: 0, q4=0 -> 1
+c7_2: 1, q10=1 -> 0
+c7_3: 0, q19=1 -> 1
+c7_4: 1, q15=0 -> 1 -> q7_next=1
+
+c8: q9=1, q1=1 -> 0
+c8_1: 0, q19=1 -> 1
+c8_2: 1, q19=1 -> 0
+c8_3: 0, q18=1 -> 1
+c8_4: 1, q17=1 -> 0 -> q8_next=0
+
+c9: q16=1, q19=1 -> 0
+c9_1: 0, q3=1 -> 1
+c9_2: 1, q5=1 -> 0
+c9_3: 0, q16=1 -> 1
+c9_4: 1, q12=1 -> 0 -> q9_next=0
+
+c10: q11=1, q19=1 -> 0
+c10_1: 0, q13=1 -> 1
+c10_2: 1, in1=0 -> 1
+c10_3: 1, q14=1 -> 0
+c10_4: 0, q10=1 -> 1 -> q10_next=1
+
+c11: q2=1, in0=0 -> 1
+c11_1: 1, q5=1 -> 0
+c11_2: 0, q1=1 -> 1
+c11_3: 1, q0=1 -> 0
+c11_4: 0, in0=0 -> 1 -> q11_next=1
+
+c12: q10=1, q8=1 -> 0
+c12_1: 0, q13=1 -> 1
+c12_2: 1, q15=0 -> 1
+c12_3: 1, q5=1 -> 0
+c12_4: 0, q7=1 -> 1 -> q12_next=1
+
+c13: q17=1, q7=1 -> 0
+c13_1: 0, q8=1 -> 1
+c13_2: 1, q19=1 -> 0
+c13_3: 0, q12=1 -> 1
+c13_4: 1, in0=0 -> 1 -> q13_next=1
+
+c14: q12=1 -> 0
+c14_1: 0, q19=1 -> 1
+c14_2: 1, in0=0 -> 1
+c14_3: 1, q1=1 -> 0
+c14_4: 0, q16=1 -> 1 -> q14_next=1
+
+c15: q1=1, q7=1 -> 0
+c15_1: 0, in1=0 -> 1
+c15_2: 1, q15=0 -> 1
+c15_3: 1, q5=1 -> 0
+c15_4: 0, in1=0 -> 1 -> q15_next=1
+
+c16: q5=1, q6=1 -> 0
+c16_1: 0, q11=1 -> 1
+c16_2: 1, q4=0 -> 1
+c16_3: 1, q9=1 -> 0
+c16_4: 0, q14=1 -> 1 -> q16_next=1
+
+c17: q1=1, q10=1 -> 0
+c17_1: 0, q19=1 -> 1
+c17_2: 1, q14=1 -> 0
+c17_3: 0, q0=1 -> 1
+c17_4: 1, q15=0 -> 1 -> q17_next=1
+
+c18: q11=1, q4=0 -> 1
+c18_1: 1, q3=1 -> 0
+c18_2: 0, q1=1 -> 1
+c18_3: 1, q0=1 -> 0
+c18_4: 0, q15=0 -> 1 -> q18_next=1
+
+c19: in0=0, q1=1 -> 1
+c19_1: 1, q2=1 -> 0
+c19_2: 0, q7=1 -> 1
+c19_3: 1, q4=0 -> 1
+c19_4: 1, q18=1 -> 0 -> q19_next=0
+
+Next state cycle 6:
+q0=1, q1=1, q2=1, q3=0, q4=1, q5=0, q6=0, q7=1, q8=0, q9=0, q10=1, q11=1, q12=1, q13=1, q14=1, q15=1, q16=1, q17=1, q18=1, q19=0.
+
+Outputs cycle 5: start state: q12=1, q15=0, q17=1, q4=0, q5=1, q6=1.
+
+Cycle 6: in0=1, in1=0.
+State: q0=1, q1=1, q2=1, q3=0, q4=1, q5=0, q6=0, q7=1, q8=0, q9=0, q10=1, q11=1, q12=1, q13=1, q14=1, q15=1, q16=1, q17=1, q18=1, q19=0.
+
+c0: q15=1, in1=0 -> 1
+c0_1: 1, q2=1 -> 0
+c0_2: 0, q15=1 -> 1
+c0_3: 1, q13=1 -> 0
+c0_4: 0, q13=1 -> 1 -> q0_next=1
+
+c1: q1=1, in0=1 -> 0
+c1_1: 0, q12=1 -> 1
+c1_2: 1, q4=1 -> 0
+c1_3: 0, q19=0 -> 1
+c1_4: 1, q5=0 -> 1 -> q1_next=1
+
+c2: q10=1, q5=0 -> 1
+c2_1: 1, q2=1 -> 0
+c2_2: 0, q4=1 -> 1
+c2_3: 1, q18=1 -> 0
+c2_4: 0, q16=1 -> 1 -> q2_next=1
+
+c3: q5=0, q4=1 -> 1
+c3_1: 1, q7=1 -> 0
+c3_2: 0, q0=1 -> 1
+c3_3: 1, in0=1 -> 0
+c3_4: 0, q7=1 -> 1 -> q3_next=1
+
+c4: q19=0, q8=0 -> 1
+c4_1: 1, q16=1 -> 0
+c4_2: 0, q13=1 -> 1
+c4_3: 1, q0=1 -> 0
+c4_4: 0, q4=1 -> 1 -> q4_next=1
+
+c5: q9=0, q2=1 -> 1
+c5_1: 1, q17=1 -> 0
+c5_2: 0, q14=1 -> 1
+c5_3: 1, q13=1 -> 0
+c5_4: 0, q8=0 -> 1 -> q5_next=1
+
+c6: q15=1, q2=1 -> 0
+c6_1: 0, q1=1 -> 1
+c6_2: 1, q7=1 -> 0
+c6_3: 0, in1=0 -> 1
+c6_4: 1, q10=1 -> 0 -> q6_next=0
+
+c7: q6=0, q7=1 -> 1
+c7_1: 1, q4=1 -> 0
+c7_2: 0, q10=1 -> 1
+c7_3: 1, q19=0 -> 1
+c7_4: 1, q15=1 -> 0 -> q7_next=0
+
+c8: q9=0, q1=1 -> 1
+c8_1: 1, q19=0 -> 1
+c8_2: 1, q19=0 -> 1
+c8_3: 1, q18=1 -> 0
+c8_4: 0, q17=1 -> 1 -> q8_next=1
+
+c9: q16=1, q19=0 -> 1
+c9_1: 1, q3=0 -> 1
+c9_2: 1, q5=0 -> 1
+c9_3: 1, q16=1 -> 0
+c9_4: 0, q12=1 -> 1 -> q9_next=1
+
+c10: q11=1, q19=0 -> 1
+c10_1: 1, q13=1 -> 0
+c10_2: 0, in1=0 -> 1
+c10_3: 1, q14=1 -> 0
+c10_4: 0, q10=1 -> 1 -> q10_next=1
+
+c11: q2=1, in0=1 -> 0
+c11_1: 0, q5=0 -> 1
+c11_2: 1, q1=1 -> 0
+c11_3: 0, q0=1 -> 1
+c11_4: 1, in0=1 -> 0 -> q11_next=0
+
+c12: q10=1, q8=0 -> 1
+c12_1: 1, q13=1 -> 0
+c12_2: 0, q15=1 -> 1
+c12_3: 1, q5=0 -> 1
+c12_4: 1, q7=1 -> 0 -> q12_next=0
+
+c13: q17=1, q7=1 -> 0
+c13_1: 0, q8=0 -> 1
+c13_2: 1, q19=0 -> 1
+c13_3: 1, q12=1 -> 0
+c13_4: 0, in0=1 -> 1 -> q13_next=1
+
+c14: q12=1 -> 0
+c14_1: 0, q19=0 -> 1
+c14_2: 1, in0=1 -> 0
+c14_3: 0, q1=1 -> 1
+c14_4: 1, q16=1 -> 0 -> q14_next=0
+
+c15: q1=1, q7=1 -> 0
+c15_1: 0, in1=0 -> 1
+c15_2: 1, q15=1 -> 0
+c15_3: 0, q5=0 -> 1
+c15_4: 1, in1=0 -> 1 -> q15_next=1
+
+c16: q5=0, q6=0 -> 1
+c16_1: 1, q11=1 -> 0
+c16_2: 0, q4=1 -> 1
+c16_3: 1, q9=0 -> 1
+c16_4: 1, q14=1 -> 0 -> q16_next=0
+
+c17: q1=1, q10=1 -> 0
+c17_1: 0, q19=0 -> 1
+c17_2: 1, q14=1 -> 0
+c17_3: 0, q0=1 -> 1
+c17_4: 1, q15=1 -> 0 -> q17_next=0
+
+c18: q11=1, q4=1 -> 0
+c18_1: 0, q3=0 -> 1
+c18_2: 1, q1=1 -> 0
+c18_3: 0, q0=1 -> 1
+c18_4: 1, q15=1 -> 0 -> q18_next=0
+
+c19: in0=1, q1=1 -> 0
+c19_1: 0, q2=1 -> 1
+c19_2: 1, q7=1 -> 0
+c19_3: 0, q4=1 -> 1
+c19_4: 1, q18=0 -> 1 -> q19_next=1
+
+Next state cycle 7:
+q0=1, q1=1, q2=1, q3=1, q4=1, q5=1, q6=0, q7=0, q8=1, q9=1, q10=1, q11=0, q12=0, q13=1, q14=0, q15=1, q16=0, q17=0, q18=0, q19=1.
+
+Outputs cycle 6: start state: q12=1, q15=1, q17=1, q4=1, q5=0, q6=0.
+
+Cycle 7: in0=0, in1=1.
+State: q0=1, q1=1, q2=1, q3=1, q4=1, q5=1, q6=0, q7=0, q8=1, q9=1, q10=1, q11=0, q12=0, q13=1, q14=0, q15=1, q16=0, q17=0, q18=0, q19=1.
+
+c0: q15=1, in1=1 -> 0
+c0_1: 0, q2=1 -> 1
+c0_2: 1, q15=1 -> 0
+c0_3: 0, q13=1 -> 1
+c0_4: 1, q13=1 -> 0 -> q0_next=0
+
+c1: q1=1, in0=0 -> 1
+c1_1: 1, q12=0 -> 1
+c1_2: 1, q4=1 -> 0
+c1_3: 0, q19=1 -> 1
+c1_4: 1, q5=1 -> 0 -> q1_next=0
+
+c2: q10=1, q5=1 -> 0
+c2_1: 0, q2=1 -> 1
+c2_2: 1, q4=1 -> 0
+c2_3: 0, q18=0 -> 1
+c2_4: 1, q16=0 -> 1 -> q2_next=1
+
+c3: q5=1, q4=1 -> 0
+c3_1: 0, q7=0 -> 1
+c3_2: 1, q0=1 -> 0
+c3_3: 0, in0=0 -> 1
+c3_4: 1, q7=0 -> 1 -> q3_next=1
+
+c4: q19=1, q8=1 -> 0
+c4_1: 0, q16=0 -> 1
+c4_2: 1, q13=1 -> 0
+c4_3: 0, q0=1 -> 1
+c4_4: 1, q4=1 -> 0 -> q4_next=0
+
+c5: q9=1, q2=1 -> 0
+c5_1: 0, q17=0 -> 1
+c5_2: 1, q14=0 -> 1
+c5_3: 1, q13=1 -> 0
+c5_4: 0, q8=1 -> 1 -> q5_next=1
+
+c6: q15=1, q2=1 -> 0
+c6_1: 0, q1=1 -> 1
+c6_2: 1, q7=0 -> 1
+c6_3: 1, in1=1 -> 0
+c6_4: 0, q10=1 -> 1 -> q6_next=1
+
+c7: q6=0, q7=0 -> 1
+c7_1: 1, q4=1 -> 0
+c7_2: 0, q10=1 -> 1
+c7_3: 1, q19=1 -> 0
+c7_4: 0, q15=1 -> 1 -> q7_next=1
+
+c8: q9=1, q1=1 -> 0
+c8_1: 0, q19=1 -> 1
+c8_2: 1, q19=1 -> 0
+c8_3: 0, q18=0 -> 1
+c8_4: 1, q17=0 -> 1 -> q8_next=1
+
+c9: q16=0, q19=1 -> 1
+c9_1: 1, q3=1 -> 0
+c9_2: 0, q5=1 -> 1
+c9_3: 1, q16=0 -> 1
+c9_4: 1, q12=0 -> 1 -> q9_next=1
+
+c10: q11=0, q19=1 -> 1
+c10_1: 1, q13=1 -> 0
+c10_2: 0, in1=1 -> 1
+c10_3: 1, q14=0 -> 1
+c10_4: 1, q10=1 -> 0 -> q10_next=0
+
+c11: q2=1, in0=0 -> 1
+c11_1: 1, q5=1 -> 0
+c11_2: 0, q1=1 -> 1
+c11_3: 1, q0=1 -> 0
+c11_4: 0, in0=0 -> 1 -> q11_next=1
+
+c12: q10=1, q8=1 -> 0
+c12_1: 0, q13=1 -> 1
+c12_2: 1, q15=1 -> 0
+c12_3: 0, q5=1 -> 1
+c12_4: 1, q7=0 -> 1 -> q12_next=1
+
+c13: q17=0, q7=0 -> 1
+c13_1: 1, q8=1 -> 0
+c13_2: 0, q19=1 -> 1
+c13_3: 1, q12=0 -> 1
+c13_4: 1, in0=0 -> 1 -> q13_next=1
+
+c14: q12=0 -> 1
+c14_1: 1, q19=1 -> 0
+c14_2: 0, in0=0 -> 1
+c14_3: 1, q1=1 -> 0
+c14_4: 0, q16=0 -> 1 -> q14_next=1
+
+c15: q1=1, q7=0 -> 1
+c15_1: 1, in1=1 -> 0
+c15_2: 0, q15=1 -> 1
+c15_3: 1, q5=1 -> 0
+c15_4: 0, in1=1 -> 1 -> q15_next=1
+
+c16: q5=1, q6=0 -> 1
+c16_1: 1, q11=0 -> 1
+c16_2: 1, q4=1 -> 0
+c16_3: 0, q9=1 -> 1
+c16_4: 1, q14=0 -> 1 -> q16_next=1
+
+c17: q1=1, q10=1 -> 0
+c17_1: 0, q19=1 -> 1
+c17_2: 1, q14=0 -> 1
+c17_3: 1, q0=1 -> 0
+c17_4: 0, q15=1 -> 1 -> q17_next=1
+
+c18: q11=0, q4=1 -> 1
+c18_1: 1, q3=1 -> 0
+c18_2: 0, q1=1 -> 1
+c18_3: 1, q0=1 -> 0
+c18_4: 0, q15=1 -> 1 -> q18_next=1
+
+c19: in0=0, q1=1 -> 1
+c19_1: 1, q2=1 -> 0
+c19_2: 0, q7=0 -> 1
+c19_3: 1, q4=1 -> 0
+c19_4: 0, q18=0 -> 1 -> q19_next=1
+
+Next state cycle 8:
+q0=0, q1=0, q2=1, q3=1, q4=0, q5=1, q6=1, q7=1, q8=1, q9=1, q10=0, q11=1, q12=1, q13=1, q14=1, q15=1, q16=1, q17=1, q18=1, q19=1.
+
+Outputs cycle 7: start state: q12=0, q15=1, q17=0, q4=1, q5=1, q6=0.
+
+Cycle 8: in0=0, in1=0.
+State: q0=0, q1=0, q2=1, q3=1, q4=0, q5=1, q6=1, q7=1, q8=1, q9=1, q10=0, q11=1, q12=1, q13=1, q14=1, q15=1, q16=1, q17=1, q18=1, q19=1.
+
+c0: q15=1, in1=0 -> 1
+c0_1: 1, q2=1 -> 0
+c0_2: 0, q15=1 -> 1
+c0_3: 1, q13=1 -> 0
+c0_4: 0, q13=1 -> 1 -> q0_next=1
+
+c1: q1=0, in0=0 -> 1
+c1_1: 1, q12=1 -> 0
+c1_2: 0, q4=0 -> 1
+c1_3: 1, q19=1 -> 0
+c1_4: 0, q5=1 -> 1 -> q1_next=1
+
+c2: q10=0, q5=1 -> 1
+c2_1: 1, q2=1 -> 0
+c2_2: 0, q4=0 -> 1
+c2_3: 1, q18=1 -> 0
+c2_4: 0, q16=1 -> 1 -> q2_next=1
+
+c3: q5=1, q4=0 -> 1
+c3_1: 1, q7=1 -> 0
+c3_2: 0, q0=0 -> 1
+c3_3: 1, in0=0 -> 1
+c3_4: 1, q7=1 -> 0 -> q3_next=0
+
+c4: q19=1, q8=1 -> 0
+c4_1: 0, q16=1 -> 1
+c4_2: 1, q13=1 -> 0
+c4_3: 0, q0=0 -> 1
+c4_4: 1, q4=0 -> 1 -> q4_next=1
+
+c5: q9=1, q2=1 -> 0
+c5_1: 0, q17=1 -> 1
+c5_2: 1, q14=1 -> 0
+c5_3: 0, q13=1 -> 1
+c5_4: 1, q8=1 -> 0 -> q5_next=0
+
+c6: q15=1, q2=1 -> 0
+c6_1: 0, q1=0 -> 1
+c6_2: 1, q7=1 -> 0
+c6_3: 0, in1=0 -> 1
+c6_4: 1, q10=0 -> 1 -> q6_next=1
+
+c7: q6=1, q7=1 -> 0
+c7_1: 0, q4=0 -> 1
+c7_2: 1, q10=0 -> 1
+c7_3: 1, q19=1 -> 0
+c7_4: 0, q15=1 -> 1 -> q7_next=1
+
+c8: q9=1, q1=0 -> 1
+c8_1: 1, q19=1 -> 0
+c8_2: 0, q19=1 -> 1
+c8_3: 1, q18=1 -> 0
+c8_4: 0, q17=1 -> 1 -> q8_next=1
+
+c9: q16=1, q19=1 -> 0
+c9_1: 0, q3=1 -> 1
+c9_2: 1, q5=1 -> 0
+c9_3: 0, q16=1 -> 1
+c9_4: 1, q12=1 -> 0 -> q9_next=0
+
+c10: q11=1, q19=1 -> 0
+c10_1: 0, q13=1 -> 1
+c10_2: 1, in1=0 -> 1
+c10_3: 1, q14=1 -> 0
+c10_4: 0, q10=0 -> 1 -> q10_next=1
+
+c11: q2=1, in0=0 -> 1
+c11_1: 1, q5=1 -> 0
+c11_2: 0, q1=0 -> 1
+c11_3: 1, q0=0 -> 1
+c11_4: 1, in0=0 -> 1 -> q11_next=1
+
+c12: q10=0, q8=1 -> 1
+c12_1: 1, q13=1 -> 0
+c12_2: 0, q15=1 -> 1
+c12_3: 1, q5=1 -> 0
+c12_4: 0, q7=1 -> 1 -> q12_next=1
+
+c13: q17=1, q7=1 -> 0
+c13_1: 0, q8=1 -> 1
+c13_2: 1, q19=1 -> 0
+c13_3: 0, q12=1 -> 1
+c13_4: 1, in0=0 -> 1 -> q13_next=1
+
+c14: q12=1 -> 0
+c14_1: 0, q19=1 -> 1
+c14_2: 1, in0=0 -> 1
+c14_3: 1, q1=0 -> 1
+c14_4: 1, q16=1 -> 0 -> q14_next=0
+
+c15: q1=0, q7=1 -> 1
+c15_1: 1, in1=0 -> 1
+c15_2: 1, q15=1 -> 0
+c15_3: 0, q5=1 -> 1
+c15_4: 1, in1=0 -> 1 -> q15_next=1
+
+c16: q5=1, q6=1 -> 0
+c16_1: 0, q11=1 -> 1
+c16_2: 1, q4=0 -> 1
+c16_3: 1, q9=1 -> 0
+c16_4: 0, q14=1 -> 1 -> q16_next=1
+
+c17: q1=0, q10=1 -> 1
+c17_1: 1, q19=1 -> 0
+c17_2: 0, q14=1 -> 1
+c17_3: 1, q0=0 -> 1
+c17_4: 1, q15=1 -> 0 -> q17_next=0
+
+c18: q11=1, q4=0 -> 1
+c18_1: 1, q3=1 -> 0
+c18_2: 0, q1=0 -> 1
+c18_3: 1, q0=0 -> 1
+c18_4: 1, q15=1 -> 0 -> q18_next=0
+
+c19: in0=0, q1=0 -> 1
+c19_1: 1, q2=1 -> 0
+c19_2: 0, q7=1 -> 1
+c19_3: 1, q4=0 -> 1
+c19_4: 1, q18=0 -> 1 -> q19_next=1
+
+Next state cycle 9:
+q0=1, q1=1, q2=1, q3=0, q4=1, q5=0, q6=1, q7=1, q8=1, q9=0, q10=1, q11=1, q12=1, q13=1, q14=0, q15=1, q16=1, q17=0, q18=0, q19=1.
+
+Outputs cycle 8: start state: q12=1, q15=1, q17=1, q4=0, q5=1, q6=1.
+
+Cycle 9: in0=1, in1=1.
+State: q0=1, q1=1, q2=1, q3=0, q4=1, q5=0, q6=1, q7=1, q8=1, q9=0, q10=1, q11=1, q12=1, q13=1, q14=0, q15=1, q16=1, q17=0, q18=0, q19=1.
+
+c0: q15=1, in1=1 -> 0
+c0_1: 0, q2=1 -> 1
+c0_2: 1, q15=1 -> 0
+c0_3: 0, q13=1 -> 1
+c0_4: 1, q13=1 -> 0 -> q0_next=0
+
+c1: q1=1, in0=1 -> 0
+c1_1: 0, q12=1 -> 1
+c1_2: 1, q4=1 -> 0
+c1_3: 0, q19=1 -> 1
+c1_4: 1, q5=0 -> 1 -> q1_next=1
+
+c2: q10=1, q5=0 -> 1
+c2_1: 1, q2=1 -> 0
+c2_2: 0, q4=1 -> 1
+c2_3: 1, q18=0 -> 1
+c2_4: 1, q16=1 -> 0 -> q2_next=0
+
+c3: q5=0, q4=1 -> 1
+c3_1: 1, q7=1 -> 0
+c3_2: 0, q0=1 -> 1
+c3_3: 1, in0=1 -> 0
+c3_4: 0, q7=1 -> 1 -> q3_next=1
+
+c4: q19=1, q8=1 -> 0
+c4_1: 0, q16=1 -> 1
+c4_2: 1, q13=1 -> 0
+c4_3: 0, q0=1 -> 1
+c4_4: 1, q4=1 -> 0 -> q4_next=0
+
+c5: q9=0, q2=1 -> 1
+c5_1: 1, q17=0 -> 1
+c5_2: 1, q14=0 -> 1
+c5_3: 1, q13=1 -> 0
+c5_4: 0, q8=1 -> 1 -> q5_next=1
+
+c6: q15=1, q2=1 -> 0
+c6_1: 0, q1=1 -> 1
+c6_2: 1, q7=1 -> 0
+c6_3: 0, in1=1 -> 1
+c6_4: 1, q10=1 -> 0 -> q6_next=0
+
+c7: q6=1, q7=1 -> 0
+c7_1: 0, q4=1 -> 1
+c7_2: 1, q10=1 -> 0
+c7_3: 0, q19=1 -> 1
+c7_4: 1, q15=1 -> 0 -> q7_next=0
+
+c8: q9=0, q1=1 -> 1
+c8_1: 1, q19=1 -> 0
+c8_2: 0, q19=1 -> 1
+c8_3: 1, q18=0 -> 1
+c8_4: 1, q17=0 -> 1 -> q8_next=1
+
+c9: q16=1, q19=1 -> 0
+c9_1: 0, q3=0 -> 1
+c9_2: 1, q5=0 -> 1
+c9_3: 1, q16=1 -> 0
+c9_4: 0, q12=1 -> 1 -> q9_next=1
+
+c10: q11=1, q19=1 -> 0
+c10_1: 0, q13=1 -> 1
+c10_2: 1, in1=1 -> 0
+c10_3: 0, q14=0 -> 1
+c10_4: 1, q10=1 -> 0 -> q10_next=0
+
+c11: q2=1, in0=1 -> 0
+c11_1: 0, q5=0 -> 1
+c11_2: 1, q1=1 -> 0
+c11_3: 0, q0=1 -> 1
+c11_4: 1, in0=1 -> 0 -> q11_next=0
+
+c12: q10=1, q8=1 -> 0
+c12_1: 0, q13=1 -> 1
+c12_2: 1, q15=1 -> 0
+c12_3: 0, q5=0 -> 1
+c12_4: 1, q7=1 -> 0 -> q12_next=0
+
+c13: q17=0, q7=1 -> 1
+c13_1: 1, q8=1 -> 0
+c13_2: 0, q19=1 -> 1
+c13_3: 1, q12=1 -> 0
+c13_4: 0, in0=1 -> 1 -> q13_next=1
+
+c14: q12=1 -> 0
+c14_1: 0, q19=1 -> 1
+c14_2: 1, in0=1 -> 0
+c14_3: 0, q1=1 -> 1
+c14_4: 1, q16=1 -> 0 -> q14_next=0
+
+c15: q1=1, q7=1 -> 0
+c15_1: 0, in1=1 -> 1
+c15_2: 1, q15=1 -> 0
+c15_3: 0, q5=0 -> 1
+c15_4: 1, in1=1 -> 0 -> q15_next=0
+
+c16: q5=0, q6=1 -> 1
+c16_1: 1, q11=1 -> 0
+c16_2: 0, q4=1 -> 1
+c16_3: 1, q9=0 -> 1
+c16_4: 1, q14=0 -> 1 -> q16_next=1
+
+c17: q1=1, q10=1 -> 0
+c17_1: 0, q19=1 -> 1
+c17_2: 1, q14=0 -> 1
+c17_3: 1, q0=1 -> 0
+c17_4: 0, q15=1 -> 1 -> q17_next=1
+
+c18: q11=1, q4=1 -> 0
+c18_1: 0, q3=0 -> 1
+c18_2: 1, q1=1 -> 0
+c18_3: 0, q0=1 -> 1
+c18_4: 1, q15=1 -> 0 -> q18_next=0
+
+c19: in0=1, q1=1 -> 0
+c19_1: 0, q2=1 -> 1
+c19_2: 1, q7=1 -> 0
+c19_3: 0, q4=1 -> 1
+c19_4: 1, q18=0 -> 1 -> q19_next=1
+
+Next state cycle 10:
+q0=0, q1=1, q2=0, q3=1, q4=0, q5=1, q6=0, q7=0, q8=1, q9=1, q10=0, q11=0, q12=0, q13=1, q14=0, q15=0, q16=1, q17=1, q18=0, q19=1.
+
+Outputs cycle 9: start state: q12=1, q15=1, q17=0, q4=1, q5=0, q6=1.
+
+Cycle 10: in0=0, in1=0.
+State: q0=0, q1=1, q2=0, q3=1, q4=0, q5=1, q6=0, q7=0, q8=1, q9=1, q10=0, q11=0, q12=0, q13=1, q14=0, q15=0, q16=1, q17=1, q18=0, q19=1.
+
+c0: q15=0, in1=0 -> 1
+c0_1: 1, q2=0 -> 1
+c0_2: 1, q15=0 -> 1
+c0_3: 1, q13=1 -> 0
+c0_4: 0, q13=1 -> 1 -> q0_next=1
+
+c1: q1=1, in0=0 -> 1
+c1_1: 1, q12=0 -> 1
+c1_2: 1, q4=0 -> 1
+c1_3: 1, q19=1 -> 0
+c1_4: 0, q5=1 -> 1 -> q1_next=1
+
+c2: q10=0, q5=1 -> 1
+c2_1: 1, q2=0 -> 1
+c2_2: 1, q4=0 -> 1
+c2_3: 1, q18=0 -> 1
+c2_4: 1, q16=1 -> 0 -> q2_next=0
+
+c3: q5=1, q4=0 -> 1
+c3_1: 1, q7=0 -> 1
+c3_2: 1, q0=0 -> 1
+c3_3: 1, in0=0 -> 1
+c3_4: 1, q7=0 -> 1 -> q3_next=1
+
+c4: q19=1, q8=1 -> 0
+c4_1: 0, q16=1 -> 1
+c4_2: 1, q13=1 -> 0
+c4_3: 0, q0=0 -> 1
+c4_4: 1, q4=0 -> 1 -> q4_next=1
+
+c5: q9=1, q2=0 -> 1
+c5_1: 1, q17=1 -> 0
+c5_2: 0, q14=0 -> 1
+c5_3: 1, q13=1 -> 0
+c5_4: 0, q8=1 -> 1 -> q5_next=1
+
+c6: q15=0, q2=0 -> 1
+c6_1: 1, q1=1 -> 0
+c6_2: 0, q7=0 -> 1
+c6_3: 1, in1=0 -> 1
+c6_4: 1, q10=0 -> 1 -> q6_next=1
+
+c7: q6=0, q7=0 -> 1
+c7_1: 1, q4=0 -> 1
+c7_2: 1, q10=0 -> 1
+c7_3: 1, q19=1 -> 0
+c7_4: 0, q15=0 -> 1 -> q7_next=1
+
+c8: q9=1, q1=1 -> 0
+c8_1: 0, q19=1 -> 1
+c8_2: 1, q19=1 -> 0
+c8_3: 0, q18=0 -> 1
+c8_4: 1, q17=1 -> 0 -> q8_next=0
+
+c9: q16=1, q19=1 -> 0
+c9_1: 0, q3=1 -> 1
+c9_2: 1, q5=1 -> 0
+c9_3: 0, q16=1 -> 1
+c9_4: 1, q12=0 -> 1 -> q9_next=1
+
+c10: q11=0, q19=1 -> 1
+c10_1: 1, q13=1 -> 0
+c10_2: 0, in1=0 -> 1
+c10_3: 1, q14=0 -> 1
+c10_4: 1, q10=0 -> 1 -> q10_next=1
+
+c11: q2=0, in0=0 -> 1
+c11_1: 1, q5=1 -> 0
+c11_2: 0, q1=1 -> 1
+c11_3: 1, q0=0 -> 1
+c11_4: 1, in0=0 -> 1 -> q11_next=1
+
+c12: q10=0, q8=1 -> 1
+c12_1: 1, q13=1 -> 0
+c12_2: 0, q15=0 -> 1
+c12_3: 1, q5=1 -> 0
+c12_4: 0, q7=0 -> 1 -> q12_next=1
+
+c13: q17=1, q7=0 -> 1
+c13_1: 1, q8=1 -> 0
+c13_2: 0, q19=1 -> 1
+c13_3: 1, q12=0 -> 1
+c13_4: 1, in0=0 -> 1 -> q13_next=1
+
+c14: q12=0 -> 1
+c14_1: 1, q19=1 -> 0
+c14_2: 0, in0=0 -> 1
+c14_3: 1, q1=1 -> 0
+c14_4: 0, q16=1 -> 1 -> q14_next=1
+
+c15: q1=1, q7=0 -> 1
+c15_1: 1, in1=0 -> 1
+c15_2: 1, q15=0 -> 1
+c15_3: 1, q5=1 -> 0
+c15_4: 0, in1=0 -> 1 -> q15_next=1
+
+c16: q5=1, q6=0 -> 1
+c16_1: 1, q11=0 -> 1
+c16_2: 1, q4=0 -> 1
+c16_3: 1, q9=1 -> 0
+c16_4: 0, q14=0 -> 1 -> q16_next=1
+
+c17: q1=1, q10=0 -> 1
+c17_1: 1, q19=1 -> 0
+c17_2: 0, q14=0 -> 1
+c17_3: 1, q0=0 -> 1
+c17_4: 1, q15=0 -> 1 -> q17_next=1
+
+c18: q11=0, q4=0 -> 1
+c18_1: 1, q3=1 -> 0
+c18_2: 0, q1=1 -> 1
+c18_3: 1, q0=0 -> 1
+c18_4: 1, q15=0 -> 1 -> q18_next=1
+
+c19: in0=0, q1=1 -> 1
+c19_1: 1, q2=0 -> 1
+c19_2: 1, q7=0 -> 1
+c19_3: 1, q4=0 -> 1
+c19_4: 1, q18=0 -> 1 -> q19_next=1
+
+Next state cycle 11:
+q0=1, q1=1, q2=0, q3=1, q4=1, q5=1, q6=1, q7=1, q8=0, q9=1, q10=1, q11=1, q12=1, q13=1, q14=1, q15=1, q16=1, q17=1, q18=1, q19=1.
+
+Outputs cycle 10: start: q12=0, q15=0, q17=1, q4=0, q5=1, q6=0.
+
+Cycle 11: in0=1, in1=0.
+State: q0=1, q1=1, q2=0, q3=1, q4=1, q5=1, q6=1, q7=1, q8=0, q9=1, q10=1, q11=1, q12=1, q13=1, q14=1, q15=1, q16=1, q17=1, q18=1, q19=1.
+
+c0: q15=1, in1=0 -> 1
+c0_1: 1, q2=0 -> 1
+c0_2: 1, q15=1 -> 0
+c0_3: 0, q13=1 -> 1
+c0_4: 1, q13=1 -> 0 -> q0_next=0
+
+c1: q1=1, in0=1 -> 0
+c1_1: 0, q12=1 -> 1
+c1_2: 1, q4=1 -> 0
+c1_3: 0, q19=1 -> 1
+c1_4: 1, q5=1 -> 0 -> q1_next=0
+
+c2: q10=1, q5=1 -> 0
+c2_1: 0, q2=0 -> 1
+c2_2: 1, q4=1 -> 0
+c2_3: 0, q18=1 -> 1
+c2_4: 1, q16=1 -> 0 -> q2_next=0
+
+c3: q5=1, q4=1 -> 0
+c3_1: 0, q7=1 -> 1
+c3_2: 1, q0=1 -> 0
+c3_3: 0, in0=1 -> 1
+c3_4: 1, q7=1 -> 0 -> q3_next=0
+
+c4: q19=1, q8=0 -> 1
+c4_1: 1, q16=1 -> 0
+c4_2: 0, q13=1 -> 1
+c4_3: 1, q0=1 -> 0
+c4_4: 0, q4=1 -> 1 -> q4_next=1
+
+c5: q9=1, q2=0 -> 1
+c5_1: 1, q17=1 -> 0
+c5_2: 0, q14=1 -> 1
+c5_3: 1, q13=1 -> 0
+c5_4: 0, q8=0 -> 1 -> q5_next=1
+
+c6: q15=1, q2=0 -> 1
+c6_1: 1, q1=1 -> 0
+c6_2: 0, q7=1 -> 1
+c6_3: 1, in1=0 -> 1
+c6_4: 1, q10=1 -> 0 -> q6_next=0
+
+c7: q6=1, q7=1 -> 0
+c7_1: 0, q4=1 -> 1
+c7_2: 1, q10=1 -> 0
+c7_3: 0, q19=1 -> 1
+c7_4: 1, q15=1 -> 0 -> q7_next=0
+
+c8: q9=1, q1=1 -> 0
+c8_1: 0, q19=1 -> 1
+c8_2: 1, q19=1 -> 0
+c8_3: 0, q18=1 -> 1
+c8_4: 1, q17=1 -> 0 -> q8_next=0
+
+c9: q16=1, q19=1 -> 0
+c9_1: 0, q3=1 -> 1
+c9_2: 1, q5=1 -> 0
+c9_3: 0, q16=1 -> 1
+c9_4: 1, q12=1 -> 0 -> q9_next=0
+
+c10: q11=1, q19=1 -> 0
+c10_1: 0, q13=1 -> 1
+c10_2: 1, in1=0 -> 1
+c10_3: 1, q14=1 -> 0
+c10_4: 0, q10=1 -> 1 -> q10_next=1
+
+c11: q2=0, in0=1 -> 1
+c11_1: 1, q5=1 -> 0
+c11_2: 0, q1=1 -> 1
+c11_3: 1, q0=1 -> 0
+c11_4: 0, in0=1 -> 1 -> q11_next=1
+
+c12: q10=1, q8=0 -> 1
+c12_1: 1, q13=1 -> 0
+c12_2: 0, q15=1 -> 1
+c12_3: 1, q5=1 -> 0
+c12_4: 0, q7=1 -> 1 -> q12_next=1
+
+c13: q17=1, q7=1 -> 0
+c13_1: 0, q8=0 -> 1
+c13_2: 1, q19=1 -> 0
+c13_3: 0, q12=1 -> 1
+c13_4: 1, in0=1 -> 0 -> q13_next=0
+
+c14: q12=1 -> 0
+c14_1: 0, q19=1 -> 1
+c14_2: 1, in0=1 -> 0
+c14_3: 0, q1=1 -> 1
+c14_4: 1, q16=1 -> 0 -> q14_next=0
+
+c15: q1=1, q7=1 -> 0
+c15_1: 0, in1=0 -> 1
+c15_2: 1, q15=1 -> 0
+c15_3: 0, q5=1 -> 1
+c15_4: 1, in1=0 -> 1 -> q15_next=1
+
+c16: q5=1, q6=1 -> 0
+c16_1: 0, q11=1 -> 1
+c16_2: 1, q4=1 -> 0
+c16_3: 0, q9=1 -> 1
+c16_4: 1, q14=1 -> 0 -> q16_next=0
+
+c17: q1=1, q10=1 -> 0
+c17_1: 0, q19=1 -> 1
+c17_2: 1, q14=1 -> 0
+c17_3: 0, q0=1 -> 1
+c17_4: 1, q15=1 -> 0 -> q17_next=0
+
+c18: q11=1, q4=1 -> 0
+c18_1: 0, q3=1 -> 1
+c18_2: 1, q1=1 -> 0
+c18_3: 0, q0=1 -> 1
+c18_4: 1, q15=1 -> 0 -> q18_next=0
+
+c19: in0=1, q1=1 -> 0
+c19_1: 0, q2=0 -> 1
+c19_2: 1, q7=1 -> 0
+c19_3: 0, q4=1 -> 1
+c19_4: 1, q18=0 -> 1 -> q19_next=1
+
+Next state cycle 12:
+q0=0, q1=0, q2=0, q3=0, q4=1, q5=1, q6=0, q7=0, q8=0, q9=0, q10=1, q11=1, q12=1, q13=0, q14=0, q15=1, q16=0, q17=0, q18=0, q19=1.
+
+Outputs cycle 11: start: q12=1, q15=1, q17=1, q4=1, q5=1, q6=1.
+
+Cycle 12: in0=1, in1=0.
+State: q0=0, q1=0, q2=0, q3=0, q4=1, q5=1, q6=0, q7=0, q8=0, q9=0, q10=1, q11=1, q12=1, q13=0, q14=0, q15=1, q16=0, q17=0, q18=0, q19=1.
+
+c0: q15=1, in1=0 -> 1
+c0_1: 1, q2=0 -> 1
+c0_2: 1, q15=1 -> 0
+c0_3: 0, q13=0 -> 1
+c0_4: 1, q13=0 -> 1 -> q0_next=1
+
+c1: q1=0, in0=1 -> 1
+c1_1: 1, q12=1 -> 0
+c1_2: 0, q4=1 -> 1
+c1_3: 1, q19=1 -> 0
+c1_4: 0, q5=1 -> 1 -> q1_next=1
+
+c2: q10=1, q5=1 -> 0
+c2_1: 0, q2=0 -> 1
+c2_2: 1, q4=1 -> 0
+c2_3: 0, q18=0 -> 1
+c2_4: 1, q16=0 -> 1 -> q2_next=1
+
+c3: q5=1, q4=1 -> 0
+c3_1: 0, q7=0 -> 1
+c3_2: 1, q0=0 -> 1
+c3_3: 1, in0=1 -> 0
+c3_4: 0, q7=0 -> 1 -> q3_next=1
+
+c4: q19=1, q8=0 -> 1
+c4_1: 1, q16=0 -> 1
+c4_2: 1, q13=0 -> 1
+c4_3: 1, q0=0 -> 1
+c4_4: 1, q4=1 -> 0 -> q4_next=0
+
+c5: q9=0, q2=0 -> 1
+c5_1: 1, q17=0 -> 1
+c5_2: 1, q14=0 -> 1
+c5_3: 1, q13=0 -> 1
+c5_4: 1, q8=0 -> 1 -> q5_next=1
+
+c6: q15=1, q2=0 -> 1
+c6_1: 1, q1=0 -> 1
+c6_2: 1, q7=0 -> 1
+c6_3: 1, in1=0 -> 1
+c6_4: 1, q10=1 -> 0 -> q6_next=0
+
+c7: q6=0, q7=0 -> 1
+c7_1: 1, q4=1 -> 0
+c7_2: 0, q10=1 -> 1
+c7_3: 1, q19=1 -> 0
+c7_4: 0, q15=1 -> 1 -> q7_next=1
+
+c8: q9=0, q1=0 -> 1
+c8_1: 1, q19=1 -> 0
+c8_2: 0, q19=1 -> 1
+c8_3: 1, q18=0 -> 1
+c8_4: 1, q17=0 -> 1 -> q8_next=1
+
+c9: q16=0, q19=1 -> 1
+c9_1: 1, q3=0 -> 1
+c9_2: 1, q5=1 -> 0
+c9_3: 0, q16=0 -> 1
+c9_4: 1, q12=1 -> 0 -> q9_next=0
+
+c10: q11=1, q19=1 -> 0
+c10_1: 0, q13=0 -> 1
+c10_2: 1, in1=0 -> 1
+c10_3: 1, q14=0 -> 1
+c10_4: 1, q10=1 -> 0 -> q10_next=0
+
+c11: q2=0, in0=1 -> 1
+c11_1: 1, q5=1 -> 0
+c11_2: 0, q1=0 -> 1
+c11_3: 1, q0=0 -> 1
+c11_4: 1, in0=1 -> 0 -> q11_next=0
+
+c12: q10=1, q8=0 -> 1
+c12_1: 1, q13=0 -> 1
+c12_2: 1, q15=1 -> 0
+c12_3: 0, q5=1 -> 1
+c12_4: 1, q7=0 -> 1 -> q12_next=1
+
+c13: q17=0, q7=0 -> 1
+c13_1: 1, q8=0 -> 1
+c13_2: 1, q19=1 -> 0
+c13_3: 0, q12=1 -> 1
+c13_4: 1, in0=1 -> 0 -> q13_next=0
+
+c14: q12=1 -> 0
+c14_1: 0, q19=1 -> 1
+c14_2: 1, in0=1 -> 0
+c14_3: 0, q1=0 -> 1
+c14_4: 1, q16=0 -> 1 -> q14_next=1
+
+c15: q1=0, q7=0 -> 1
+c15_1: 1, in1=0 -> 1
+c15_2: 1, q15=1 -> 0
+c15_3: 0, q5=1 -> 1
+c15_4: 1, in1=0 -> 1 -> q15_next=1
+
+c16: q5=1, q6=0 -> 1
+c16_1: 1, q11=1 -> 0
+c16_2: 0, q4=1 -> 1
+c16_3: 1, q9=0 -> 1
+c16_4: 1, q14=0 -> 1 -> q16_next=1
+
+c17: q1=0, q10=1 -> 1
+c17_1: 1, q19=1 -> 0
+c17_2: 0, q14=0 -> 1
+c17_3: 1, q0=0 -> 1
+c17_4: 1, q15=1 -> 0 -> q17_next=0
+
+c18: q11=1, q4=1 -> 0
+c18_1: 0, q3=0 -> 1
+c18_2: 1, q1=0 -> 1
+c18_3: 1, q0=0 -> 1
+c18_4: 1, q15=1 -> 0 -> q18_next=0
+
+c19: in0=1, q1=0 -> 1
+c19_1: 1, q2=0 -> 1
+c19_2: 1, q7=0 -> 1
+c19_3: 1, q4=1 -> 0
+c19_4: 0, q18=0 -> 1 -> q19_next=1
+
+Next state cycle 13:
+q0=1, q1=1, q2=1, q3=1, q4=0, q5=1, q6=0, q7=1, q8=1, q9=0, q10=0, q11=0, q12=1, q13=0, q14=1, q15=1, q16=1, q17=0, q18=0, q19=1.
+
+Outputs cycle 12: start: q12=1, q15=1, q17=0, q4=1, q5=1, q6=0.
+
+Cycle 13: in0=1, in1=1.
+State: q0=1, q1=1, q2=1, q3=1, q4=0, q5=1, q6=0, q7=1, q8=1, q9=0, q10=0, q11=0, q12=1, q13=0, q14=1, q15=1, q16=1, q17=0, q18=0, q19=1.
+
+c0: q15=1, in1=1 -> 0
+c0_1: 0, q2=1 -> 1
+c0_2: 1, q15=1 -> 0
+c0_3: 0, q13=0 -> 1
+c0_4: 1, q13=0 -> 1 -> q0_next=1
+
+c1: q1=1, in0=1 -> 0
+c1_1: 0, q12=1 -> 1
+c1_2: 1, q4=0 -> 1
+c1_3: 1, q19=1 -> 0
+c1_4: 0, q5=1 -> 1 -> q1_next=1
+
+c2: q10=0, q5=1 -> 1
+c2_1: 1, q2=1 -> 0
+c2_2: 0, q4=0 -> 1
+c2_3: 1, q18=0 -> 1
+c2_4: 1, q16=1 -> 0 -> q2_next=0
+
+c3: q5=1, q4=0 -> 1
+c3_1: 1, q7=1 -> 0
+c3_2: 0, q0=1 -> 1
+c3_3: 1, in0=1 -> 0
+c3_4: 0, q7=1 -> 1 -> q3_next=1
+
+c4: q19=1, q8=1 -> 0
+c4_1: 0, q16=1 -> 1
+c4_2: 1, q13=0 -> 1
+c4_3: 1, q0=1 -> 0
+c4_4: 0, q4=0 -> 1 -> q4_next=1
+
+c5: q9=0, q2=1 -> 1
+c5_1: 1, q17=0 -> 1
+c5_2: 1, q14=1 -> 0
+c5_3: 0, q13=0 -> 1
+c5_4: 1, q8=1 -> 0 -> q5_next=0
+
+c6: q15=1, q2=1 -> 0
+c6_1: 0, q1=1 -> 1
+c6_2: 1, q7=1 -> 0
+c6_3: 0, in1=1 -> 1
+c6_4: 1, q10=0 -> 1 -> q6_next=1
+
+c7: q6=0, q7=1 -> 1
+c7_1: 1, q4=0 -> 1
+c7_2: 1, q10=0 -> 1
+c7_3: 1, q19=1 -> 0
+c7_4: 0, q15=1 -> 1 -> q7_next=1
+
+c8: q9=0, q1=1 -> 1
+c8_1: 1, q19=1 -> 0
+c8_2: 0, q19=1 -> 1
+c8_3: 1, q18=0 -> 1
+c8_4: 1, q17=0 -> 1 -> q8_next=1
+
+c9: q16=1, q19=1 -> 0
+c9_1: 0, q3=1 -> 1
+c9_2: 1, q5=1 -> 0
+c9_3: 0, q16=1 -> 1
+c9_4: 1, q12=1 -> 0 -> q9_next=0
+
+c10: q11=0, q19=1 -> 1
+c10_1: 1, q13=0 -> 1
+c10_2: 1, in1=1 -> 0
+c10_3: 0, q14=1 -> 1
+c10_4: 1, q10=0 -> 1 -> q10_next=1
+
+c11: q2=1, in0=1 -> 0
+c11_1: 0, q5=1 -> 1
+c11_2: 1, q1=1 -> 0
+c11_3: 0, q0=1 -> 1
+c11_4: 1, in0=1 -> 0 -> q11_next=0
+
+c12: q10=0, q8=1 -> 1
+c12_1: 1, q13=0 -> 1
+c12_2: 1, q15=1 -> 0
+c12_3: 0, q5=1 -> 1
+c12_4: 1, q7=1 -> 0 -> q12_next=0
+
+c13: q17=0, q7=1 -> 1
+c13_1: 1, q8=1 -> 0
+c13_2: 0, q19=1 -> 1
+c13_3: 1, q12=1 -> 0
+c13_4: 0, in0=1 -> 1 -> q13_next=1
+
+c14: q12=1 -> 0
+c14_1: 0, q19=1 -> 1
+c14_2: 1, in0=1 -> 0
+c14_3: 0, q1=1 -> 1
+c14_4: 1, q16=1 -> 0 -> q14_next=0
+
+c15: q1=1, q7=1 -> 0
+c15_1: 0, in1=1 -> 1
+c15_2: 1, q15=1 -> 0
+c15_3: 0, q5=1 -> 1
+c15_4: 1, in1=1 -> 0 -> q15_next=0
+
+c16: q5=1, q6=0 -> 1
+c16_1: 1, q11=0 -> 1
+c16_2: 1, q4=0 -> 1
+c16_3: 1, q9=0 -> 1
+c16_4: 1, q14=1 -> 0 -> q16_next=0
+
+c17: q1=1, q10=0 -> 1
+c17_1: 1, q19=1 -> 0
+c17_2: 0, q14=1 -> 1
+c17_3: 1, q0=1 -> 0
+c17_4: 0, q15=1 -> 1 -> q17_next=1
+
+c18: q11=0, q4=0 -> 1
+c18_1: 1, q3=1 -> 0
+c18_2: 0, q1=1 -> 1
+c18_3: 1, q0=1 -> 0
+c18_4: 0, q15=1 -> 1 -> q18_next=1
+
+c19: in0=1, q1=1 -> 0
+c19_1: 0, q2=1 -> 1
+c19_2: 1, q7=1 -> 0
+c19_3: 0, q4=0 -> 1
+c19_4: 1, q18=0 -> 1 -> q19_next=1
+
+Next state cycle 14:
+q0=1, q1=1, q2=0, q3=1, q4=1, q5=0, q6=1, q7=1, q8=1, q9=0, q10=1, q11=0, q12=0, q13=1, q14=0, q15=0, q16=0, q17=1, q18=1, q19=1.
+
+Outputs cycle 13: start: q12=1, q15=1, q17=0, q4=0, q5=1, q6=0.
+
+Cycle 14: in0=1, in1=1.
+State: q0=1, q1=1, q2=0, q3=1, q4=1, q5=0, q6=1, q7=1, q8=1, q9=0, q10=1, q11=0, q12=0, q13=1, q14=0, q15=0, q16=0, q17=1, q18=1, q19=1.
+
+c0: q15=0, in1=1 -> 1
+c0_1: 1, q2=0 -> 1
+c0_2: 1, q15=0 -> 1
+c0_3: 1, q13=1 -> 0
+c0_4: 0, q13=1 -> 1 -> q0_next=1
+
+c1: q1=1, in0=1 -> 0
+c1_1: 0, q12=0 -> 1
+c1_2: 1, q4=1 -> 0
+c1_3: 0, q19=1 -> 1
+c1_4: 1, q5=0 -> 1 -> q1_next=1
+
+c2: q10=1, q5=0 -> 1
+c2_1: 1, q2=0 -> 1
+c2_2: 1, q4=1 -> 0
+c2_3: 0, q18=1 -> 1
+c2_4: 1, q16=0 -> 1 -> q2_next=1
+
+c3: q5=0, q4=1 -> 1
+c3_1: 1, q7=1 -> 0
+c3_2: 0, q0=1 -> 1
+c3_3: 1, in0=1 -> 0
+c3_4: 0, q7=1 -> 1 -> q3_next=1
+
+c4: q19=1, q8=1 -> 0
+c4_1: 0, q16=0 -> 1
+c4_2: 1, q13=1 -> 0
+c4_3: 0, q0=1 -> 1
+c4_4: 1, q4=1 -> 0 -> q4_next=0
+
+c5: q9=0, q2=0 -> 1
+c5_1: 1, q17=1 -> 0
+c5_2: 0, q14=0 -> 1
+c5_3: 1, q13=1 -> 0
+c5_4: 0, q8=1 -> 1 -> q5_next=1
+
+c6: q15=0, q2=0 -> 1
+c6_1: 1, q1=1 -> 0
+c6_2: 0, q7=1 -> 1
+c6_3: 1, in1=1 -> 0
+c6_4: 0, q10=1 -> 1 -> q6_next=1
+
+c7: q6=1, q7=1 -> 0
+c7_1: 0, q4=1 -> 1
+c7_2: 1, q10=1 -> 0
+c7_3: 0, q19=1 -> 1
+c7_4: 1, q15=0 -> 1 -> q7_next=1
+
+c8: q9=0, q1=1 -> 1
+c8_1: 1, q19=1 -> 0
+c8_2: 0, q19=1 -> 1
+c8_3: 1, q18=1 -> 0
+c8_4: 0, q17=1 -> 1 -> q8_next=1
+
+c9: q16=0, q19=1 -> 1
+c9_1: 1, q3=1 -> 0
+c9_2: 0, q5=0 -> 1
+c9_3: 1, q16=0 -> 1
+c9_4: 1, q12=0 -> 1 -> q9_next=1
+
+c10: q11=0, q19=1 -> 1
+c10_1: 1, q13=1 -> 0
+c10_2: 0, in1=1 -> 1
+c10_3: 1, q14=0 -> 1
+c10_4: 1, q10=1 -> 0 -> q10_next=0
+
+c11: q2=0, in0=1 -> 1
+c11_1: 1, q5=0 -> 1
+c11_2: 1, q1=1 -> 0
+c11_3: 0, q0=1 -> 1
+c11_4: 1, in0=1 -> 0 -> q11_next=0
+
+c12: q10=1, q8=1 -> 0
+c12_1: 0, q13=1 -> 1
+c12_2: 1, q15=0 -> 1
+c12_3: 1, q5=0 -> 1
+c12_4: 1, q7=1 -> 0 -> q12_next=0
+
+c13: q17=1, q7=1 -> 0
+c13_1: 0, q8=1 -> 1
+c13_2: 1, q19=1 -> 0
+c13_3: 0, q12=0 -> 1
+c13_4: 1, in0=1 -> 0 -> q13_next=0
+
+c14: q12=0 -> 1
+c14_1: 1, q19=1 -> 0
+c14_2: 0, in0=1 -> 1
+c14_3: 1, q1=1 -> 0
+c14_4: 0, q16=0 -> 1 -> q14_next=1
+
+c15: q1=1, q7=1 -> 0
+c15_1: 0, in1=1 -> 1
+c15_2: 1, q15=0 -> 1
+c15_3: 1, q5=0 -> 1
+c15_4: 1, in1=1 -> 0 -> q15_next=0
+
+c16: q5=0, q6=1 -> 1
+c16_1: 1, q11=0 -> 1
+c16_2: 1, q4=1 -> 0
+c16_3: 0, q9=0 -> 1
+c16_4: 1, q14=0 -> 1 -> q16_next=1
+
+c17: q1=1, q10=1 -> 0
+c17_1: 0, q19=1 -> 1
+c17_2: 1, q14=0 -> 1
+c17_3: 1, q0=1 -> 0
+c17_4: 0, q15=0 -> 1 -> q17_next=1
+
+c18: q11=0, q4=1 -> 1
+c18_1: 1, q3=1 -> 0
+c18_2: 0, q1=1 -> 1
+c18_3: 1, q0=1 -> 0
+c18_4: 0, q15=0 -> 1 -> q18_next=1
+
+c19: in0=1, q1=1 -> 0
+c19_1: 0, q2=0 -> 1
+c19_2: 1, q7=1 -> 0
+c19_3: 0, q4=1 -> 1
+c19_4: 1, q18=1 -> 0 -> q19_next=0
+
+Next state cycle 15:
+q0=1, q1=1, q2=1, q3=1, q4=0, q5=1, q6=1, q7=1, q8=1, q9=1, q10=0, q11=0, q12=0, q13=0, q14=1, q15=0, q16=1, q17=1, q18=1, q19=0.
+
+Outputs cycle 14: start: q12=0, q15=0, q17=1, q4=1, q5=0, q6=1.
+
+Cycle 15: in0=0, in1=0.
+State: q0=1, q1=1, q2=1, q3=1, q4=0, q5=1, q6=1, q7=1, q8=1, q9=1, q10=0, q11=0, q12=0, q13=0, q14=1, q15=0, q16=1, q17=1, q18=1, q19=0.
+
+c0: q15=0, in1=0 -> 1
+c0_1: 1, q2=1 -> 0
+c0_2: 0, q15=0 -> 1
+c0_3: 1, q13=0 -> 1
+c0_4: 1, q13=0 -> 1 -> q0_next=1
+
+c1: q1=1, in0=0 -> 1
+c1_1: 1, q12=0 -> 1
+c1_2: 1, q4=0 -> 1
+c1_3: 1, q19=0 -> 1
+c1_4: 1, q5=1 -> 0 -> q1_next=0
+
+c2: q10=0, q5=1 -> 1
+c2_1: 1, q2=1 -> 0
+c2_2: 0, q4=0 -> 1
+c2_3: 1, q18=1 -> 0
+c2_4: 0, q16=1 -> 1 -> q2_next=1
+
+c3: q5=1, q4=0 -> 1
+c3_1: 1, q7=1 -> 0
+c3_2: 0, q0=1 -> 1
+c3_3: 1, in0=0 -> 1
+c3_4: 1, q7=1 -> 0 -> q3_next=0
+
+c4: q19=0, q8=1 -> 1
+c4_1: 1, q16=1 -> 0
+c4_2: 0, q13=0 -> 1
+c4_3: 1, q0=1 -> 0
+c4_4: 0, q4=0 -> 1 -> q4_next=1
+
+c5: q9=1, q2=1 -> 0
+c5_1: 0, q17=1 -> 1
+c5_2: 1, q14=1 -> 0
+c5_3: 0, q13=0 -> 1
+c5_4: 1, q8=1 -> 0 -> q5_next=0
+
+c6: q15=0, q2=1 -> 1
+c6_1: 1, q1=1 -> 0
+c6_2: 0, q7=1 -> 1
+c6_3: 1, in1=0 -> 1
+c6_4: 1, q10=0 -> 1 -> q6_next=1
+
+c7: q6=1, q7=1 -> 0
+c7_1: 0, q4=0 -> 1
+c7_2: 1, q10=0 -> 1
+c7_3: 1, q19=0 -> 1
+c7_4: 1, q15=0 -> 1 -> q7_next=1
+
+c8: q9=1, q1=1 -> 0
+c8_1: 0, q19=0 -> 1
+c8_2: 1, q19=0 -> 1
+c8_3: 1, q18=1 -> 0
+c8_4: 0, q17=1 -> 1 -> q8_next=1
+
+c9: q16=1, q19=0 -> 1
+c9_1: 1, q3=1 -> 0
+c9_2: 0, q5=1 -> 1
+c9_3: 1, q16=1 -> 0
+c9_4: 0, q12=0 -> 1 -> q9_next=1
+
+c10: q11=0, q19=0 -> 1
+c10_1: 1, q13=0 -> 1
+c10_2: 1, in1=0 -> 1
+c10_3: 1, q14=1 -> 0
+c10_4: 0, q10=0 -> 1 -> q10_next=1
+
+c11: q2=1, in0=0 -> 1
+c11_1: 1, q5=1 -> 0
+c11_2: 0, q1=1 -> 1
+c11_3: 1, q0=1 -> 0
+c11_4: 0, in0=0 -> 1 -> q11_next=1
+
+c12: q10=0, q8=1 -> 1
+c12_1: 1, q13=0 -> 1
+c12_2: 1, q15=0 -> 1
+c12_3: 1, q5=1 -> 0
+c12_4: 0, q7=1 -> 1 -> q12_next=1
+
+c13: q17=1, q7=1 -> 0
+c13_1: 0, q8=1 -> 1
+c13_2: 1, q19=0 -> 1
+c13_3: 1, q12=0 -> 1
+c13_4: 1, in0=0 -> 1 -> q13_next=1
+
+c14: q12=0 -> 1
+c14_1: 1, q19=0 -> 1
+c14_2: 1, in0=0 -> 1
+c14_3: 1, q1=1 -> 0
+c14_4: 0, q16=1 -> 1 -> q14_next=1
+
+c15: q1=1, q7=1 -> 0
+c15_1: 0, in1=0 -> 1
+c15_2: 1, q15=0 -> 1
+c15_3: 1, q5=1 -> 0
+c15_4: 0, in1=0 -> 1 -> q15_next=1
+
+c16: q5=1, q6=1 -> 0
+c16_1: 0, q11=0 -> 1
+c16_2: 1, q4=0 -> 1
+c16_3: 1, q9=1 -> 0
+c16_4: 0, q14=1 -> 1 -> q16_next=1
+
+c17: q1=1, q10=0 -> 1
+c17_1: 1, q19=0 -> 1
+c17_2: 1, q14=1 -> 0
+c17_3: 0, q0=1 -> 1
+c17_4: 1, q15=0 -> 1 -> q17_next=1
+
+c18: q11=0, q4=0 -> 1
+c18_1: 1, q3=1 -> 0
+c18_2: 0, q1=1 -> 1
+c18_3: 1, q0=1 -> 0
+c18_4: 0, q15=0 -> 1 -> q18_next=1
+
+c19: in0=0, q1=1 -> 1
+c19_1: 1, q2=1 -> 0
+c19_2: 0, q7=1 -> 1
+c19_3: 1, q4=0 -> 1
+c19_4: 1, q18=1 -> 0 -> q19_next=0
+
+Next state cycle 16:
+q0=1, q1=0, q2=1, q3=0, q4=1, q5=0, q6=1, q7=1, q8=1, q9=1, q10=1, q11=1, q12=1, q13=1, q14=1, q15=1, q16=1, q17=1, q18=1, q19=0.
+
+Outputs cycle 15: start: q12=0, q15=0, q17=1, q4=0, q5=1, q6=1.
+
+Cycle 16: in0=0, in1=1.
+State: q0=1, q1=0, q2=1, q3=0, q4=1, q5=0, q6=1, q7=1, q8=1, q9=1, q10=1, q11=1, q12=1, q13=1, q14=1, q15=1, q16=1, q17=1, q18=1, q19=0.
+
+c0: q15=1, in1=1 -> 0
+c0_1: 0, q2=1 -> 1
+c0_2: 1, q15=1 -> 0
+c0_3: 0, q13=1 -> 1
+c0_4: 1, q13=1 -> 0 -> q0_next=0
+
+c1: q1=0, in0=0 -> 1
+c1_1: 1, q12=1 -> 0
+c1_2: 0, q4=1 -> 1
+c1_3: 1, q19=0 -> 1
+c1_4: 1, q5=0 -> 1 -> q1_next=1
+
+c2: q10=1, q5=0 -> 1
+c2_1: 1, q2=1 -> 0
+c2_2: 0, q4=1 -> 1
+c2_3: 1, q18=1 -> 0
+c2_4: 0, q16=1 -> 1 -> q2_next=1
+
+c3: q5=0, q4=1 -> 1
+c3_1: 1, q7=1 -> 0
+c3_2: 0, q0=1 -> 1
+c3_3: 1, in0=0 -> 1
+c3_4: 1, q7=1 -> 0 -> q3_next=0
+
+c4: q19=0, q8=1 -> 1
+c4_1: 1, q16=1 -> 0
+c4_2: 0, q13=1 -> 1
+c4_3: 1, q0=1 -> 0
+c4_4: 0, q4=1 -> 1 -> q4_next=1
+
+c5: q9=1, q2=1 -> 0
+c5_1: 0, q17=1 -> 1
+c5_2: 1, q14=1 -> 0
+c5_3: 0, q13=1 -> 1
+c5_4: 1, q8=1 -> 0 -> q5_next=0
+
+c6: q15=1, q2=1 -> 0
+c6_1: 0, q1=0 -> 1
+c6_2: 1, q7=1 -> 0
+c6_3: 0, in1=1 -> 1
+c6_4: 1, q10=1 -> 0 -> q6_next=0
+
+c7: q6=1, q7=1 -> 0
+c7_1: 0, q4=1 -> 1
+c7_2: 1, q10=1 -> 0
+c7_3: 0, q19=0 -> 1
+c7_4: 1, q15=1 -> 0 -> q7_next=0
+
+c8: q9=1, q1=0 -> 1
+c8_1: 1, q19=0 -> 1
+c8_2: 1, q19=0 -> 1
+c8_3: 1, q18=1 -> 0
+c8_4: 0, q17=1 -> 1 -> q8_next=1
+
+c9: q16=1, q19=0 -> 1
+c9_1: 1, q3=0 -> 1
+c9_2: 1, q5=0 -> 1
+c9_3: 1, q16=1 -> 0
+c9_4: 0, q12=1 -> 1 -> q9_next=1
+
+c10: q11=1, q19=0 -> 1
+c10_1: 1, q13=1 -> 0
+c10_2: 0, in1=1 -> 1
+c10_3: 1, q14=1 -> 0
+c10_4: 0, q10=1 -> 1 -> q10_next=1
+
+c11: q2=1, in0=0 -> 1
+c11_1: 1, q5=0 -> 1
+c11_2: 1, q1=0 -> 1
+c11_3: 1, q0=1 -> 0
+c11_4: 0, in0=0 -> 1 -> q11_next=1
+
+c12: q10=1, q8=1 -> 0
+c12_1: 0, q13=1 -> 1
+c12_2: 1, q15=1 -> 0
+c12_3: 0, q5=0 -> 1
+c12_4: 1, q7=1 -> 0 -> q12_next=0
+
+c13: q17=1, q7=1 -> 0
+c13_1: 0, q8=1 -> 1
+c13_2: 1, q19=0 -> 1
+c13_3: 1, q12=1 -> 0
+c13_4: 0, in0=0 -> 1 -> q13_next=1
+
+c14: q12=1 -> 0
+c14_1: 0, q19=0 -> 1
+c14_2: 1, in0=0 -> 1
+c14_3: 1, q1=0 -> 1
+c14_4: 1, q16=1 -> 0 -> q14_next=0
+
+c15: q1=0, q7=1 -> 1
+c15_1: 1, in1=1 -> 0
+c15_2: 0, q15=1 -> 1
+c15_3: 1, q5=0 -> 1
+c15_4: 1, in1=1 -> 0 -> q15_next=0
+
+c16: q5=0, q6=1 -> 1
+c16_1: 1, q11=1 -> 0
+c16_2: 0, q4=1 -> 1
+c16_3: 1, q9=1 -> 0
+c16_4: 0, q14=1 -> 1 -> q16_next=1
+
+c17: q1=0, q10=1 -> 1
+c17_1: 1, q19=0 -> 1
+c17_2: 1, q14=1 -> 0
+c17_3: 0, q0=1 -> 1
+c17_4: 1, q15=1 -> 0 -> q17_next=0
+
+c18: q11=1, q4=1 -> 0
+c18_1: 0, q3=0 -> 1
+c18_2: 1, q1=0 -> 1
+c18_3: 1, q0=1 -> 0
+c18_4: 0, q15=1 -> 1 -> q18_next=1
+
+c19: in0=0, q1=0 -> 1
+c19_1: 1, q2=1 -> 0
+c19_2: 0, q7=1 -> 1
+c19_3: 1, q4=1 -> 0
+c19_4: 0, q18=1 -> 1 -> q19_next=1
+
+Next state cycle 17:
+q0=0, q1=1, q2=1, q3=0, q4=1, q5=0, q6=0, q7=0, q8=1, q9=1, q10=1, q11=1, q12=0, q13=1, q14=0, q15=0, q16=1, q17=0, q18=1, q19=1.
+
+Outputs cycle 16: start: q12=1, q15=1, q17=1, q4=1, q5=0, q6=1.
+
+Cycle 17: in0=0, in1=0.
+State: q0=0, q1=1, q2=1, q3=0, q4=1, q5=0, q6=0, q7=0, q8=1, q9=1, q10=1, q11=1, q12=0, q13=1, q14=0, q15=0, q16=1, q17=0, q18=1, q19=1.
+
+c0: q15=0, in1=0 -> 1
+c0_1: 1, q2=1 -> 0
+c0_2: 0, q15=0 -> 1
+c0_3: 1, q13=1 -> 0
+c0_4: 0, q13=1 -> 1 -> q0_next=1
+
+c1: q1=1, in0=0 -> 1
+c1_1: 1, q12=0 -> 1
+c1_2: 1, q4=1 -> 0
+c1_3: 0, q19=1 -> 1
+c1_4: 1, q5=0 -> 1 -> q1_next=1
+
+c2: q10=1, q5=0 -> 1
+c2_1: 1, q2=1 -> 0
+c2_2: 0, q4=1 -> 1
+c2_3: 1, q18=1 -> 0
+c2_4: 0, q16=1 -> 1 -> q2_next=1
+
+c3: q5=0, q4=1 -> 1
+c3_1: 1, q7=0 -> 1
+c3_2: 1, q0=0 -> 1
+c3_3: 1, in0=0 -> 1
+c3_4: 1, q7=0 -> 1 -> q3_next=1
+
+c4: q19=1, q8=1 -> 0
+c4_1: 0, q16=1 -> 1
+c4_2: 1, q13=1 -> 0
+c4_3: 0, q0=0 -> 1
+c4_4: 1, q4=1 -> 0 -> q4_next=0
+
+c5: q9=1, q2=1 -> 0
+c5_1: 0, q17=0 -> 1
+c5_2: 1, q14=0 -> 1
+c5_3: 1, q13=1 -> 0
+c5_4: 0, q8=1 -> 1 -> q5_next=1
+
+c6: q15=0, q2=1 -> 1
+c6_1: 1, q1=1 -> 0
+c6_2: 0, q7=0 -> 1
+c6_3: 1, in1=0 -> 1
+c6_4: 1, q10=1 -> 0 -> q6_next=0
+
+c7: q6=0, q7=0 -> 1
+c7_1: 1, q4=1 -> 0
+c7_2: 0, q10=1 -> 1
+c7_3: 1, q19=1 -> 0
+c7_4: 0, q15=0 -> 1 -> q7_next=1
+
+c8: q9=1, q1=1 -> 0
+c8_1: 0, q19=1 -> 1
+c8_2: 1, q19=1 -> 0
+c8_3: 0, q18=1 -> 1
+c8_4: 1, q17=0 -> 1 -> q8_next=1
+
+c9: q16=1, q19=1 -> 0
+c9_1: 0, q3=0 -> 1
+c9_2: 1, q5=0 -> 1
+c9_3: 1, q16=1 -> 0
+c9_4: 0, q12=0 -> 1 -> q9_next=1
+
+c10: q11=1, q19=1 -> 0
+c10_1: 0, q13=1 -> 1
+c10_2: 1, in1=0 -> 1
+c10_3: 1, q14=0 -> 1
+c10_4: 1, q10=1 -> 0 -> q10_next=0
+
+c11: q2=1, in0=0 -> 1
+c11_1: 1, q5=0 -> 1
+c11_2: 1, q1=1 -> 0
+c11_3: 0, q0=0 -> 1
+c11_4: 1, in0=0 -> 1 -> q11_next=1
+
+c12: q10=1, q8=1 -> 0
+c12_1: 0, q13=1 -> 1
+c12_2: 1, q15=0 -> 1
+c12_3: 1, q5=0 -> 1
+c12_4: 1, q7=0 -> 1 -> q12_next=1
+
+c13: q17=0, q7=0 -> 1
+c13_1: 1, q8=1 -> 0
+c13_2: 0, q19=1 -> 1
+c13_3: 1, q12=0 -> 1
+c13_4: 1, in0=0 -> 1 -> q13_next=1
+
+c14: q12=0 -> 1
+c14_1: 1, q19=1 -> 0
+c14_2: 0, in0=0 -> 1
+c14_3: 1, q1=1 -> 0
+c14_4: 0, q16=1 -> 1 -> q14_next=1
+
+c15: q1=1, q7=0 -> 1
+c15_1: 1, in1=0 -> 1
+c15_2: 1, q15=0 -> 1
+c15_3: 1, q5=0 -> 1
+c15_4: 1, in1=0 -> 1 -> q15_next=1
+
+c16: q5=0, q6=0 -> 1
+c16_1: 1, q11=1 -> 0
+c16_2: 0, q4=1 -> 1
+c16_3: 1, q9=1 -> 0
+c16_4: 0, q14=0 -> 1 -> q16_next=1
+
+c17: q1=1, q10=1 -> 0
+c17_1: 0, q19=1 -> 1
+c17_2: 1, q14=0 -> 1
+c17_3: 1, q0=0 -> 1
+c17_4: 1, q15=0 -> 1 -> q17_next=1
+
+c18: q11=1, q4=1 -> 0
+c18_1: 0, q3=0 -> 1
+c18_2: 1, q1=1 -> 0
+c18_3: 0, q0=0 -> 1
+c18_4: 1, q15=0 -> 1 -> q18_next=1
+
+c19: in0=0, q1=1 -> 1
+c19_1: 1, q2=1 -> 0
+c19_2: 0, q7=0 -> 1
+c19_3: 1, q4=1 -> 0
+c19_4: 0, q18=1 -> 1 -> q19_next=1
+
+Next state cycle 18:
+q0=1, q1=1, q2=1, q3=1, q4=0, q5=1, q6=0, q7=1, q8=1, q9=1, q10=0, q11=1, q12=1, q13=1, q14=1, q15=1, q16=1, q17=1, q18=1, q19=1.
+
+Outputs cycle 17: start: q12=0, q15=0, q17=0, q4=1, q5=0, q6=0.
+
+Cycle 18: in0=1, in1=0.
+State: q0=1, q1=1, q2=1, q3=1, q4=0, q5=1, q6=0, q7=1, q8=1, q9=1, q10=0, q11=1, q12=1, q13=1, q14=1, q15=1, q16=1, q17=1, q18=1, q19=1.
+
+c0: q15=1, in1=0 -> 1
+c0_1: 1, q2=1 -> 0
+c0_2: 0, q15=1 -> 1
+c0_3: 1, q13=1 -> 0
+c0_4: 0, q13=1 -> 1 -> q0_next=1
+
+c1: q1=1, in0=1 -> 0
+c1_1: 0, q12=1 -> 1
+c1_2: 1, q4=0 -> 1
+c1_3: 1, q19=1 -> 0
+c1_4: 0, q5=1 -> 1 -> q1_next=1
+
+c2: q10=0, q5=1 -> 1
+c2_1: 1, q2=1 -> 0
+c2_2: 0, q4=0 -> 1
+c2_3: 1, q18=1 -> 0
+c2_4: 0, q16=1 -> 1 -> q2_next=1
+
+c3: q5=1, q4=0 -> 1
+c3_1: 1, q7=1 -> 0
+c3_2: 0, q0=1 -> 1
+c3_3: 1, in0=1 -> 0
+c3_4: 0, q7=1 -> 1 -> q3_next=1
+
+c4: q19=1, q8=1 -> 0
+c4_1: 0, q16=1 -> 1
+c4_2: 1, q13=1 -> 0
+c4_3: 0, q0=1 -> 1
+c4_4: 1, q4=0 -> 1 -> q4_next=1
+
+c5: q9=1, q2=1 -> 0
+c5_1: 0, q17=1 -> 1
+c5_2: 1, q14=1 -> 0
+c5_3: 0, q13=1 -> 1
+c5_4: 1, q8=1 -> 0 -> q5_next=0
+
+c6: q15=1, q2=1 -> 0
+c6_1: 0, q1=1 -> 1
+c6_2: 1, q7=1 -> 0
+c6_3: 0, in1=0 -> 1
+c6_4: 1, q10=0 -> 1 -> q6_next=1
+
+c7: q6=0, q7=1 -> 1
+c7_1: 1, q4=0 -> 1
+c7_2: 1, q10=0 -> 1
+c7_3: 1, q19=1 -> 0
+c7_4: 0, q15=1 -> 1 -> q7_next=1
+
+c8: q9=1, q1=1 -> 0
+c8_1: 0, q19=1 -> 1
+c8_2: 1, q19=1 -> 0
+c8_3: 0, q18=1 -> 1
+c8_4: 1, q17=1 -> 0 -> q8_next=0
+
+c9: q16=1, q19=1 -> 0
+c9_1: 0, q3=1 -> 1
+c9_2: 1, q5=1 -> 0
+c9_3: 0, q16=1 -> 1
+c9_4: 1, q12=1 -> 0 -> q9_next=0
+
+c10: q11=1, q19=1 -> 0
+c10_1: 0, q13=1 -> 1
+c10_2: 1, in1=0 -> 1
+c10_3: 1, q14=1 -> 0
+c10_4: 0, q10=0 -> 1 -> q10_next=1
+
+c11: q2=1, in0=1 -> 0
+c11_1: 0, q5=1 -> 1
+c11_2: 1, q1=1 -> 0
+c11_3: 0, q0=1 -> 1
+c11_4: 1, in0=1 -> 0 -> q11_next=0
+
+c12: q10=0, q8=1 -> 1
+c12_1: 1, q13=1 -> 0
+c12_2: 0, q15=1 -> 1
+c12_3: 1, q5=1 -> 0
+c12_4: 0, q7=1 -> 1 -> q12_next=1
+
+c13: q17=1, q7=1 -> 0
+c13_1: 0, q8=1 -> 1
+c13_2: 1, q19=1 -> 0
+c13_3: 0, q12=1 -> 1
+c13_4: 1, in0=1 -> 0 -> q13_next=0
+
+c14: q12=1 -> 0
+c14_1: 0, q19=1 -> 1
+c14_2: 1, in0=1 -> 0
+c14_3: 0, q1=1 -> 1
+c14_4: 1, q16=1 -> 0 -> q14_next=0
+
+c15: q1=1, q7=1 -> 0
+c15_1: 0, in1=0 -> 1
+c15_2: 1, q15=1 -> 0
+c15_3: 0, q5=1 -> 1
+c15_4: 1, in1=0 -> 1 -> q15_next=1
+
+c16: q5=1, q6=0 -> 1
+c16_1: 1, q11=1 -> 0
+c16_2: 0, q4=0 -> 1
+c16_3: 1, q9=1 -> 0
+c16_4: 0, q14=1 -> 1 -> q16_next=1
+
+c17: q1=1, q10=0 -> 1
+c17_1: 1, q19=1 -> 0
+c17_2: 0, q14=1 -> 1
+c17_3: 1, q0=1 -> 0
+c17_4: 0, q15=1 -> 1 -> q17_next=1
+
+c18: q11=1, q4=0 -> 1
+c18_1: 1, q3=1 -> 0
+c18_2: 0, q1=1 -> 1
+c18_3: 1, q0=1 -> 0
+c18_4: 0, q15=1 -> 1 -> q18_next=1
+
+c19: in0=1, q1=1 -> 0
+c19_1: 0, q2=1 -> 1
+c19_2: 1, q7=1 -> 0
+c19_3: 0, q4=0 -> 1
+c19_4: 1, q18=1 -> 0 -> q19_next=0
+
+Next state cycle 19:
+q0=1, q1=1, q2=1, q3=1, q4=1, q5=0, q6=1, q7=1, q8=0, q9=0, q10=1, q11=0, q12=1, q13=0, q14=0, q15=1, q16=1, q17=1, q18=1, q19=0.
+
+Outputs cycle 18: start: q12=1, q15=1, q17=1, q4=0, q5=1, q6=0.
+
+Cycle 19: in0=1, in1=1.
+State: q0=1, q1=1, q2=1, q3=1, q4=1, q5=0, q6=1, q7=1, q8=0, q9=0, q10=1, q11=0, q12=1, q13=0, q14=0, q15=1, q16=1, q17=1, q18=1, q19=0.
+
+c0: q15=1, in1=1 -> 0
+c0_1: 0, q2=1 -> 1
+c0_2: 1, q15=1 -> 0
+c0_3: 0, q13=0 -> 1
+c0_4: 1, q13=0 -> 1 -> q0_next=1
+
+c1: q1=1, in0=1 -> 0
+c1_1: 0, q12=1 -> 1
+c1_2: 1, q4=1 -> 0
+c1_3: 0, q19=0 -> 1
+c1_4: 1, q5=0 -> 1 -> q1_next=1
+
+c2: q10=1, q5=0 -> 1
+c2_1: 1, q2=1 -> 0
+c2_2: 0, q4=1 -> 1
+c2_3: 1, q18=1 -> 0
+c2_4: 0, q16=1 -> 1 -> q2_next=1
+
+c3: q5=0, q4=1 -> 1
+c3_1: 1, q7=1 -> 0
+c3_2: 0, q0=1 -> 1
+c3_3: 1, in0=1 -> 0
+c3_4: 0, q7=1 -> 1 -> q3_next=1
+
+c4: q19=0, q8=0 -> 1
+c4_1: 1, q16=1 -> 0
+c4_2: 0, q13=0 -> 1
+c4_3: 1, q0=1 -> 0
+c4_4: 0, q4=1 -> 1 -> q4_next=1
+
+c5: q9=0, q2=1 -> 1
+c5_1: 1, q17=1 -> 0
+c5_2: 0, q14=0 -> 1
+c5_3: 1, q13=0 -> 1
+c5_4: 1, q8=0 -> 1 -> q5_next=1
+
+c6: q15=1, q2=1 -> 0
+c6_1: 0, q1=1 -> 1
+c6_2: 1, q7=1 -> 0
+c6_3: 0, in1=1 -> 1
+c6_4: 1, q10=1 -> 0 -> q6_next=0
+
+c7: q6=1, q7=1 -> 0
+c7_1: 0, q4=1 -> 1
+c7_2: 1, q10=1 -> 0
+c7_3: 0, q19=0 -> 1
+c7_4: 1, q15=1 -> 0 -> q7_next=0
+
+c8: q9=0, q1=1 -> 1
+c8_1: 1, q19=0 -> 1
+c8_2: 1, q19=0 -> 1
+c8_3: 1, q18=1 -> 0
+c8_4: 0, q17=1 -> 1 -> q8_next=1
+
+c9: q16=1, q19=0 -> 1
+c9_1: 1, q3=1 -> 0
+c9_2: 0, q5=0 -> 1
+c9_3: 1, q16=1 -> 0
+c9_4: 0, q12=1 -> 1 -> q9_next=1
+
+c10: q11=0, q19=0 -> 1
+c10_1: 1, q13=0 -> 1
+c10_2: 1, in1=1 -> 0
+c10_3: 0, q14=0 -> 1
+c10_4: 1, q10=1 -> 0 -> q10_next=0
+
+c11: q2=1, in0=1 -> 0
+c11_1: 0, q5=0 -> 1
+c11_2: 1, q1=1 -> 0
+c11_3: 0, q0=1 -> 1
+c11_4: 1, in0=1 -> 0 -> q11_next=0
+
+c12: q10=1, q8=0 -> 1
+c12_1: 1, q13=0 -> 1
+c12_2: 1, q15=1 -> 0
+c12_3: 0, q5=0 -> 1
+c12_4: 1, q7=1 -> 0 -> q12_next=0
+
+c13: q17=1, q7=1 -> 0
+c13_1: 0, q8=0 -> 1
+c13_2: 1, q19=0 -> 1
+c13_3: 1, q12=1 -> 0
+c13_4: 0, in0=1 -> 1 -> q13_next=1
+
+c14: q12=1 -> 0
+c14_1: 0, q19=0 -> 1
+c14_2: 1, in0=1 -> 0
+c14_3: 0, q1=1 -> 1
+c14_4: 1, q16=1 -> 0 -> q14_next=0
+
+c15: q1=1, q7=1 -> 0
+c15_1: 0, in1=1 -> 1
+c15_2: 1, q15=1 -> 0
+c15_3: 0, q5=0 -> 1
+c15_4: 1, in1=1 -> 0 -> q15_next=0
+
+c16: q5=0, q6=1 -> 1
+c16_1: 1, q11=0 -> 1
+c16_2: 1, q4=1 -> 0
+c16_3: 0, q9=0 -> 1
+c16_4: 1, q14=0 -> 1 -> q16_next=1
+
+c17: q1=1, q10=1 -> 0
+c17_1: 0, q19=0 -> 1
+c17_2: 1, q14=0 -> 1
+c17_3: 1, q0=1 -> 0
+c17_4: 0, q15=1 -> 1 -> q17_next=1
+
+c18: q11=0, q4=1 -> 1
+c18_1: 1, q3=1 -> 0
+c18_2: 0, q1=1 -> 1
+c18_3: 1, q0=1 -> 0
+c18_4: 0, q15=1 -> 1 -> q18_next=1
+
+c19: in0=1, q1=1 -> 0
+c19_1: 0, q2=1 -> 1
+c19_2: 1, q7=1 -> 0
+c19_3: 0, q4=1 -> 1
+c19_4: 1, q18=1 -> 0 -> q19_next=0
+
+Next state cycle 20:
+q0=1, q1=1, q2=1, q3=1, q4=1, q5=1, q6=0, q7=0, q8=1, q9=1, q10=0, q11=0, q12=0, q13=1, q14=0, q15=0, q16=1, q17=1, q18=1, q19=0.
+
+Outputs cycle 19: start: q12=1, q15=1, q17=1, q4=1, q5=0, q6=1.
+
+Cycle 20: in0=0, in1=1.
+State: q0=1, q1=1, q2=1, q3=1, q4=1, q5=1, q6=0, q7=0, q8=1, q9=1, q10=0, q11=0, q12=0, q13=1, q14=0, q15=0, q16=1, q17=1, q18=1, q19=0.
+
+c0: q15=0, in1=1 -> 1
+c0_1: 1, q2=1 -> 0
+c0_2: 0, q15=0 -> 1
+c0_3: 1, q13=1 -> 0
+c0_4: 0, q13=1 -> 1 -> q0_next=1
+
+c1: q1=1, in0=0 -> 1
+c1_1: 1, q12=0 -> 1
+c1_2: 1, q4=1 -> 0
+c1_3: 0, q19=0 -> 1
+c1_4: 1, q5=1 -> 0 -> q1_next=0
+
+c2: q10=0, q5=1 -> 1
+c2_1: 1, q2=1 -> 0
+c2_2: 0, q4=1 -> 1
+c2_3: 1, q18=1 -> 0
+c2_4: 0, q16=1 -> 1 -> q2_next=1
+
+c3: q5=1, q4=1 -> 0
+c3_1: 0, q7=0 -> 1
+c3_2: 1, q0=1 -> 0
+c3_3: 0, in0=0 -> 1
+c3_4: 1, q7=0 -> 1 -> q3_next=1
+
+c4: q19=0, q8=1 -> 1
+c4_1: 1, q16=1 -> 0
+c4_2: 0, q13=1 -> 1
+c4_3: 1, q0=1 -> 0
+c4_4: 0, q4=1 -> 1 -> q4_next=1
+
+c5: q9=1, q2=1 -> 0
+c5_1: 0, q17=1 -> 1
+c5_2: 1, q14=0 -> 1
+c5_3: 1, q13=1 -> 0
+c5_4: 0, q8=1 -> 1 -> q5_next=1
+
+c6: q15=0, q2=1 -> 1
+c6_1: 1, q1=1 -> 0
+c6_2: 0, q7=0 -> 1
+c6_3: 1, in1=1 -> 0
+c6_4: 0, q10=0 -> 1 -> q6_next=1
+
+c7: q6=0, q7=0 -> 1
+c7_1: 1, q4=1 -> 0
+c7_2: 0, q10=0 -> 1
+c7_3: 1, q19=0 -> 1
+c7_4: 1, q15=0 -> 1 -> q7_next=1
+
+c8: q9=1, q1=1 -> 0
+c8_1: 0, q19=0 -> 1
+c8_2: 1, q19=0 -> 1
+c8_3: 1, q18=1 -> 0
+c8_4: 0, q17=1 -> 1 -> q8_next=1
+
+c9: q16=1, q19=0 -> 1
+c9_1: 1, q3=1 -> 0
+c9_2: 0, q5=1 -> 1
+c9_3: 1, q16=1 -> 0
+c9_4: 0, q12=0 -> 1 -> q9_next=1
+
+c10: q11=0, q19=0 -> 1
+c10_1: 1, q13=1 -> 0
+c10_2: 0, in1=1 -> 1
+c10_3: 1, q14=0 -> 1
+c10_4: 1, q10=0 -> 1 -> q10_next=1
+
+c11: q2=1, in0=0 -> 1
+c11_1: 1, q5=1 -> 0
+c11_2: 0, q1=1 -> 1
+c11_3: 1, q0=1 -> 0
+c11_4: 0, in0=0 -> 1 -> q11_next=1
+
+c12: q10=0, q8=1 -> 1
+c12_1: 1, q13=1 -> 0
+c12_2: 0, q15=0 -> 1
+c12_3: 1, q5=1 -> 0
+c12_4: 0, q7=0 -> 1 -> q12_next=1
+
+c13: q17=1, q7=0 -> 1
+c13_1: 1, q8=1 -> 0
+c13_2: 0, q19=0 -> 1
+c13_3: 1, q12=0 -> 1
+c13_4: 1, in0=0 -> 1 -> q13_next=1
+
+c14: q12=0 -> 1
+c14_1: 1, q19=0 -> 1
+c14_2: 1, in0=0 -> 1
+c14_3: 1, q1=1 -> 0
+c14_4: 0, q16=1 -> 1 -> q14_next=1
+
+c15: q1=1, q7=0 -> 1
+c15_1: 1, in1=1 -> 0
+c15_2: 0, q15=0 -> 1
+c15_3: 1, q5=1 -> 0
+c15_4: 0, in1=1 -> 1 -> q15_next=1
+
+c16: q5=1, q6=0 -> 1
+c16_1: 1, q11=0 -> 1
+c16_2: 1, q4=1 -> 0
+c16_3: 0, q9=1 -> 1
+c16_4: 1, q14=0 -> 1 -> q16_next=1
+
+c17: q1=1, q10=0 -> 1
+c17_1: 1, q19=0 -> 1
+c17_2: 1, q14=0 -> 1
+c17_3: 1, q0=1 -> 0
+c17_4: 0, q15=0 -> 1 -> q17_next=1
+
+c18: q11=0, q4=1 -> 1
+c18_1: 1, q3=1 -> 0
+c18_2: 0, q1=1 -> 1
+c18_3: 1, q0=1 -> 0
+c18_4: 0, q15=0 -> 1 -> q18_next=1
+
+c19: in0=0, q1=1 -> 1
+c19_1: 1, q2=1 -> 0
+c19_2: 0, q7=0 -> 1
+c19_3: 1, q4=1 -> 0
+c19_4: 0, q18=1 -> 1 -> q19_next=1
+
+Next state cycle 21:
+q0=1, q1=0, q2=1, q3=1, q4=1, q5=1, q6=1, q7=1, q8=1, q9=1, q10=1, q11=1, q12=1, q13=1, q14=1, q15=1, q16=1, q17=1, q18=1, q19=1.
+
+Outputs cycle 20: start: q12=0, q15=0, q17=1, q4=1, q5=1, q6=0.
+
+Cycle 21: in0=1, in1=1.
+State: q0=1, q1=0, q2=1, q3=1, q4=1, q5=1, q6=1, q7=1, q8=1, q9=1, q10=1, q11=1, q12=1, q13=1, q14=1, q15=1, q16=1, q17=1, q18=1, q19=1.
+
+c0: q15=1, in1=1 -> 0
+c0_1: 0, q2=1 -> 1
+c0_2: 1, q15=1 -> 0
+c0_3: 0, q13=1 -> 1
+c0_4: 1, q13=1 -> 0 -> q0_next=0
+
+c1: q1=0, in0=1 -> 1
+c1_1: 1, q12=1 -> 0
+c1_2: 0, q4=1 -> 1
+c1_3: 1, q19=1 -> 0
+c1_4: 0, q5=1 -> 1 -> q1_next=1
+
+c2: q10=1, q5=1 -> 0
+c2_1: 0, q2=1 -> 1
+c2_2: 1, q4=1 -> 0
+c2_3: 0, q18=1 -> 1
+c2_4: 1, q16=1 -> 0 -> q2_next=0
+
+c3: q5=1, q4=1 -> 0
+c3_1: 0, q7=1 -> 1
+c3_2: 1, q0=1 -> 0
+c3_3: 0, in0=1 -> 1
+c3_4: 1, q7=1 -> 0 -> q3_next=0
+
+c4: q19=1, q8=1 -> 0
+c4_1: 0, q16=1 -> 1
+c4_2: 1, q13=1 -> 0
+c4_3: 0, q0=1 -> 1
+c4_4: 1, q4=1 -> 0 -> q4_next=0
+
+c5: q9=1, q2=1 -> 0
+c5_1: 0, q17=1 -> 1
+c5_2: 1, q14=1 -> 0
+c5_3: 0, q13=1 -> 1
+c5_4: 1, q8=1 -> 0 -> q5_next=0
+
+c6: q15=1, q2=1 -> 0
+c6_1: 0, q1=0 -> 1
+c6_2: 1, q7=1 -> 0
+c6_3: 0, in1=1 -> 1
+c6_4: 1, q10=1 -> 0 -> q6_next=0
+
+c7: q6=1, q7=1 -> 0
+c7_1: 0, q4=1 -> 1
+c7_2: 1, q10=1 -> 0
+c7_3: 0, q19=1 -> 1
+c7_4: 1, q15=1 -> 0 -> q7_next=0
+
+c8: q9=1, q1=0 -> 1
+c8_1: 1, q19=1 -> 0
+c8_2: 0, q19=1 -> 1
+c8_3: 1, q18=1 -> 0
+c8_4: 0, q17=1 -> 1 -> q8_next=1
+
+c9: q16=1, q19=1 -> 0
+c9_1: 0, q3=1 -> 1
+c9_2: 1, q5=1 -> 0
+c9_3: 0, q16=1 -> 1
+c9_4: 1, q12=1 -> 0 -> q9_next=0
+
+c10: q11=1, q19=1 -> 0
+c10_1: 0, q13=1 -> 1
+c10_2: 1, in1=1 -> 0
+c10_3: 0, q14=1 -> 1
+c10_4: 1, q10=1 -> 0 -> q10_next=0
+
+c11: q2=1, in0=1 -> 0
+c11_1: 0, q5=1 -> 1
+c11_2: 1, q1=0 -> 1
+c11_3: 1, q0=1 -> 0
+c11_4: 0, in0=1 -> 1 -> q11_next=1
+
+c12: q10=1, q8=1 -> 0
+c12_1: 0, q13=1 -> 1
+c12_2: 1, q15=1 -> 0
+c12_3: 0, q5=1 -> 1
+c12_4: 1, q7=1 -> 0 -> q12_next=0
+
+c13: q17=1, q7=1 -> 0
+c13_1: 0, q8=1 -> 1
+c13_2: 1, q19=1 -> 0
+c13_3: 0, q12=1 -> 1
+c13_4: 1, in0=1 -> 0 -> q13_next=0
+
+c14: q12=1 -> 0
+c14_1: 0, q19=1 -> 1
+c14_2: 1, in0=1 -> 0
+c14_3: 0, q1=0 -> 1
+c14_4: 1, q16=1 -> 0 -> q14_next=0
+
+c15: q1=0, q7=1 -> 1
+c15_1: 1, in1=1 -> 0
+c15_2: 0, q15=1 -> 1
+c15_3: 1, q5=1 -> 0
+c15_4: 0, in1=1 -> 1 -> q15_next=1
+
+c16: q5=1, q6=1 -> 0
+c16_1: 0, q11=1 -> 1
+c16_2: 1, q4=1 -> 0
+c16_3: 0, q9=1 -> 1
+c16_4: 1, q14=1 -> 0 -> q16_next=0
+
+c17: q1=0, q10=1 -> 1
+c17_1: 1, q19=1 -> 0
+c17_2: 0, q14=1 -> 1
+c17_3: 1, q0=1 -> 0
+c17_4: 0, q15=1 -> 1 -> q17_next=1
+
+c18: q11=1, q4=1 -> 0
+c18_1: 0, q3=1 -> 1
+c18_2: 1, q1=0 -> 1
+c18_3: 1, q0=1 -> 0
+c18_4: 0, q15=1 -> 1 -> q18_next=1
+
+c19: in0=1, q1=0 -> 1
+c19_1: 1, q2=1 -> 0
+c19_2: 0, q7=1 -> 1
+c19_3: 1, q4=1 -> 0
+c19_4: 0, q18=1 -> 1 -> q19_next=1
+
+Next state cycle 22:
+q0=0, q1=1, q2=0, q3=0, q4=0, q5=0, q6=0, q7=0, q8=1, q9=0, q10=0, q11=1, q12=0, q13=0, q14=0, q15=1, q16=0, q17=1, q18=1, q19=1.
+
+Outputs cycle 21: start: q12=1, q15=1, q17=1, q4=1, q5=1, q6=1.
+
+Cycle 22: in0=1, in1=0.
+State: q0=0, q1=1, q2=0, q3=0, q4=0, q5=0, q6=0, q7=0, q8=1, q9=0, q10=0, q11=1, q12=0, q13=0, q14=0, q15=1, q16=0, q17=1, q18=1, q19=1.
+
+c0: q15=1, in1=0 -> 1
+c0_1: 1, q2=0 -> 1
+c0_2: 1, q15=1 -> 0
+c0_3: 0, q13=0 -> 1
+c0_4: 1, q13=0 -> 1 -> q0_next=1
+
+c1: q1=1, in0=1 -> 0
+c1_1: 0, q12=0 -> 1
+c1_2: 1, q4=0 -> 1
+c1_3: 1, q19=1 -> 0
+c1_4: 0, q5=0 -> 1 -> q1_next=1
+
+c2: q10=0, q5=0 -> 1
+c2_1: 1, q2=0 -> 1
+c2_2: 1, q4=0 -> 1
+c2_3: 1, q18=1 -> 0
+c2_4: 0, q16=0 -> 1 -> q2_next=1
+
+c3: q5=0, q4=0 -> 1
+c3_1: 1, q7=0 -> 1
+c3_2: 1, q0=0 -> 1
+c3_3: 1, in0=1 -> 0
+c3_4: 0, q7=0 -> 1 -> q3_next=1
+
+c4: q19=1, q8=1 -> 0
+c4_1: 0, q16=0 -> 1
+c4_2: 1, q13=0 -> 1
+c4_3: 1, q0=0 -> 1
+c4_4: 1, q4=0 -> 1 -> q4_next=1
+
+c5: q9=0, q2=0 -> 1
+c5_1: 1, q17=1 -> 0
+c5_2: 0, q14=0 -> 1
+c5_3: 1, q13=0 -> 1
+c5_4: 1, q8=1 -> 0 -> q5_next=0
+
+c6: q15=1, q2=0 -> 1
+c6_1: 1, q1=1 -> 0
+c6_2: 0, q7=0 -> 1
+c6_3: 1, in1=0 -> 1
+c6_4: 1, q10=0 -> 1 -> q6_next=1
+
+c7: q6=0, q7=0 -> 1
+c7_1: 1, q4=0 -> 1
+c7_2: 1, q10=0 -> 1
+c7_3: 1, q19=1 -> 0
+c7_4: 0, q15=1 -> 1 -> q7_next=1
+
+c8: q9=0, q1=1 -> 1
+c8_1: 1, q19=1 -> 0
+c8_2: 0, q19=1 -> 1
+c8_3: 1, q18=1 -> 0
+c8_4: 0, q17=1 -> 1 -> q8_next=1
+
+c9: q16=0, q19=1 -> 1
+c9_1: 1, q3=0 -> 1
+c9_2: 1, q5=0 -> 1
+c9_3: 1, q16=0 -> 1
+c9_4: 1, q12=0 -> 1 -> q9_next=1
+
+c10: q11=1, q19=1 -> 0
+c10_1: 0, q13=0 -> 1
+c10_2: 1, in1=0 -> 1
+c10_3: 1, q14=0 -> 1
+c10_4: 1, q10=0 -> 1 -> q10_next=1
+
+c11: q2=0, in0=1 -> 1
+c11_1: 1, q5=0 -> 1
+c11_2: 1, q1=1 -> 0
+c11_3: 0, q0=0 -> 1
+c11_4: 1, in0=1 -> 0 -> q11_next=0
+
+c12: q10=0, q8=1 -> 1
+c12_1: 1, q13=0 -> 1
+c12_2: 1, q15=1 -> 0
+c12_3: 0, q5=0 -> 1
+c12_4: 1, q7=0 -> 1 -> q12_next=1
+
+c13: q17=1, q7=0 -> 1
+c13_1: 1, q8=1 -> 0
+c13_2: 0, q19=1 -> 1
+c13_3: 1, q12=0 -> 1
+c13_4: 1, in0=1 -> 0 -> q13_next=0
+
+c14: q12=0 -> 1
+c14_1: 1, q19=1 -> 0
+c14_2: 0, in0=1 -> 1
+c14_3: 1, q1=1 -> 0
+c14_4: 0, q16=0 -> 1 -> q14_next=1
+
+c15: q1=1, q7=0 -> 1
+c15_1: 1, in1=0 -> 1
+c15_2: 1, q15=1 -> 0
+c15_3: 0, q5=0 -> 1
+c15_4: 1, in1=0 -> 1 -> q15_next=1
+
+c16: q5=0, q6=0 -> 1
+c16_1: 1, q11=1 -> 0
+c16_2: 0, q4=0 -> 1
+c16_3: 1, q9=0 -> 1
+c16_4: 1, q14=0 -> 1 -> q16_next=1
+
+c17: q1=1, q10=0 -> 1
+c17_1: 1, q19=1 -> 0
+c17_2: 0, q14=0 -> 1
+c17_3: 1, q0=0 -> 1
+c17_4: 1, q15=1 -> 0 -> q17_next=0
+
+c18: q11=1, q4=0 -> 1
+c18_1: 1, q3=0 -> 1
+c18_2: 1, q1=1 -> 0
+c18_3: 0, q0=0 -> 1
+c18_4: 1, q15=1 -> 0 -> q18_next=0
+
+c19: in0=1, q1=1 -> 0
+c19_1: 0, q2=0 -> 1
+c19_2: 1, q7=0 -> 1
+c19_3: 1, q4=0 -> 1
+c19_4: 1, q18=0 -> 1 -> q19_next=1
+
+Next state cycle 23:
+q0=1, q1=1, q2=1, q3=1, q4=1, q5=0, q6=1, q7=1, q8=1, q9=1, q10=1, q11=0, q12=1, q13=0, q14=1, q15=1, q16=1, q17=0, q18=0, q19=1.
+
+Outputs cycle 22: start: q12=0, q15=1, q17=1, q4=0, q5=0, q6=0.
+
+Cycle 23: in0=1, in1=0.
+State: q0=1, q1=1, q2=1, q3=1, q4=1, q5=0, q6=1, q7=1, q8=1, q9=1, q10=1, q11=0, q12=1, q13=0, q14=1, q15=1, q16=1, q17=0, q18=0, q19=1.
+
+c0: q15=1, in1=0 -> 1
+c0_1: 1, q2=1 -> 0
+c0_2: 0, q15=1 -> 1
+c0_3: 1, q13=0 -> 1
+c0_4: 1, q13=0 -> 1 -> q0_next=1
+
+c1: q1=1, in0=1 -> 0
+c1_1: 0, q12=1 -> 1
+c1_2: 1, q4=1 -> 0
+c1_3: 0, q19=1 -> 1
+c1_4: 1, q5=0 -> 1 -> q1_next=1
+
+c2: q10=1, q5=0 -> 1
+c2_1: 1, q2=1 -> 0
+c2_2: 0, q4=1 -> 1
+c2_3: 1, q18=0 -> 1
+c2_4: 1, q16=1 -> 0 -> q2_next=0
+
+c3: q5=0, q4=1 -> 1
+c3_1: 1, q7=1 -> 0
+c3_2: 0, q0=1 -> 1
+c3_3: 1, in0=1 -> 0
+c3_4: 0, q7=1 -> 1 -> q3_next=1
+
+c4: q19=1, q8=1 -> 0
+c4_1: 0, q16=1 -> 1
+c4_2: 1, q13=0 -> 1
+c4_3: 1, q0=1 -> 0
+c4_4: 0, q4=1 -> 1 -> q4_next=1
+
+c5: q9=1, q2=1 -> 0
+c5_1: 0, q17=0 -> 1
+c5_2: 1, q14=1 -> 0
+c5_3: 0, q13=0 -> 1
+c5_4: 1, q8=1 -> 0 -> q5_next=0
+
+c6: q15=1, q2=1 -> 0
+c6_1: 0, q1=1 -> 1
+c6_2: 1, q7=1 -> 0
+c6_3: 0, in1=0 -> 1
+c6_4: 1, q10=1 -> 0 -> q6_next=0
+
+c7: q6=1, q7=1 -> 0
+c7_1: 0, q4=1 -> 1
+c7_2: 1, q10=1 -> 0
+c7_3: 0, q19=1 -> 1
+c7_4: 1, q15=1 -> 0 -> q7_next=0
+
+c8: q9=1, q1=1 -> 0
+c8_1: 0, q19=1 -> 1
+c8_2: 1, q19=1 -> 0
+c8_3: 0, q18=0 -> 1
+c8_4: 1, q17=0 -> 1 -> q8_next=1
+
+c9: q16=1, q19=1 -> 0
+c9_1: 0, q3=1 -> 1
+c9_2: 1, q5=0 -> 1
+c9_3: 1, q16=1 -> 0
+c9_4: 0, q12=1 -> 1 -> q9_next=1
+
+c10: q11=0, q19=1 -> 1
+c10_1: 1, q13=0 -> 1
+c10_2: 1, in1=0 -> 1
+c10_3: 1, q14=1 -> 0
+c10_4: 0, q10=1 -> 1 -> q10_next=1
+
+c11: q2=1, in0=1 -> 0
+c11_1: 0, q5=0 -> 1
+c11_2: 1, q1=1 -> 0
+c11_3: 0, q0=1 -> 1
+c11_4: 1, in0=1 -> 0 -> q11_next=0
+
+c12: q10=1, q8=1 -> 0
+c12_1: 0, q13=0 -> 1
+c12_2: 1, q15=1 -> 0
+c12_3: 0, q5=0 -> 1
+c12_4: 1, q7=1 -> 0 -> q12_next=0
+
+c13: q17=0, q7=1 -> 1
+c13_1: 1, q8=1 -> 0
+c13_2: 0, q19=1 -> 1
+c13_3: 1, q12=1 -> 0
+c13_4: 0, in0=1 -> 1 -> q13_next=1
+
+c14: q12=1 -> 0
+c14_1: 0, q19=1 -> 1
+c14_2: 1, in0=1 -> 0
+c14_3: 0, q1=1 -> 1
+c14_4: 1, q16=1 -> 0 -> q14_next=0
+
+c15: q1=1, q7=1 -> 0
+c15_1: 0, in1=0 -> 1
+c15_2: 1, q15=1 -> 0
+c15_3: 0, q5=0 -> 1
+c15_4: 1, in1=0 -> 1 -> q15_next=1
+
+c16: q5=0, q6=1 -> 1
+c16_1: 1, q11=0 -> 1
+c16_2: 1, q4=1 -> 0
+c16_3: 0, q9=1 -> 1
+c16_4: 1, q14=1 -> 0 -> q16_next=0
+
+c17: q1=1, q10=1 -> 0
+c17_1: 0, q19=1 -> 1
+c17_2: 1, q14=1 -> 0
+c17_3: 0, q0=1 -> 1
+c17_4: 1, q15=1 -> 0 -> q17_next=0
+
+c18: q11=0, q4=1 -> 1
+c18_1: 1, q3=1 -> 0
+c18_2: 0, q1=1 -> 1
+c18_3: 1, q0=1 -> 0
+c18_4: 0, q15=1 -> 1 -> q18_next=1
+
+c19: in0=1, q1=1 -> 0
+c19_1: 0, q2=1 -> 1
+c19_2: 1, q7=1 -> 0
+c19_3: 0, q4=1 -> 1
+c19_4: 1, q18=0 -> 1 -> q19_next=1
+
+Next state cycle 24:
+q0=1, q1=1, q2=0, q3=1, q4=1, q5=0, q6=0, q7=0, q8=1, q9=1, q10=1, q11=0, q12=0, q13=1, q14=0, q15=1, q16=0, q17=0, q18=1, q19=1.
+
+Outputs cycle 23: start: q12=1, q15=1, q17=0, q4=1, q5=0, q6=1.
+
+Cycle 24: in0=0, in1=1.
+State: q0=1, q1=1, q2=0, q3=1, q4=1, q5=0, q6=0, q7=0, q8=1, q9=1, q10=1, q11=0, q12=0, q13=1, q14=0, q15=1, q16=0, q17=0, q18=1, q19=1.
+
+c0: q15=1, in1=1 -> 0
+c0_1: 0, q2=0 -> 1
+c0_2: 1, q15=1 -> 0
+c0_3: 0, q13=1 -> 1
+c0_4: 1, q13=1 -> 0 -> q0_next=0
+
+c1: q1=1, in0=0 -> 1
+c1_1: 1, q12=0 -> 1
+c1_2: 1, q4=1 -> 0
+c1_3: 0, q19=1 -> 1
+c1_4: 1, q5=0 -> 1 -> q1_next=1
+
+c2: q10=1, q5=0 -> 1
+c2_1: 1, q2=0 -> 1
+c2_2: 1, q4=1 -> 0
+c2_3: 0, q18=1 -> 1
+c2_4: 1, q16=0 -> 1 -> q2_next=1
+
+c3: q5=0, q4=1 -> 1
+c3_1: 1, q7=0 -> 1
+c3_2: 1, q0=1 -> 0
+c3_3: 0, in0=0 -> 1
+c3_4: 1, q7=0 -> 1 -> q3_next=1
+
+c4: q19=1, q8=1 -> 0
+c4_1: 0, q16=0 -> 1
+c4_2: 1, q13=1 -> 0
+c4_3: 0, q0=1 -> 1
+c4_4: 1, q4=1 -> 0 -> q4_next=0
+
+c5: q9=1, q2=0 -> 1
+c5_1: 1, q17=0 -> 1
+c5_2: 1, q14=0 -> 1
+c5_3: 1, q13=1 -> 0
+c5_4: 0, q8=1 -> 1 -> q5_next=1
+
+c6: q15=1, q2=0 -> 1
+c6_1: 1, q1=1 -> 0
+c6_2: 0, q7=0 -> 1
+c6_3: 1, in1=1 -> 0
+c6_4: 0, q10=1 -> 1 -> q6_next=1
+
+c7: q6=0, q7=0 -> 1
+c7_1: 1, q4=1 -> 0
+c7_2: 0, q10=1 -> 1
+c7_3: 1, q19=1 -> 0
+c7_4: 0, q15=1 -> 1 -> q7_next=1
+
+c8: q9=1, q1=1 -> 0
+c8_1: 0, q19=1 -> 1
+c8_2: 1, q19=1 -> 0
+c8_3: 0, q18=1 -> 1
+c8_4: 1, q17=0 -> 1 -> q8_next=1
+
+c9: q16=0, q19=1 -> 1
+c9_1: 1, q3=1 -> 0
+c9_2: 0, q5=0 -> 1
+c9_3: 1, q16=0 -> 1
+c9_4: 1, q12=0 -> 1 -> q9_next=1
+
+c10: q11=0, q19=1 -> 1
+c10_1: 1, q13=1 -> 0
+c10_2: 0, in1=1 -> 1
+c10_3: 1, q14=0 -> 1
+c10_4: 1, q10=1 -> 0 -> q10_next=0
+
+c11: q2=0, in0=0 -> 1
+c11_1: 1, q5=0 -> 1
+c11_2: 1, q1=1 -> 0
+c11_3: 0, q0=1 -> 1
+c11_4: 1, in0=0 -> 1 -> q11_next=1
+
+c12: q10=1, q8=1 -> 0
+c12_1: 0, q13=1 -> 1
+c12_2: 1, q15=1 -> 0
+c12_3: 0, q5=0 -> 1
+c12_4: 1, q7=0 -> 1 -> q12_next=1
+
+c13: q17=0, q7=0 -> 1
+c13_1: 1, q8=1 -> 0
+c13_2: 0, q19=1 -> 1
+c13_3: 1, q12=0 -> 1
+c13_4: 1, in0=0 -> 1 -> q13_next=1
+
+c14: q12=0 -> 1
+c14_1: 1, q19=1 -> 0
+c14_2: 0, in0=0 -> 1
+c14_3: 1, q1=1 -> 0
+c14_4: 0, q16=0 -> 1 -> q14_next=1
+
+c15: q1=1, q7=0 -> 1
+c15_1: 1, in1=1 -> 0
+c15_2: 0, q15=1 -> 1
+c15_3: 1, q5=0 -> 1
+c15_4: 1, in1=1 -> 0 -> q15_next=0
+
+c16: q5=0, q6=0 -> 1
+c16_1: 1, q11=0 -> 1
+c16_2: 1, q4=1 -> 0
+c16_3: 0, q9=1 -> 1
+c16_4: 1, q14=0 -> 1 -> q16_next=1
+
+c17: q1=1, q10=1 -> 0
+c17_1: 0, q19=1 -> 1
+c17_2: 1, q14=0 -> 1
+c17_3: 1, q0=1 -> 0
+c17_4: 0, q15=1 -> 1 -> q17_next=1
+
+c18: q11=0, q4=1 -> 1
+c18_1: 1, q3=1 -> 0
+c18_2: 0, q1=1 -> 1
+c18_3: 1, q0=1 -> 0
+c18_4: 0, q15=1 -> 1 -> q18_next=1
+
+c19: in0=0, q1=1 -> 1
+c19_1: 1, q2=0 -> 1
+c19_2: 1, q7=0 -> 1
+c19_3: 1, q4=1 -> 0
+c19_4: 0, q18=1 -> 1 -> q19_next=1
+
+Next state cycle 25:
+q0=0, q1=1, q2=1, q3=1, q4=0, q5=1, q6=1, q7=1, q8=1, q9=1, q10=0, q11=1, q12=1, q13=1, q14=1, q15=0, q16=1, q17=1, q18=1, q19=1.
+
+Outputs cycle 24: start: q12=0, q15=1, q17=0, q4=1, q5=0, q6=0.
+
+Cycle 25: in0=0, in1=1.
+State: q0=0, q1=1, q2=1, q3=1, q4=0, q5=1, q6=1, q7=1, q8=1, q9=1, q10=0, q11=1, q12=1, q13=1, q14=1, q15=0, q16=1, q17=1, q18=1, q19=1.
+
+c0: q15=0, in1=1 -> 1
+c0_1: 1, q2=1 -> 0
+c0_2: 0, q15=0 -> 1
+c0_3: 1, q13=1 -> 0
+c0_4: 0, q13=1 -> 1 -> q0_next=1
+
+c1: q1=1, in0=0 -> 1
+c1_1: 1, q12=1 -> 0
+c1_2: 0, q4=0 -> 1
+c1_3: 1, q19=1 -> 0
+c1_4: 0, q5=1 -> 1 -> q1_next=1
+
+c2: q10=0, q5=1 -> 1
+c2_1: 1, q2=1 -> 0
+c2_2: 0, q4=0 -> 1
+c2_3: 1, q18=1 -> 0
+c2_4: 0, q16=1 -> 1 -> q2_next=1
+
+c3: q5=1, q4=0 -> 1
+c3_1: 1, q7=1 -> 0
+c3_2: 0, q0=0 -> 1
+c3_3: 1, in0=0 -> 1
+c3_4: 1, q7=1 -> 0 -> q3_next=0
+
+c4: q19=1, q8=1 -> 0
+c4_1: 0, q16=1 -> 1
+c4_2: 1, q13=1 -> 0
+c4_3: 0, q0=0 -> 1
+c4_4: 1, q4=0 -> 1 -> q4_next=1
+
+c5: q9=1, q2=1 -> 0
+c5_1: 0, q17=1 -> 1
+c5_2: 1, q14=1 -> 0
+c5_3: 0, q13=1 -> 1
+c5_4: 1, q8=1 -> 0 -> q5_next=0
+
+c6: q15=0, q2=1 -> 1
+c6_1: 1, q1=1 -> 0
+c6_2: 0, q7=1 -> 1
+c6_3: 1, in1=1 -> 0
+c6_4: 0, q10=0 -> 1 -> q6_next=1
+
+c7: q6=1, q7=1 -> 0
+c7_1: 0, q4=0 -> 1
+c7_2: 1, q10=0 -> 1
+c7_3: 1, q19=1 -> 0
+c7_4: 0, q15=0 -> 1 -> q7_next=1
+
+c8: q9=1, q1=1 -> 0
+c8_1: 0, q19=1 -> 1
+c8_2: 1, q19=1 -> 0
+c8_3: 0, q18=1 -> 1
+c8_4: 1, q17=1 -> 0 -> q8_next=0
+
+c9: q16=1, q19=1 -> 0
+c9_1: 0, q3=1 -> 1
+c9_2: 1, q5=1 -> 0
+c9_3: 0, q16=1 -> 1
+c9_4: 1, q12=1 -> 0 -> q9_next=0
+
+c10: q11=1, q19=1 -> 0
+c10_1: 0, q13=1 -> 1
+c10_2: 1, in1=1 -> 0
+c10_3: 0, q14=1 -> 1
+c10_4: 1, q10=0 -> 1 -> q10_next=1
+
+c11: q2=1, in0=0 -> 1
+c11_1: 1, q5=1 -> 0
+c11_2: 0, q1=1 -> 1
+c11_3: 1, q0=0 -> 1
+c11_4: 1, in0=0 -> 1 -> q11_next=1
+
+c12: q10=0, q8=1 -> 1
+c12_1: 1, q13=1 -> 0
+c12_2: 0, q15=0 -> 1
+c12_3: 1, q5=1 -> 0
+c12_4: 0, q7=1 -> 1 -> q12_next=1
+
+c13: q17=1, q7=1 -> 0
+c13_1: 0, q8=1 -> 1
+c13_2: 1, q19=1 -> 0
+c13_3: 0, q12=1 -> 1
+c13_4: 1, in0=0 -> 1 -> q13_next=1
+
+c14: q12=1 -> 0
+c14_1: 0, q19=1 -> 1
+c14_2: 1, in0=0 -> 1
+c14_3: 1, q1=1 -> 0
+c14_4: 0, q16=1 -> 1 -> q14_next=1
+
+c15: q1=1, q7=1 -> 0
+c15_1: 0, in1=1 -> 1
+c15_2: 1, q15=0 -> 1
+c15_3: 1, q5=1 -> 0
+c15_4: 0, in1=1 -> 1 -> q15_next=1
+
+c16: q5=1, q6=1 -> 0
+c16_1: 0, q11=1 -> 1
+c16_2: 1, q4=0 -> 1
+c16_3: 1, q9=1 -> 0
+c16_4: 0, q14=1 -> 1 -> q16_next=1
+
+c17: q1=1, q10=0 -> 1
+c17_1: 1, q19=1 -> 0
+c17_2: 0, q14=1 -> 1
+c17_3: 1, q0=0 -> 1
+c17_4: 1, q15=0 -> 1 -> q17_next=1
+
+c18: q11=1, q4=0 -> 1
+c18_1: 1, q3=1 -> 0
+c18_2: 0, q1=1 -> 1
+c18_3: 1, q0=0 -> 1
+c18_4: 1, q15=0 -> 1 -> q18_next=1
+
+c19: in0=0, q1=1 -> 1
+c19_1: 1, q2=1 -> 0
+c19_2: 0, q7=1 -> 1
+c19_3: 1, q4=0 -> 1
+c19_4: 1, q18=1 -> 0 -> q19_next=0
+
+Next state cycle 26:
+q0=1, q1=1, q2=1, q3=0, q4=1, q5=0, q6=1, q7=1, q8=0, q9=0, q10=1, q11=1, q12=1, q13=1, q14=1, q15=1, q16=1, q17=1, q18=1, q19=0.
+
+Outputs cycle 25: start: q12=1, q15=0, q17=1, q4=0, q5=1, q6=1.
+
+Cycle 26: in0=1, in1=1.
+State: q0=1, q1=1, q2=1, q3=0, q4=1, q5=0, q6=1, q7=1, q8=0, q9=0, q10=1, q11=1, q12=1, q13=1, q14=1, q15=1, q16=1, q17=1, q18=1, q19=0.
+
+c0: q15=1, in1=1 -> 0
+c0_1: 0, q2=1 -> 1
+c0_2: 1, q15=1 -> 0
+c0_3: 0, q13=1 -> 1
+c0_4: 1, q13=1 -> 0 -> q0_next=0
+
+c1: q1=1, in0=1 -> 0
+c1_1: 0, q12=1 -> 1
+c1_2: 1, q4=1 -> 0
+c1_3: 0, q19=0 -> 1
+c1_4: 1, q5=0 -> 1 -> q1_next=1
+
+c2: q10=1, q5=0 -> 1
+c2_1: 1, q2=1 -> 0
+c2_2: 0, q4=1 -> 1
+c2_3: 1, q18=1 -> 0
+c2_4: 0, q16=1 -> 1 -> q2_next=1
+
+c3: q5=0, q4=1 -> 1
+c3_1: 1, q7=1 -> 0
+c3_2: 0, q0=1 -> 1
+c3_3: 1, in0=1 -> 0
+c3_4: 0, q7=1 -> 1 -> q3_next=1
+
+c4: q19=0, q8=0 -> 1
+c4_1: 1, q16=1 -> 0
+c4_2: 0, q13=1 -> 1
+c4_3: 1, q0=1 -> 0
+c4_4: 0, q4=1 -> 1 -> q4_next=1
+
+c5: q9=0, q2=1 -> 1
+c5_1: 1, q17=1 -> 0
+c5_2: 0, q14=1 -> 1
+c5_3: 1, q13=1 -> 0
+c5_4: 0, q8=0 -> 1 -> q5_next=1
+
+c6: q15=1, q2=1 -> 0
+c6_1: 0, q1=1 -> 1
+c6_2: 1, q7=1 -> 0
+c6_3: 0, in1=1 -> 1
+c6_4: 1, q10=1 -> 0 -> q6_next=0
+
+c7: q6=1, q7=1 -> 0
+c7_1: 0, q4=1 -> 1
+c7_2: 1, q10=1 -> 0
+c7_3: 0, q19=0 -> 1
+c7_4: 1, q15=1 -> 0 -> q7_next=0
+
+c8: q9=0, q1=1 -> 1
+c8_1: 1, q19=0 -> 1
+c8_2: 1, q19=0 -> 1
+c8_3: 1, q18=1 -> 0
+c8_4: 0, q17=1 -> 1 -> q8_next=1
+
+c9: q16=1, q19=0 -> 1
+c9_1: 1, q3=0 -> 1
+c9_2: 1, q5=0 -> 1
+c9_3: 1, q16=1 -> 0
+c9_4: 0, q12=1 -> 1 -> q9_next=1
+
+c10: q11=1, q19=0 -> 1
+c10_1: 1, q13=1 -> 0
+c10_2: 0, in1=1 -> 1
+c10_3: 1, q14=1 -> 0
+c10_4: 0, q10=1 -> 1 -> q10_next=1
+
+c11: q2=1, in0=1 -> 0
+c11_1: 0, q5=0 -> 1
+c11_2: 1, q1=1 -> 0
+c11_3: 0, q0=1 -> 1
+c11_4: 1, in0=1 -> 0 -> q11_next=0
+
+c12: q10=1, q8=0 -> 1
+c12_1: 1, q13=1 -> 0
+c12_2: 0, q15=1 -> 1
+c12_3: 1, q5=0 -> 1
+c12_4: 1, q7=1 -> 0 -> q12_next=0
+
+c13: q17=1, q7=1 -> 0
+c13_1: 0, q8=0 -> 1
+c13_2: 1, q19=0 -> 1
+c13_3: 1, q12=1 -> 0
+c13_4: 0, in0=1 -> 1 -> q13_next=1
+
+c14: q12=1 -> 0
+c14_1: 0, q19=0 -> 1
+c14_2: 1, in0=1 -> 0
+c14_3: 0, q1=1 -> 1
+c14_4: 1, q16=1 -> 0 -> q14_next=0
+
+c15: q1=1, q7=1 -> 0
+c15_1: 0, in1=1 -> 1
+c15_2: 1, q15=1 -> 0
+c15_3: 0, q5=0 -> 1
+c15_4: 1, in1=1 -> 0 -> q15_next=0
+
+c16: q5=0, q6=1 -> 1
+c16_1: 1, q11=1 -> 0
+c16_2: 0, q4=1 -> 1
+c16_3: 1, q9=0 -> 1
+c16_4: 1, q14=1 -> 0 -> q16_next=0
+
+c17: q1=1, q10=1 -> 0
+c17_1: 0, q19=0 -> 1
+c17_2: 1, q14=1 -> 0
+c17_3: 0, q0=1 -> 1
+c17_4: 1, q15=1 -> 0 -> q17_next=0
+
+c18: q11=1, q4=1 -> 0
+c18_1: 0, q3=0 -> 1
+c18_2: 1, q1=1 -> 0
+c18_3: 0, q0=1 -> 1
+c18_4: 1, q15=1 -> 0 -> q18_next=0
+
+c19: in0=1, q1=1 -> 0
+c19_1: 0, q2=1 -> 1
+c19_2: 1, q7=1 -> 0
+c19_3: 0, q4=1 -> 1
+c19_4: 1, q18=0 -> 1 -> q19_next=1
+
+Next state cycle 27:
+q0=0, q1=1, q2=1, q3=1, q4=1, q5=1, q6=0, q7=0, q8=1, q9=1, q10=1, q11=0, q12=0, q13=1, q14=0, q15=0, q16=0, q17=0, q18=0, q19=1.
+
+Outputs cycle 26: start: q12=1, q15=1, q17=1, q4=1, q5=0, q6=1.
+
+Cycle 27: in0=1, in1=1.
+State: q0=0, q1=1, q2=1, q3=1, q4=1, q5=1, q6=0, q7=0, q8=1, q9=1, q10=1, q11=0, q12=0, q13=1, q14=0, q15=0, q16=0, q17=0, q18=0, q19=1.
+
+c0: q15=0, in1=1 -> 1
+c0_1: 1, q2=1 -> 0
+c0_2: 0, q15=0 -> 1
+c0_3: 1, q13=1 -> 0
+c0_4: 0, q13=1 -> 1 -> q0_next=1
+
+c1: q1=1, in0=1 -> 0
+c1_1: 0, q12=0 -> 1
+c1_2: 1, q4=1 -> 0
+c1_3: 0, q19=1 -> 1
+c1_4: 1, q5=1 -> 0 -> q1_next=0
+
+c2: q10=1, q5=1 -> 0
+c2_1: 0, q2=1 -> 1
+c2_2: 1, q4=1 -> 0
+c2_3: 0, q18=0 -> 1
+c2_4: 1, q16=0 -> 1 -> q2_next=1
+
+c3: q5=1, q4=1 -> 0
+c3_1: 0, q7=0 -> 1
+c3_2: 1, q0=0 -> 1
+c3_3: 1, in0=1 -> 0
+c3_4: 0, q7=0 -> 1 -> q3_next=1
+
+c4: q19=1, q8=1 -> 0
+c4_1: 0, q16=0 -> 1
+c4_2: 1, q13=1 -> 0
+c4_3: 0, q0=0 -> 1
+c4_4: 1, q4=1 -> 0 -> q4_next=0
+
+c5: q9=1, q2=1 -> 0
+c5_1: 0, q17=0 -> 1
+c5_2: 1, q14=0 -> 1
+c5_3: 1, q13=1 -> 0
+c5_4: 0, q8=1 -> 1 -> q5_next=1
+
+c6: q15=0, q2=1 -> 1
+c6_1: 1, q1=1 -> 0
+c6_2: 0, q7=0 -> 1
+c6_3: 1, in1=1 -> 0
+c6_4: 0, q10=1 -> 1 -> q6_next=1
+
+c7: q6=0, q7=0 -> 1
+c7_1: 1, q4=1 -> 0
+c7_2: 0, q10=1 -> 1
+c7_3: 1, q19=1 -> 0
+c7_4: 0, q15=0 -> 1 -> q7_next=1
+
+c8: q9=1, q1=1 -> 0
+c8_1: 0, q19=1 -> 1
+c8_2: 1, q19=1 -> 0
+c8_3: 0, q18=0 -> 1
+c8_4: 1, q17=0 -> 1 -> q8_next=1
+
+c9: q16=0, q19=1 -> 1
+c9_1: 1, q3=1 -> 0
+c9_2: 0, q5=1 -> 1
+c9_3: 1, q16=0 -> 1
+c9_4: 1, q12=0 -> 1 -> q9_next=1
+
+c10: q11=0, q19=1 -> 1
+c10_1: 1, q13=1 -> 0
+c10_2: 0, in1=1 -> 1
+c10_3: 1, q14=0 -> 1
+c10_4: 1, q10=1 -> 0 -> q10_next=0
+
+c11: q2=1, in0=1 -> 0
+c11_1: 0, q5=1 -> 1
+c11_2: 1, q1=1 -> 0
+c11_3: 0, q0=0 -> 1
+c11_4: 1, in0=1 -> 0 -> q11_next=0
+
+c12: q10=1, q8=1 -> 0
+c12_1: 0, q13=1 -> 1
+c12_2: 1, q15=0 -> 1
+c12_3: 1, q5=1 -> 0
+c12_4: 0, q7=0 -> 1 -> q12_next=1
+
+c13: q17=0, q7=0 -> 1
+c13_1: 1, q8=1 -> 0
+c13_2: 0, q19=1 -> 1
+c13_3: 1, q12=0 -> 1
+c13_4: 1, in0=1 -> 0 -> q13_next=0
+
+c14: q12=0 -> 1
+c14_1: 1, q19=1 -> 0
+c14_2: 0, in0=1 -> 1
+c14_3: 1, q1=1 -> 0
+c14_4: 0, q16=0 -> 1 -> q14_next=1
+
+c15: q1=1, q7=0 -> 1
+c15_1: 1, in1=1 -> 0
+c15_2: 0, q15=0 -> 1
+c15_3: 1, q5=1 -> 0
+c15_4: 0, in1=1 -> 1 -> q15_next=1
+
+c16: q5=1, q6=0 -> 1
+c16_1: 1, q11=0 -> 1
+c16_2: 1, q4=1 -> 0
+c16_3: 0, q9=1 -> 1
+c16_4: 1, q14=0 -> 1 -> q16_next=1
+
+c17: q1=1, q10=1 -> 0
+c17_1: 0, q19=1 -> 1
+c17_2: 1, q14=0 -> 1
+c17_3: 1, q0=0 -> 1
+c17_4: 1, q15=0 -> 1 -> q17_next=1
+
+c18: q11=0, q4=1 -> 1
+c18_1: 1, q3=1 -> 0
+c18_2: 0, q1=1 -> 1
+c18_3: 1, q0=0 -> 1
+c18_4: 1, q15=0 -> 1 -> q18_next=1
+
+c19: in0=1, q1=1 -> 0
+c19_1: 0, q2=1 -> 1
+c19_2: 1, q7=0 -> 1
+c19_3: 1, q4=1 -> 0
+c19_4: 0, q18=0 -> 1 -> q19_next=1
+
+Next state cycle 28:
+q0=1, q1=0, q2=1, q3=1, q4=0, q5=1, q6=1, q7=1, q8=1, q9=1, q10=0, q11=0, q12=1, q13=0, q14=1, q15=1, q16=1, q17=1, q18=1, q19=1.
+
+Outputs cycle 27: start: q12=0, q15=0, q17=0, q4=1, q5=1, q6=0.
+
+Cycle 28: in0=0, in1=0.
+State: q0=1, q1=0, q2=1, q3=1, q4=0, q5=1, q6=1, q7=1, q8=1, q9=1, q10=0, q11=0, q12=1, q13=0, q14=1, q15=1, q16=1, q17=1, q18=1, q19=1.
+
+c0: q15=1, in1=0 -> 1
+c0_1: 1, q2=1 -> 0
+c0_2: 0, q15=1 -> 1
+c0_3: 1, q13=0 -> 1
+c0_4: 1, q13=0 -> 1 -> q0_next=1
+
+c1: q1=0, in0=0 -> 1
+c1_1: 1, q12=1 -> 0
+c1_2: 0, q4=0 -> 1
+c1_3: 1, q19=1 -> 0
+c1_4: 0, q5=1 -> 1 -> q1_next=1
+
+c2: q10=0, q5=1 -> 1
+c2_1: 1, q2=1 -> 0
+c2_2: 0, q4=0 -> 1
+c2_3: 1, q18=1 -> 0
+c2_4: 0, q16=1 -> 1 -> q2_next=1
+
+c3: q5=1, q4=0 -> 1
+c3_1: 1, q7=1 -> 0
+c3_2: 0, q0=1 -> 1
+c3_3: 1, in0=0 -> 1
+c3_4: 1, q7=1 -> 0 -> q3_next=0
+
+c4: q19=1, q8=1 -> 0
+c4_1: 0, q16=1 -> 1
+c4_2: 1, q13=0 -> 1
+c4_3: 1, q0=1 -> 0
+c4_4: 0, q4=0 -> 1 -> q4_next=1
+
+c5: q9=1, q2=1 -> 0
+c5_1: 0, q17=1 -> 1
+c5_2: 1, q14=1 -> 0
+c5_3: 0, q13=0 -> 1
+c5_4: 1, q8=1 -> 0 -> q5_next=0
+
+c6: q15=1, q2=1 -> 0
+c6_1: 0, q1=0 -> 1
+c6_2: 1, q7=1 -> 0
+c6_3: 0, in1=0 -> 1
+c6_4: 1, q10=0 -> 1 -> q6_next=1
+
+c7: q6=1, q7=1 -> 0
+c7_1: 0, q4=0 -> 1
+c7_2: 1, q10=0 -> 1
+c7_3: 1, q19=1 -> 0
+c7_4: 0, q15=1 -> 1 -> q7_next=1
+
+c8: q9=1, q1=0 -> 1
+c8_1: 1, q19=1 -> 0
+c8_2: 0, q19=1 -> 1
+c8_3: 1, q18=1 -> 0
+c8_4: 0, q17=1 -> 1 -> q8_next=1
+
+c9: q16=1, q19=1 -> 0
+c9_1: 0, q3=1 -> 1
+c9_2: 1, q5=1 -> 0
+c9_3: 0, q16=1 -> 1
+c9_4: 1, q12=1 -> 0 -> q9_next=0
+
+c10: q11=0, q19=1 -> 1
+c10_1: 1, q13=0 -> 1
+c10_2: 1, in1=0 -> 1
+c10_3: 1, q14=1 -> 0
+c10_4: 0, q10=0 -> 1 -> q10_next=1
+
+c11: q2=1, in0=0 -> 1
+c11_1: 1, q5=1 -> 0
+c11_2: 0, q1=0 -> 1
+c11_3: 1, q0=1 -> 0
+c11_4: 0, in0=0 -> 1 -> q11_next=1
+
+c12: q10=0, q8=1 -> 1
+c12_1: 1, q13=0 -> 1
+c12_2: 1, q15=1 -> 0
+c12_3: 0, q5=1 -> 1
+c12_4: 1, q7=1 -> 0 -> q12_next=0
+
+c13: q17=1, q7=1 -> 0
+c13_1: 0, q8=1 -> 1
+c13_2: 1, q19=1 -> 0
+c13_3: 0, q12=1 -> 1
+c13_4: 1, in0=0 -> 1 -> q13_next=1
+
+c14: q12=1 -> 0
+c14_1: 0, q19=1 -> 1
+c14_2: 1, in0=0 -> 1
+c14_3: 1, q1=0 -> 1
+c14_4: 1, q16=1 -> 0 -> q14_next=0
+
+c15: q1=0, q7=1 -> 1
+c15_1: 1, in1=0 -> 1
+c15_2: 1, q15=1 -> 0
+c15_3: 0, q5=1 -> 1
+c15_4: 1, in1=0 -> 1 -> q15_next=1
+
+c16: q5=1, q6=1 -> 0
+c16_1: 0, q11=0 -> 1
+c16_2: 1, q4=0 -> 1
+c16_3: 1, q9=1 -> 0
+c16_4: 0, q14=1 -> 1 -> q16_next=1
+
+c17: q1=0, q10=0 -> 1
+c17_1: 1, q19=1 -> 0
+c17_2: 0, q14=1 -> 1
+c17_3: 1, q0=1 -> 0
+c17_4: 0, q15=1 -> 1 -> q17_next=1
+
+c18: q11=0, q4=0 -> 1
+c18_1: 1, q3=1 -> 0
+c18_2: 0, q1=0 -> 1
+c18_3: 1, q0=1 -> 0
+c18_4: 0, q15=1 -> 1 -> q18_next=1
+
+c19: in0=0, q1=0 -> 1
+c19_1: 1, q2=1 -> 0
+c19_2: 0, q7=1 -> 1
+c19_3: 1, q4=0 -> 1
+c19_4: 1, q18=1 -> 0 -> q19_next=0
+
+Next state cycle 29:
+q0=1, q1=1, q2=1, q3=0, q4=1, q5=0, q6=1, q7=1, q8=1, q9=0, q10=1, q11=1, q12=0, q13=1, q14=0, q15=1, q16=1, q17=1, q18=1, q19=0.
+
+Outputs cycle 28: start: q12=1, q15=1, q17=1, q4=0, q5=1, q6=1.
+
+Cycle 29: in0=0, in1=0.
+State: q0=1, q1=1, q2=1, q3=0, q4=1, q5=0, q6=1, q7=1, q8=1, q9=0, q10=1, q11=1, q12=0, q13=1, q14=0, q15=1, q16=1, q17=1, q18=1, q19=0.
+
+c0: q15=1, in1=0 -> 1
+c0_1: 1, q2=1 -> 0
+c0_2: 0, q15=1 -> 1
+c0_3: 1, q13=1 -> 0
+c0_4: 0, q13=1 -> 1 -> q0_next=1
+
+c1: q1=1, in0=0 -> 1
+c1_1: 1, q12=0 -> 1
+c1_2: 1, q4=1 -> 0
+c1_3: 0, q19=0 -> 1
+c1_4: 1, q5=0 -> 1 -> q1_next=1
+
+c2: q10=1, q5=0 -> 1
+c2_1: 1, q2=1 -> 0
+c2_2: 0, q4=1 -> 1
+c2_3: 1, q18=1 -> 0
+c2_4: 0, q16=1 -> 1 -> q2_next=1
+
+c3: q5=0, q4=1 -> 1
+c3_1: 1, q7=1 -> 0
+c3_2: 0, q0=1 -> 1
+c3_3: 1, in0=0 -> 1
+c3_4: 1, q7=1 -> 0 -> q3_next=0
+
+c4: q19=0, q8=1 -> 1
+c4_1: 1, q16=1 -> 0
+c4_2: 0, q13=1 -> 1
+c4_3: 1, q0=1 -> 0
+c4_4: 0, q4=1 -> 1 -> q4_next=1
+
+c5: q9=0, q2=1 -> 1
+c5_1: 1, q17=1 -> 0
+c5_2: 0, q14=0 -> 1
+c5_3: 1, q13=1 -> 0
+c5_4: 0, q8=1 -> 1 -> q5_next=1
+
+c6: q15=1, q2=1 -> 0
+c6_1: 0, q1=1 -> 1
+c6_2: 1, q7=1 -> 0
+c6_3: 0, in1=0 -> 1
+c6_4: 1, q10=1 -> 0 -> q6_next=0
+
+c7: q6=1, q7=1 -> 0
+c7_1: 0, q4=1 -> 1
+c7_2: 1, q10=1 -> 0
+c7_3: 0, q19=0 -> 1
+c7_4: 1, q15=1 -> 0 -> q7_next=0
+
+c8: q9=0, q1=1 -> 1
+c8_1: 1, q19=0 -> 1
+c8_2: 1, q19=0 -> 1
+c8_3: 1, q18=1 -> 0
+c8_4: 0, q17=1 -> 1 -> q8_next=1
+
+c9: q16=1, q19=0 -> 1
+c9_1: 1, q3=0 -> 1
+c9_2: 1, q5=0 -> 1
+c9_3: 1, q16=1 -> 0
+c9_4: 0, q12=0 -> 1 -> q9_next=1
+
+c10: q11=1, q19=0 -> 1
+c10_1: 1, q13=1 -> 0
+c10_2: 0, in1=0 -> 1
+c10_3: 1, q14=0 -> 1
+c10_4: 1, q10=1 -> 0 -> q10_next=0
+
+c11: q2=1, in0=0 -> 1
+c11_1: 1, q5=0 -> 1
+c11_2: 1, q1=1 -> 0
+c11_3: 0, q0=1 -> 1
+c11_4: 1, in0=0 -> 1 -> q11_next=1
+
+c12: q10=1, q8=1 -> 0
+c12_1: 0, q13=1 -> 1
+c12_2: 1, q15=1 -> 0
+c12_3: 0, q5=0 -> 1
+c12_4: 1, q7=1 -> 0 -> q12_next=0
+
+c13: q17=1, q7=1 -> 0
+c13_1: 0, q8=1 -> 1
+c13_2: 1, q19=0 -> 1
+c13_3: 1, q12=0 -> 1
+c13_4: 1, in0=0 -> 1 -> q13_next=1
+
+c14: q12=0 -> 1
+c14_1: 1, q19=0 -> 1
+c14_2: 1, in0=0 -> 1
+c14_3: 1, q1=1 -> 0
+c14_4: 0, q16=1 -> 1 -> q14_next=1
+
+c15: q1=1, q7=1 -> 0
+c15_1: 0, in1=0 -> 1
+c15_2: 1, q15=1 -> 0
+c15_3: 0, q5=0 -> 1
+c15_4: 1, in1=0 -> 1 -> q15_next=1
+
+c16: q5=0, q6=1 -> 1
+c16_1: 1, q11=1 -> 0
+c16_2: 0, q4=1 -> 1
+c16_3: 1, q9=0 -> 1
+c16_4: 1, q14=0 -> 1 -> q16_next=1
+
+c17: q1=1, q10=1 -> 0
+c17_1: 0, q19=0 -> 1
+c17_2: 1, q14=0 -> 1
+c17_3: 1, q0=1 -> 0
+c17_4: 0, q15=1 -> 1 -> q17_next=1
+
+c18: q11=1, q4=1 -> 0
+c18_1: 0, q3=0 -> 1
+c18_2: 1, q1=1 -> 0
+c18_3: 0, q0=1 -> 1
+c18_4: 1, q15=1 -> 0 -> q18_next=0
+
+c19: in0=0, q1=1 -> 1
+c19_1: 1, q2=1 -> 0
+c19_2: 0, q7=1 -> 1
+c19_3: 1, q4=1 -> 0
+c19_4: 0, q18=0 -> 1 -> q19_next=1
+
+Next state cycle 30:
+q0=1, q1=1, q2=1, q3=0, q4=1, q5=1, q6=0, q7=0, q8=1, q9=1, q10=0, q11=1, q12=0, q13=1, q14=1, q15=1, q16=1, q17=1, q18=0, q19=1.
+
+Outputs cycle 29: start: q12=0, q15=1, q17=1, q4=1, q5=0, q6=1.
+
+Cycle 30: in0=1, in1=0.
+State: q0=1, q1=1, q2=1, q3=0, q4=1, q5=1, q6=0, q7=0, q8=1, q9=1, q10=0, q11=1, q12=0, q13=1, q14=1, q15=1, q16=1, q17=1, q18=0, q19=1.
+
+c0: q15=1, in1=0 -> 1
+c0_1: 1, q2=1 -> 0
+c0_2: 0, q15=1 -> 1
+c0_3: 1, q13=1 -> 0
+c0_4: 0, q13=1 -> 1 -> q0_next=1
+
+c1: q1=1, in0=1 -> 0
+c1_1: 0, q12=0 -> 1
+c1_2: 1, q4=1 -> 0
+c1_3: 0, q19=1 -> 1
+c1_4: 1, q5=1 -> 0 -> q1_next=0
+
+c2: q10=0, q5=1 -> 1
+c2_1: 1, q2=1 -> 0
+c2_2: 0, q4=1 -> 1
+c2_3: 1, q18=0 -> 1
+c2_4: 1, q16=1 -> 0 -> q2_next=0
+
+c3: q5=1, q4=1 -> 0
+c3_1: 0, q7=0 -> 1
+c3_2: 1, q0=1 -> 0
+c3_3: 0, in0=1 -> 1
+c3_4: 1, q7=0 -> 1 -> q3_next=1
+
+c4: q19=1, q8=1 -> 0
+c4_1: 0, q16=1 -> 1
+c4_2: 1, q13=1 -> 0
+c4_3: 0, q0=1 -> 1
+c4_4: 1, q4=1 -> 0 -> q4_next=0
+
+c5: q9=1, q2=1 -> 0
+c5_1: 0, q17=1 -> 1
+c5_2: 1, q14=1 -> 0
+c5_3: 0, q13=1 -> 1
+c5_4: 1, q8=1 -> 0 -> q5_next=0
+
+c6: q15=1, q2=1 -> 0
+c6_1: 0, q1=1 -> 1
+c6_2: 1, q7=0 -> 1
+c6_3: 1, in1=0 -> 1
+c6_4: 1, q10=0 -> 1 -> q6_next=1
+
+c7: q6=0, q7=0 -> 1
+c7_1: 1, q4=1 -> 0
+c7_2: 0, q10=0 -> 1
+c7_3: 1, q19=1 -> 0
+c7_4: 0, q15=1 -> 1 -> q7_next=1
+
+c8: q9=1, q1=1 -> 0
+c8_1: 0, q19=1 -> 1
+c8_2: 1, q19=1 -> 0
+c8_3: 0, q18=0 -> 1
+c8_4: 1, q17=1 -> 0 -> q8_next=0
+
+c9: q16=1, q19=1 -> 0
+c9_1: 0, q3=0 -> 1
+c9_2: 1, q5=1 -> 0
+c9_3: 0, q16=1 -> 1
+c9_4: 1, q12=0 -> 1 -> q9_next=1
+
+c10: q11=1, q19=1 -> 0
+c10_1: 0, q13=1 -> 1
+c10_2: 1, in1=0 -> 1
+c10_3: 1, q14=1 -> 0
+c10_4: 0, q10=0 -> 1 -> q10_next=1
+
+c11: q2=1, in0=1 -> 0
+c11_1: 0, q5=1 -> 1
+c11_2: 1, q1=1 -> 0
+c11_3: 0, q0=1 -> 1
+c11_4: 1, in0=1 -> 0 -> q11_next=0
+
+c12: q10=0, q8=1 -> 1
+c12_1: 1, q13=1 -> 0
+c12_2: 0, q15=1 -> 1
+c12_3: 1, q5=1 -> 0
+c12_4: 0, q7=0 -> 1 -> q12_next=1
+
+c13: q17=1, q7=0 -> 1
+c13_1: 1, q8=1 -> 0
+c13_2: 0, q19=1 -> 1
+c13_3: 1, q12=0 -> 1
+c13_4: 1, in0=1 -> 0 -> q13_next=0
+
+c14: q12=0 -> 1
+c14_1: 1, q19=1 -> 0
+c14_2: 0, in0=1 -> 1
+c14_3: 1, q1=1 -> 0
+c14_4: 0, q16=1 -> 1 -> q14_next=1
+
+c15: q1=1, q7=0 -> 1
+c15_1: 1, in1=0 -> 1
+c15_2: 1, q15=1 -> 0
+c15_3: 0, q5=1 -> 1
+c15_4: 1, in1=0 -> 1 -> q15_next=1
+
+c16: q5=1, q6=0 -> 1
+c16_1: 1, q11=1 -> 0
+c16_2: 0, q4=1 -> 1
+c16_3: 1, q9=1 -> 0
+c16_4: 0, q14=1 -> 1 -> q16_next=1
+
+c17: q1=1, q10=0 -> 1
+c17_1: 1, q19=1 -> 0
+c17_2: 0, q14=1 -> 1
+c17_3: 1, q0=1 -> 0
+c17_4: 0, q15=1 -> 1 -> q17_next=1
+
+c18: q11=1, q4=1 -> 0
+c18_1: 0, q3=0 -> 1
+c18_2: 1, q1=1 -> 0
+c18_3: 0, q0=1 -> 1
+c18_4: 1, q15=1 -> 0 -> q18_next=0
+
+c19: in0=1, q1=1 -> 0
+c19_1: 0, q2=1 -> 1
+c19_2: 1, q7=0 -> 1
+c19_3: 1, q4=1 -> 0
+c19_4: 0, q18=0 -> 1 -> q19_next=1
+
+Next state cycle 31:
+q0=1, q1=0, q2=0, q3=1, q4=0, q5=0, q6=1, q7=1, q8=0, q9=1, q10=1, q11=0, q12=1, q13=0, q14=1, q15=1, q16=1, q17=1, q18=0, q19=1.
+
+Outputs cycle 30: start: q12=0, q15=1, q17=1, q4=1, q5=1, q6=0.
+
+Cycle 31: in0=1, in1=0.
+State: q0=1, q1=0, q2=0, q3=1, q4=0, q5=0, q6=1, q7=1, q8=0, q9=1, q10=1, q11=0, q12=1, q13=0, q14=1, q15=1, q16=1, q17=1, q18=0, q19=1.
+
+c0: q15=1, in1=0 -> 1
+c0_1: 1, q2=0 -> 1
+c0_2: 1, q15=1 -> 0
+c0_3: 0, q13=0 -> 1
+c0_4: 1, q13=0 -> 1 -> q0_next=1
+
+c1: q1=0, in0=1 -> 1
+c1_1: 1, q12=1 -> 0
+c1_2: 0, q4=0 -> 1
+c1_3: 1, q19=1 -> 0
+c1_4: 0, q5=0 -> 1 -> q1_next=1
+
+c2: q10=1, q5=0 -> 1
+c2_1: 1, q2=0 -> 1
+c2_2: 1, q4=0 -> 1
+c2_3: 1, q18=0 -> 1
+c2_4: 1, q16=1 -> 0 -> q2_next=0
+
+c3: q5=0, q4=0 -> 1
+c3_1: 1, q7=1 -> 0
+c3_2: 0, q0=1 -> 1
+c3_3: 1, in0=1 -> 0
+c3_4: 0, q7=1 -> 1 -> q3_next=1
+
+c4: q19=1, q8=0 -> 1
+c4_1: 1, q16=1 -> 0
+c4_2: 0, q13=0 -> 1
+c4_3: 1, q0=1 -> 0
+c4_4: 0, q4=0 -> 1 -> q4_next=1
+
+c5: q9=1, q2=0 -> 1
+c5_1: 1, q17=1 -> 0
+c5_2: 0, q14=1 -> 1
+c5_3: 1, q13=0 -> 1
+c5_4: 1, q8=0 -> 1 -> q5_next=1
+
+c6: q15=1, q2=0 -> 1
+c6_1: 1, q1=0 -> 1
+c6_2: 1, q7=1 -> 0
+c6_3: 0, in1=0 -> 1
+c6_4: 1, q10=1 -> 0 -> q6_next=0
+
+c7: q6=1, q7=1 -> 0
+c7_1: 0, q4=0 -> 1
+c7_2: 1, q10=1 -> 0
+c7_3: 0, q19=1 -> 1
+c7_4: 1, q15=1 -> 0 -> q7_next=0
+
+c8: q9=1, q1=0 -> 1
+c8_1: 1, q19=1 -> 0
+c8_2: 0, q19=1 -> 1
+c8_3: 1, q18=0 -> 1
+c8_4: 1, q17=1 -> 0 -> q8_next=0
+
+c9: q16=1, q19=1 -> 0
+c9_1: 0, q3=1 -> 1
+c9_2: 1, q5=0 -> 1
+c9_3: 1, q16=1 -> 0
+c9_4: 0, q12=1 -> 1 -> q9_next=1
+
+c10: q11=0, q19=1 -> 1
+c10_1: 1, q13=0 -> 1
+c10_2: 1, in1=0 -> 1
+c10_3: 1, q14=1 -> 0
+c10_4: 0, q10=1 -> 1 -> q10_next=1
+
+c11: q2=0, in0=1 -> 1
+c11_1: 1, q5=0 -> 1
+c11_2: 1, q1=0 -> 1
+c11_3: 1, q0=1 -> 0
+c11_4: 0, in0=1 -> 1 -> q11_next=1
+
+c12: q10=1, q8=0 -> 1
+c12_1: 1, q13=0 -> 1
+c12_2: 1, q15=1 -> 0
+c12_3: 0, q5=0 -> 1
+c12_4: 1, q7=1 -> 0 -> q12_next=0
+
+c13: q17=1, q7=1 -> 0
+c13_1: 0, q8=0 -> 1
+c13_2: 1, q19=1 -> 0
+c13_3: 0, q12=1 -> 1
+c13_4: 1, in0=1 -> 0 -> q13_next=0
+
+c14: q12=1 -> 0
+c14_1: 0, q19=1 -> 1
+c14_2: 1, in0=1 -> 0
+c14_3: 0, q1=0 -> 1
+c14_4: 1, q16=1 -> 0 -> q14_next=0
+
+c15: q1=0, q7=1 -> 1
+c15_1: 1, in1=0 -> 1
+c15_2: 1, q15=1 -> 0
+c15_3: 0, q5=0 -> 1
+c15_4: 1, in1=0 -> 1 -> q15_next=1
+
+c16: q5=0, q6=1 -> 1
+c16_1: 1, q11=0 -> 1
+c16_2: 1, q4=0 -> 1
+c16_3: 1, q9=1 -> 0
+c16_4: 0, q14=1 -> 1 -> q16_next=1
+
+c17: q1=0, q10=1 -> 1
+c17_1: 1, q19=1 -> 0
+c17_2: 0, q14=1 -> 1
+c17_3: 1, q0=1 -> 0
+c17_4: 0, q15=1 -> 1 -> q17_next=1
+
+c18: q11=0, q4=0 -> 1
+c18_1: 1, q3=1 -> 0
+c18_2: 0, q1=0 -> 1
+c18_3: 1, q0=1 -> 0
+c18_4: 0, q15=1 -> 1 -> q18_next=1
+
+c19: in0=1, q1=0 -> 1
+c19_1: 1, q2=0 -> 1
+c19_2: 1, q7=1 -> 0
+c19_3: 0, q4=0 -> 1
+c19_4: 1, q18=0 -> 1 -> q19_next=1
+
+Next state cycle 32:
+q0=1, q1=1, q2=0, q3=1, q4=1, q5=1, q6=0, q7=0, q8=0, q9=1, q10=1, q11=1, q12=0, q13=0, q14=0, q15=1, q16=1, q17=1, q18=1, q19=1.
+
+Outputs cycle 31: start: q12=1, q15=1, q17=1, q4=0, q5=0, q6=1.
+
+Cycle 32: in0=1, in1=0.
+State: q0=1, q1=1, q2=0, q3=1, q4=1, q5=1, q6=0, q7=0, q8=0, q9=1, q10=1, q11=1, q12=0, q13=0, q14=0, q15=1, q16=1, q17=1, q18=1, q19=1.
+
+c0: q15=1, in1=0 -> 1
+c0_1: 1, q2=0 -> 1
+c0_2: 1, q15=1 -> 0
+c0_3: 0, q13=0 -> 1
+c0_4: 1, q13=0 -> 1 -> q0_next=1
+
+c1: q1=1, in0=1 -> 0
+c1_1: 0, q12=0 -> 1
+c1_2: 1, q4=1 -> 0
+c1_3: 0, q19=1 -> 1
+c1_4: 1, q5=1 -> 0 -> q1_next=0
+
+c2: q10=1, q5=1 -> 0
+c2_1: 0, q2=0 -> 1
+c2_2: 1, q4=1 -> 0
+c2_3: 0, q18=1 -> 1
+c2_4: 1, q16=1 -> 0 -> q2_next=0
+
+c3: q5=1, q4=1 -> 0
+c3_1: 0, q7=0 -> 1
+c3_2: 1, q0=1 -> 0
+c3_3: 0, in0=1 -> 1
+c3_4: 1, q7=0 -> 1 -> q3_next=1
+
+c4: q19=1, q8=0 -> 1
+c4_1: 1, q16=1 -> 0
+c4_2: 0, q13=0 -> 1
+c4_3: 1, q0=1 -> 0
+c4_4: 0, q4=1 -> 1 -> q4_next=1
+
+c5: q9=1, q2=0 -> 1
+c5_1: 1, q17=1 -> 0
+c5_2: 0, q14=0 -> 1
+c5_3: 1, q13=0 -> 1
+c5_4: 1, q8=0 -> 1 -> q5_next=1
+
+c6: q15=1, q2=0 -> 1
+c6_1: 1, q1=1 -> 0
+c6_2: 0, q7=0 -> 1
+c6_3: 1, in1=0 -> 1
+c6_4: 1, q10=1 -> 0 -> q6_next=0
+
+c7: q6=0, q7=0 -> 1
+c7_1: 1, q4=1 -> 0
+c7_2: 0, q10=1 -> 1
+c7_3: 1, q19=1 -> 0
+c7_4: 0, q15=1 -> 1 -> q7_next=1
+
+c8: q9=1, q1=1 -> 0
+c8_1: 0, q19=1 -> 1
+c8_2: 1, q19=1 -> 0
+c8_3: 0, q18=1 -> 1
+c8_4: 1, q17=1 -> 0 -> q8_next=0
+
+c9: q16=1, q19=1 -> 0
+c9_1: 0, q3=1 -> 1
+c9_2: 1, q5=1 -> 0
+c9_3: 0, q16=1 -> 1
+c9_4: 1, q12=0 -> 1 -> q9_next=1
+
+c10: q11=1, q19=1 -> 0
+c10_1: 0, q13=0 -> 1
+c10_2: 1, in1=0 -> 1
+c10_3: 1, q14=0 -> 1
+c10_4: 1, q10=1 -> 0 -> q10_next=0
+
+c11: q2=0, in0=1 -> 1
+c11_1: 1, q5=1 -> 0
+c11_2: 0, q1=1 -> 1
+c11_3: 1, q0=1 -> 0
+c11_4: 0, in0=1 -> 1 -> q11_next=1
+
+c12: q10=1, q8=0 -> 1
+c12_1: 1, q13=0 -> 1
+c12_2: 1, q15=1 -> 0
+c12_3: 0, q5=1 -> 1
+c12_4: 1, q7=0 -> 1 -> q12_next=1
+
+c13: q17=1, q7=0 -> 1
+c13_1: 1, q8=0 -> 1
+c13_2: 1, q19=1 -> 0
+c13_3: 0, q12=0 -> 1
+c13_4: 1, in0=1 -> 0 -> q13_next=0
+
+c14: q12=0 -> 1
+c14_1: 1, q19=1 -> 0
+c14_2: 0, in0=1 -> 1
+c14_3: 1, q1=1 -> 0
+c14_4: 0, q16=1 -> 1 -> q14_next=1
+
+c15: q1=1, q7=0 -> 1
+c15_1: 1, in1=0 -> 1
+c15_2: 1, q15=1 -> 0
+c15_3: 0, q5=1 -> 1
+c15_4: 1, in1=0 -> 1 -> q15_next=1
+
+c16: q5=1, q6=0 -> 1
+c16_1: 1, q11=1 -> 0
+c16_2: 0, q4=1 -> 1
+c16_3: 1, q9=1 -> 0
+c16_4: 0, q14=0 -> 1 -> q16_next=1
+
+c17: q1=1, q10=1 -> 0
+c17_1: 0, q19=1 -> 1
+c17_2: 1, q14=0 -> 1
+c17_3: 1, q0=1 -> 0
+c17_4: 0, q15=1 -> 1 -> q17_next=1
+
+c18: q11=1, q4=1 -> 0
+c18_1: 0, q3=1 -> 1
+c18_2: 1, q1=1 -> 0
+c18_3: 0, q0=1 -> 1
+c18_4: 1, q15=1 -> 0 -> q18_next=0
+
+c19: in0=1, q1=1 -> 0
+c19_1: 0, q2=0 -> 1
+c19_2: 1, q7=0 -> 1
+c19_3: 1, q4=1 -> 0
+c19_4: 0, q18=0 -> 1 -> q19_next=1
+
+Next state cycle 33:
+q0=1, q1=0, q2=0, q3=1, q4=1, q5=1, q6=0, q7=1, q8=0, q9=1, q10=0, q11=1, q12=1, q13=0, q14=1, q15=1, q16=1, q17=1, q18=0, q19=1.
+
+Outputs cycle 32: start: q12=0, q15=1, q17=1, q4=1, q5=1, q6=0.
+
+Cycle 33: in0=1, in1=0.
+State: q0=1, q1=0, q2=0, q3=1, q4=1, q5=1, q6=0, q7=1, q8=0, q9=1, q10=0, q11=1, q12=1, q13=0, q14=1, q15=1, q16=1, q17=1, q18=0, q19=1.
+
+c0: q15=1, in1=0 -> 1
+c0_1: 1, q2=0 -> 1
+c0_2: 1, q15=1 -> 0
+c0_3: 0, q13=0 -> 1
+c0_4: 1, q13=0 -> 1 -> q0_next=1
+
+c1: q1=0, in0=1 -> 1
+c1_1: 1, q12=1 -> 0
+c1_2: 0, q4=1 -> 1
+c1_3: 1, q19=1 -> 0
+c1_4: 0, q5=1 -> 1 -> q1_next=1
+
+c2: q10=0, q5=1 -> 1
+c2_1: 1, q2=0 -> 1
+c2_2: 1, q4=1 -> 0
+c2_3: 0, q18=0 -> 1
+c2_4: 1, q16=1 -> 0 -> q2_next=0
+
+c3: q5=1, q4=1 -> 0
+c3_1: 0, q7=1 -> 1
+c3_2: 1, q0=1 -> 0
+c3_3: 0, in0=1 -> 1
+c3_4: 1, q7=1 -> 0 -> q3_next=0
+
+c4: q19=1, q8=0 -> 1
+c4_1: 1, q16=1 -> 0
+c4_2: 0, q13=0 -> 1
+c4_3: 1, q0=1 -> 0
+c4_4: 0, q4=1 -> 1 -> q4_next=1
+
+c5: q9=1, q2=0 -> 1
+c5_1: 1, q17=1 -> 0
+c5_2: 0, q14=1 -> 1
+c5_3: 1, q13=0 -> 1
+c5_4: 1, q8=0 -> 1 -> q5_next=1
+
+c6: q15=1, q2=0 -> 1
+c6_1: 1, q1=0 -> 1
+c6_2: 1, q7=1 -> 0
+c6_3: 0, in1=0 -> 1
+c6_4: 1, q10=0 -> 1 -> q6_next=1
+
+c7: q6=0, q7=1 -> 1
+c7_1: 1, q4=1 -> 0
+c7_2: 0, q10=0 -> 1
+c7_3: 1, q19=1 -> 0
+c7_4: 0, q15=1 -> 1 -> q7_next=1
+
+c8: q9=1, q1=0 -> 1
+c8_1: 1, q19=1 -> 0
+c8_2: 0, q19=1 -> 1
+c8_3: 1, q18=0 -> 1
+c8_4: 1, q17=1 -> 0 -> q8_next=0
+
+c9: q16=1, q19=1 -> 0
+c9_1: 0, q3=1 -> 1
+c9_2: 1, q5=1 -> 0
+c9_3: 0, q16=1 -> 1
+c9_4: 1, q12=1 -> 0 -> q9_next=0
+
+c10: q11=1, q19=1 -> 0
+c10_1: 0, q13=0 -> 1
+c10_2: 1, in1=0 -> 1
+c10_3: 1, q14=1 -> 0
+c10_4: 0, q10=0 -> 1 -> q10_next=1
+
+c11: q2=0, in0=1 -> 1
+c11_1: 1, q5=1 -> 0
+c11_2: 0, q1=0 -> 1
+c11_3: 1, q0=1 -> 0
+c11_4: 0, in0=1 -> 1 -> q11_next=1
+
+c12: q10=0, q8=0 -> 1
+c12_1: 1, q13=0 -> 1
+c12_2: 1, q15=1 -> 0
+c12_3: 0, q5=1 -> 1
+c12_4: 1, q7=1 -> 0 -> q12_next=0
+
+c13: q17=1, q7=1 -> 0
+c13_1: 0, q8=0 -> 1
+c13_2: 1, q19=1 -> 0
+c13_3: 0, q12=1 -> 1
+c13_4: 1, in0=1 -> 0 -> q13_next=0
+
+c14: q12=1 -> 0
+c14_1: 0, q19=1 -> 1
+c14_2: 1, in0=1 -> 0
+c14_3: 0, q1=0 -> 1
+c14_4: 1, q16=1 -> 0 -> q14_next=0
+
+c15: q1=0, q7=1 -> 1
+c15_1: 1, in1=0 -> 1
+c15_2: 1, q15=1 -> 0
+c15_3: 0, q5=1 -> 1
+c15_4: 1, in1=0 -> 1 -> q15_next=1
+
+c16: q5=1, q6=0 -> 1
+c16_1: 1, q11=1 -> 0
+c16_2: 0, q4=1 -> 1
+c16_3: 1, q9=1 -> 0
+c16_4: 0, q14=1 -> 1 -> q16_next=1
+
+c17: q1=0, q10=0 -> 1
+c17_1: 1, q19=1 -> 0
+c17_2: 0, q14=1 -> 1
+c17_3: 1, q0=1 -> 0
+c17_4: 0, q15=1 -> 1 -> q17_next=1
+
+c18: q11=1, q4=1 -> 0
+c18_1: 0, q3=1 -> 1
+c18_2: 1, q1=0 -> 1
+c18_3: 1, q0=1 -> 0
+c18_4: 0, q15=1 -> 1 -> q18_next=1
+
+c19: in0=1, q1=0 -> 1
+c19_1: 1, q2=0 -> 1
+c19_2: 1, q7=1 -> 0
+c19_3: 0, q4=1 -> 1
+c19_4: 1, q18=0 -> 1 -> q19_next=1
+
+Next state cycle 34:
+q0=1, q1=1, q2=0, q3=0, q4=1, q5=1, q6=1, q7=1, q8=0, q9=0, q10=1, q11=1, q12=0, q13=0, q14=0, q15=1, q16=1, q17=1, q18=1, q19=1.
+
+Outputs cycle 33: start: q12=1, q15=1, q17=1, q4=1, q5=1, q6=0.
+
+Cycle 34: in0=0, in1=1.
+State: q0=1, q1=1, q2=0, q3=0, q4=1, q5=1, q6=1, q7=1, q8=0, q9=0, q10=1, q11=1, q12=0, q13=0, q14=0, q15=1, q16=1, q17=1, q18=1, q19=1.
+
+c0: q15=1, in1=1 -> 0
+c0_1: 0, q2=0 -> 1
+c0_2: 1, q15=1 -> 0
+c0_3: 0, q13=0 -> 1
+c0_4: 1, q13=0 -> 1 -> q0_next=1
+
+c1: q1=1, in0=0 -> 1
+c1_1: 1, q12=0 -> 1
+c1_2: 1, q4=1 -> 0
+c1_3: 0, q19=1 -> 1
+c1_4: 1, q5=1 -> 0 -> q1_next=0
+
+c2: q10=1, q5=1 -> 0
+c2_1: 0, q2=0 -> 1
+c2_2: 1, q4=1 -> 0
+c2_3: 0, q18=1 -> 1
+c2_4: 1, q16=1 -> 0 -> q2_next=0
+
+c3: q5=1, q4=1 -> 0
+c3_1: 0, q7=1 -> 1
+c3_2: 1, q0=1 -> 0
+c3_3: 0, in0=0 -> 1
+c3_4: 1, q7=1 -> 0 -> q3_next=0
+
+c4: q19=1, q8=0 -> 1
+c4_1: 1, q16=1 -> 0
+c4_2: 0, q13=0 -> 1
+c4_3: 1, q0=1 -> 0
+c4_4: 0, q4=1 -> 1 -> q4_next=1
+
+c5: q9=0, q2=0 -> 1
+c5_1: 1, q17=1 -> 0
+c5_2: 0, q14=0 -> 1
+c5_3: 1, q13=0 -> 1
+c5_4: 1, q8=0 -> 1 -> q5_next=1
+
+c6: q15=1, q2=0 -> 1
+c6_1: 1, q1=1 -> 0
+c6_2: 0, q7=1 -> 1
+c6_3: 1, in1=1 -> 0
+c6_4: 0, q10=1 -> 1 -> q6_next=1
+
+c7: q6=1, q7=1 -> 0
+c7_1: 0, q4=1 -> 1
+c7_2: 1, q10=1 -> 0
+c7_3: 0, q19=1 -> 1
+c7_4: 1, q15=1 -> 0 -> q7_next=0
+
+c8: q9=0, q1=1 -> 1
+c8_1: 1, q19=1 -> 0
+c8_2: 0, q19=1 -> 1
+c8_3: 1, q18=1 -> 0
+c8_4: 0, q17=1 -> 1 -> q8_next=1
+
+c9: q16=1, q19=1 -> 0
+c9_1: 0, q3=0 -> 1
+c9_2: 1, q5=1 -> 0
+c9_3: 0, q16=1 -> 1
+c9_4: 1, q12=0 -> 1 -> q9_next=1
+
+c10: q11=1, q19=1 -> 0
+c10_1: 0, q13=0 -> 1
+c10_2: 1, in1=1 -> 0
+c10_3: 0, q14=0 -> 1
+c10_4: 1, q10=1 -> 0 -> q10_next=0
+
+c11: q2=0, in0=0 -> 1
+c11_1: 1, q5=1 -> 0
+c11_2: 0, q1=1 -> 1
+c11_3: 1, q0=1 -> 0
+c11_4: 0, in0=0 -> 1 -> q11_next=1
+
+c12: q10=1, q8=0 -> 1
+c12_1: 1, q13=0 -> 1
+c12_2: 1, q15=1 -> 0
+c12_3: 0, q5=1 -> 1
+c12_4: 1, q7=1 -> 0 -> q12_next=0
+
+c13: q17=1, q7=1 -> 0
+c13_1: 0, q8=0 -> 1
+c13_2: 1, q19=1 -> 0
+c13_3: 0, q12=0 -> 1
+c13_4: 1, in0=0 -> 1 -> q13_next=1
+
+c14: q12=0 -> 1
+c14_1: 1, q19=1 -> 0
+c14_2: 0, in0=0 -> 1
+c14_3: 1, q1=1 -> 0
+c14_4: 0, q16=1 -> 1 -> q14_next=1
+
+c15: q1=1, q7=1 -> 0
+c15_1: 0, in1=1 -> 1
+c15_2: 1, q15=1 -> 0
+c15_3: 0, q5=1 -> 1
+c15_4: 1, in1=1 -> 0 -> q15_next=0
+
+c16: q5=1, q6=1 -> 0
+c16_1: 0, q11=1 -> 1
+c16_2: 1, q4=1 -> 0
+c16_3: 0, q9=0 -> 1
+c16_4: 1, q14=0 -> 1 -> q16_next=1
+
+c17: q1=1, q10=1 -> 0
+c17_1: 0, q19=1 -> 1
+c17_2: 1, q14=0 -> 1
+c17_3: 1, q0=1 -> 0
+c17_4: 0, q15=1 -> 1 -> q17_next=1
+
+c18: q11=1, q4=1 -> 0
+c18_1: 0, q3=0 -> 1
+c18_2: 1, q1=1 -> 0
+c18_3: 0, q0=1 -> 1
+c18_4: 1, q15=1 -> 0 -> q18_next=0
+
+c19: in0=0, q1=1 -> 1
+c19_1: 1, q2=0 -> 1
+c19_2: 1, q7=1 -> 0
+c19_3: 0, q4=1 -> 1
+c19_4: 1, q18=0 -> 1 -> q19_next=1
+
+Next state cycle 35:
+q0=1, q1=0, q2=0, q3=0, q4=1, q5=1, q6=1, q7=0, q8=1, q9=1, q10=0, q11=1, q12=0, q13=1, q14=1, q15=0, q16=1, q17=1, q18=0, q19=1.
+
+Outputs cycle 34: start: q12=0, q15=1, q17=1, q4=1, q5=1, q6=1.
+
+Cycle 35: in0=0, in1=1.
+State: q0=1, q1=0, q2=0, q3=0, q4=1, q5=1, q6=1, q7=0, q8=1, q9=1, q10=0, q11=1, q12=0, q13=1, q14=1, q15=0, q16=1, q17=1, q18=0, q19=1.
+
+c0: q15=0, in1=1 -> 1
+c0_1: 1, q2=0 -> 1
+c0_2: 1, q15=0 -> 1
+c0_3: 1, q13=1 -> 0
+c0_4: 0, q13=1 -> 1 -> q0_next=1
+
+c1: q1=0, in0=0 -> 1
+c1_1: 1, q12=0 -> 1
+c1_2: 1, q4=1 -> 0
+c1_3: 0, q19=1 -> 1
+c1_4: 1, q5=1 -> 0 -> q1_next=0
+
+c2: q10=0, q5=1 -> 1
+c2_1: 1, q2=0 -> 1
+c2_2: 1, q4=1 -> 0
+c2_3: 0, q18=0 -> 1
+c2_4: 1, q16=1 -> 0 -> q2_next=0
+
+c3: q5=1, q4=1 -> 0
+c3_1: 0, q7=0 -> 1
+c3_2: 1, q0=1 -> 0
+c3_3: 0, in0=0 -> 1
+c3_4: 1, q7=0 -> 1 -> q3_next=1
+
+c4: q19=1, q8=1 -> 0
+c4_1: 0, q16=1 -> 1
+c4_2: 1, q13=1 -> 0
+c4_3: 0, q0=1 -> 1
+c4_4: 1, q4=1 -> 0 -> q4_next=0
+
+c5: q9=1, q2=0 -> 1
+c5_1: 1, q17=1 -> 0
+c5_2: 0, q14=1 -> 1
+c5_3: 1, q13=1 -> 0
+c5_4: 0, q8=1 -> 1 -> q5_next=1
+
+c6: q15=0, q2=0 -> 1
+c6_1: 1, q1=0 -> 1
+c6_2: 1, q7=0 -> 1
+c6_3: 1, in1=1 -> 0
+c6_4: 0, q10=0 -> 1 -> q6_next=1
+
+c7: q6=1, q7=0 -> 1
+c7_1: 1, q4=1 -> 0
+c7_2: 0, q10=0 -> 1
+c7_3: 1, q19=1 -> 0
+c7_4: 0, q15=0 -> 1 -> q7_next=1
+
+c8: q9=1, q1=0 -> 1
+c8_1: 1, q19=1 -> 0
+c8_2: 0, q19=1 -> 1
+c8_3: 1, q18=0 -> 1
+c8_4: 1, q17=1 -> 0 -> q8_next=0
+
+c9: q16=1, q19=1 -> 0
+c9_1: 0, q3=0 -> 1
+c9_2: 1, q5=1 -> 0
+c9_3: 0, q16=1 -> 1
+c9_4: 1, q12=0 -> 1 -> q9_next=1
+
+c10: q11=1, q19=1 -> 0
+c10_1: 0, q13=1 -> 1
+c10_2: 1, in1=1 -> 0
+c10_3: 0, q14=1 -> 1
+c10_4: 1, q10=0 -> 1 -> q10_next=1
+
+c11: q2=0, in0=0 -> 1
+c11_1: 1, q5=1 -> 0
+c11_2: 0, q1=0 -> 1
+c11_3: 1, q0=1 -> 0
+c11_4: 0, in0=0 -> 1 -> q11_next=1
+
+c12: q10=0, q8=1 -> 1
+c12_1: 1, q13=1 -> 0
+c12_2: 0, q15=0 -> 1
+c12_3: 1, q5=1 -> 0
+c12_4: 0, q7=0 -> 1 -> q12_next=1
+
+c13: q17=1, q7=0 -> 1
+c13_1: 1, q8=1 -> 0
+c13_2: 0, q19=1 -> 1
+c13_3: 1, q12=0 -> 1
+c13_4: 1, in0=0 -> 1 -> q13_next=1
+
+c14: q12=0 -> 1
+c14_1: 1, q19=1 -> 0
+c14_2: 0, in0=0 -> 1
+c14_3: 1, q1=0 -> 1
+c14_4: 1, q16=1 -> 0 -> q14_next=0
+
+c15: q1=0, q7=0 -> 1
+c15_1: 1, in1=1 -> 0
+c15_2: 0, q15=0 -> 1
+c15_3: 1, q5=1 -> 0
+c15_4: 0, in1=1 -> 1 -> q15_next=1
+
+c16: q5=1, q6=1 -> 0
+c16_1: 0, q11=1 -> 1
+c16_2: 1, q4=1 -> 0
+c16_3: 0, q9=1 -> 1
+c16_4: 1, q14=1 -> 0 -> q16_next=0
+
+c17: q1=0, q10=0 -> 1
+c17_1: 1, q19=1 -> 0
+c17_2: 0, q14=1 -> 1
+c17_3: 1, q0=1 -> 0
+c17_4: 0, q15=0 -> 1 -> q17_next=1
+
+c18: q11=1, q4=1 -> 0
+c18_1: 0, q3=0 -> 1
+c18_2: 1, q1=0 -> 1
+c18_3: 1, q0=1 -> 0
+c18_4: 0, q15=0 -> 1 -> q18_next=1
+
+c19: in0=0, q1=0 -> 1
+c19_1: 1, q2=0 -> 1
+c19_2: 1, q7=0 -> 1
+c19_3: 1, q4=1 -> 0
+c19_4: 0, q18=0 -> 1 -> q19_next=1
+
+Next state cycle 36:
+q0=1, q1=0, q2=0, q3=1, q4=0, q5=1, q6=1, q7=1, q8=0, q9=1, q10=1, q11=1, q12=1, q13=1, q14=0, q15=1, q16=0, q17=1, q18=1, q19=1.
+
+Outputs cycle 35: start: q12=0, q15=0, q17=1, q4=1, q5=1, q6=1.
+
+Cycle 36: in0=0, in1=1.
+State: q0=1, q1=0, q2=0, q3=1, q4=0, q5=1, q6=1, q7=1, q8=0, q9=1, q10=1, q11=1, q12=1, q13=1, q14=0, q15=1, q16=0, q17=1, q18=1, q19=1.
+
+c0: q15=1, in1=1 -> 0
+c0_1: 0, q2=0 -> 1
+c0_2: 1, q15=1 -> 0
+c0_3: 0, q13=1 -> 1
+c0_4: 1, q13=1 -> 0 -> q0_next=0
+
+c1: q1=0, in0=0 -> 1
+c1_1: 1, q12=1 -> 0
+c1_2: 0, q4=0 -> 1
+c1_3: 1, q19=1 -> 0
+c1_4: 0, q5=1 -> 1 -> q1_next=1
+
+c2: q10=1, q5=1 -> 0
+c2_1: 0, q2=0 -> 1
+c2_2: 1, q4=0 -> 1
+c2_3: 1, q18=1 -> 0
+c2_4: 0, q16=0 -> 1 -> q2_next=1
+
+c3: q5=1, q4=0 -> 1
+c3_1: 1, q7=1 -> 0
+c3_2: 0, q0=1 -> 1
+c3_3: 1, in0=0 -> 1
+c3_4: 1, q7=1 -> 0 -> q3_next=0
+
+c4: q19=1, q8=0 -> 1
+c4_1: 1, q16=0 -> 1
+c4_2: 1, q13=1 -> 0
+c4_3: 0, q0=1 -> 1
+c4_4: 1, q4=0 -> 1 -> q4_next=1
+
+c5: q9=1, q2=0 -> 1
+c5_1: 1, q17=1 -> 0
+c5_2: 0, q14=0 -> 1
+c5_3: 1, q13=1 -> 0
+c5_4: 0, q8=0 -> 1 -> q5_next=1
+
+c6: q15=1, q2=0 -> 1
+c6_1: 1, q1=0 -> 1
+c6_2: 1, q7=1 -> 0
+c6_3: 0, in1=1 -> 1
+c6_4: 1, q10=1 -> 0 -> q6_next=0
+
+c7: q6=1, q7=1 -> 0
+c7_1: 0, q4=0 -> 1
+c7_2: 1, q10=1 -> 0
+c7_3: 0, q19=1 -> 1
+c7_4: 1, q15=1 -> 0 -> q7_next=0
+
+c8: q9=1, q1=0 -> 1
+c8_1: 1, q19=1 -> 0
+c8_2: 0, q19=1 -> 1
+c8_3: 1, q18=1 -> 0
+c8_4: 0, q17=1 -> 1 -> q8_next=1
+
+c9: q16=0, q19=1 -> 1
+c9_1: 1, q3=1 -> 0
+c9_2: 0, q5=1 -> 1
+c9_3: 1, q16=0 -> 1
+c9_4: 1, q12=1 -> 0 -> q9_next=0
+
+c10: q11=1, q19=1 -> 0
+c10_1: 0, q13=1 -> 1
+c10_2: 1, in1=1 -> 0
+c10_3: 0, q14=0 -> 1
+c10_4: 1, q10=1 -> 0 -> q10_next=0
+
+c11: q2=0, in0=0 -> 1
+c11_1: 1, q5=1 -> 0
+c11_2: 0, q1=0 -> 1
+c11_3: 1, q0=1 -> 0
+c11_4: 0, in0=0 -> 1 -> q11_next=1
+
+c12: q10=1, q8=0 -> 1
+c12_1: 1, q13=1 -> 0
+c12_2: 0, q15=1 -> 1
+c12_3: 1, q5=1 -> 0
+c12_4: 0, q7=1 -> 1 -> q12_next=1
+
+c13: q17=1, q7=1 -> 0
+c13_1: 0, q8=0 -> 1
+c13_2: 1, q19=1 -> 0
+c13_3: 0, q12=1 -> 1
+c13_4: 1, in0=0 -> 1 -> q13_next=1
+
+c14: q12=1 -> 0
+c14_1: 0, q19=1 -> 1
+c14_2: 1, in0=0 -> 1
+c14_3: 1, q1=0 -> 1
+c14_4: 1, q16=0 -> 1 -> q14_next=1
+
+c15: q1=0, q7=1 -> 1
+c15_1: 1, in1=1 -> 0
+c15_2: 0, q15=1 -> 1
+c15_3: 1, q5=1 -> 0
+c15_4: 0, in1=1 -> 1 -> q15_next=1
+
+c16: q5=1, q6=1 -> 0
+c16_1: 0, q11=1 -> 1
+c16_2: 1, q4=0 -> 1
+c16_3: 1, q9=1 -> 0
+c16_4: 0, q14=0 -> 1 -> q16_next=1
+
+c17: q1=0, q10=1 -> 1
+c17_1: 1, q19=1 -> 0
+c17_2: 0, q14=0 -> 1
+c17_3: 1, q0=1 -> 0
+c17_4: 0, q15=1 -> 1 -> q17_next=1
+
+c18: q11=1, q4=0 -> 1
+c18_1: 1, q3=1 -> 0
+c18_2: 0, q1=0 -> 1
+c18_3: 1, q0=1 -> 0
+c18_4: 0, q15=1 -> 1 -> q18_next=1
+
+c19: in0=0, q1=0 -> 1
+c19_1: 1, q2=0 -> 1
+c19_2: 1, q7=1 -> 0
+c19_3: 0, q4=0 -> 1
+c19_4: 1, q18=1 -> 0 -> q19_next=0
+
+Next state cycle 37:
+q0=0, q1=1, q2=1, q3=0, q4=1, q5=1, q6=0, q7=0, q8=1, q9=0, q10=0, q11=1, q12=1, q13=1, q14=1, q15=1, q16=1, q17=1, q18=1, q19=0.
+
+Outputs cycle 36: start: q12=1, q15=1, q17=1, q4=0, q5=1, q6=1.
+
+Cycle 37: in0=1, in1=0.
+State: q0=0, q1=1, q2=1, q3=0, q4=1, q5=1, q6=0, q7=0, q8=1, q9=0, q10=0, q11=1, q12=1, q13=1, q14=1, q15=1, q16=1, q17=1, q18=1, q19=0.
+
+c0: q15=1, in1=0 -> 1
+c0_1: 1, q2=1 -> 0
+c0_2: 0, q15=1 -> 1
+c0_3: 1, q13=1 -> 0
+c0_4: 0, q13=1 -> 1 -> q0_next=1
+
+c1: q1=1, in0=1 -> 0
+c1_1: 0, q12=1 -> 1
+c1_2: 1, q4=1 -> 0
+c1_3: 0, q19=0 -> 1
+c1_4: 1, q5=1 -> 0 -> q1_next=0
+
+c2: q10=0, q5=1 -> 1
+c2_1: 1, q2=1 -> 0
+c2_2: 0, q4=1 -> 1
+c2_3: 1, q18=1 -> 0
+c2_4: 0, q16=1 -> 1 -> q2_next=1
+
+c3: q5=1, q4=1 -> 0
+c3_1: 0, q7=0 -> 1
+c3_2: 1, q0=0 -> 1
+c3_3: 1, in0=1 -> 0
+c3_4: 0, q7=0 -> 1 -> q3_next=1
+
+c4: q19=0, q8=1 -> 1
+c4_1: 1, q16=1 -> 0
+c4_2: 0, q13=1 -> 1
+c4_3: 1, q0=0 -> 1
+c4_4: 1, q4=1 -> 0 -> q4_next=0
+
+c5: q9=0, q2=1 -> 1
+c5_1: 1, q17=1 -> 0
+c5_2: 0, q14=1 -> 1
+c5_3: 1, q13=1 -> 0
+c5_4: 0, q8=1 -> 1 -> q5_next=1
+
+c6: q15=1, q2=1 -> 0
+c6_1: 0, q1=1 -> 1
+c6_2: 1, q7=0 -> 1
+c6_3: 1, in1=0 -> 1
+c6_4: 1, q10=0 -> 1 -> q6_next=1
+
+c7: q6=0, q7=0 -> 1
+c7_1: 1, q4=1 -> 0
+c7_2: 0, q10=0 -> 1
+c7_3: 1, q19=0 -> 1
+c7_4: 1, q15=1 -> 0 -> q7_next=0
+
+c8: q9=0, q1=1 -> 1
+c8_1: 1, q19=0 -> 1
+c8_2: 1, q19=0 -> 1
+c8_3: 1, q18=1 -> 0
+c8_4: 0, q17=1 -> 1 -> q8_next=1
+
+c9: q16=1, q19=0 -> 1
+c9_1: 1, q3=0 -> 1
+c9_2: 1, q5=1 -> 0
+c9_3: 0, q16=1 -> 1
+c9_4: 1, q12=1 -> 0 -> q9_next=0
+
+c10: q11=1, q19=0 -> 1
+c10_1: 1, q13=1 -> 0
+c10_2: 0, in1=0 -> 1
+c10_3: 1, q14=1 -> 0
+c10_4: 0, q10=0 -> 1 -> q10_next=1
+
+c11: q2=1, in0=1 -> 0
+c11_1: 0, q5=1 -> 1
+c11_2: 1, q1=1 -> 0
+c11_3: 0, q0=0 -> 1
+c11_4: 1, in0=1 -> 0 -> q11_next=0
+
+c12: q10=0, q8=1 -> 1
+c12_1: 1, q13=1 -> 0
+c12_2: 0, q15=1 -> 1
+c12_3: 1, q5=1 -> 0
+c12_4: 0, q7=0 -> 1 -> q12_next=1
+
+c13: q17=1, q7=0 -> 1
+c13_1: 1, q8=1 -> 0
+c13_2: 0, q19=0 -> 1
+c13_3: 1, q12=1 -> 0
+c13_4: 0, in0=1 -> 1 -> q13_next=1
+
+c14: q12=1 -> 0
+c14_1: 0, q19=0 -> 1
+c14_2: 1, in0=1 -> 0
+c14_3: 0, q1=1 -> 1
+c14_4: 1, q16=1 -> 0 -> q14_next=0
+
+c15: q1=1, q7=0 -> 1
+c15_1: 1, in1=0 -> 1
+c15_2: 1, q15=1 -> 0
+c15_3: 0, q5=1 -> 1
+c15_4: 1, in1=0 -> 1 -> q15_next=1
+
+c16: q5=1, q6=0 -> 1
+c16_1: 1, q11=1 -> 0
+c16_2: 0, q4=1 -> 1
+c16_3: 1, q9=0 -> 1
+c16_4: 1, q14=1 -> 0 -> q16_next=0
+
+c17: q1=1, q10=0 -> 1
+c17_1: 1, q19=0 -> 1
+c17_2: 1, q14=1 -> 0
+c17_3: 0, q0=0 -> 1
+c17_4: 1, q15=1 -> 0 -> q17_next=0
+
+c18: q11=1, q4=1 -> 0
+c18_1: 0, q3=0 -> 1
+c18_2: 1, q1=1 -> 0
+c18_3: 0, q0=0 -> 1
+c18_4: 1, q15=1 -> 0 -> q18_next=0
+
+c19: in0=1, q1=1 -> 0
+c19_1: 0, q2=1 -> 1
+c19_2: 1, q7=0 -> 1
+c19_3: 1, q4=1 -> 0
+c19_4: 0, q18=0 -> 1 -> q19_next=1
+
+Next state cycle 38:
+q0=1, q1=0, q2=1, q3=1, q4=0, q5=1, q6=1, q7=0, q8=1, q9=0, q10=1, q11=0, q12=1, q13=1, q14=0, q15=1, q16=0, q17=0, q18=0, q19=1.
+
+Outputs cycle 37: start: q12=1, q15=1, q17=1, q4=1, q5=1, q6=0.
+
+Cycle 38: in0=1, in1=1.
+State: q0=1, q1=0, q2=1, q3=1, q4=0, q5=1, q6=1, q7=0, q8=1, q9=0, q10=1, q11=0, q12=1, q13=1, q14=0, q15=1, q16=0, q17=0, q18=0, q19=1.
+
+c0: q15=1, in1=1 -> 0
+c0_1: 0, q2=1 -> 1
+c0_2: 1, q15=1 -> 0
+c0_3: 0, q13=1 -> 1
+c0_4: 1, q13=1 -> 0 -> q0_next=0
+
+c1: q1=0, in0=1 -> 1
+c1_1: 1, q12=1 -> 0
+c1_2: 0, q4=0 -> 1
+c1_3: 1, q19=1 -> 0
+c1_4: 0, q5=1 -> 1 -> q1_next=1
+
+c2: q10=1, q5=1 -> 0
+c2_1: 0, q2=1 -> 1
+c2_2: 1, q4=0 -> 1
+c2_3: 1, q18=0 -> 1
+c2_4: 1, q16=0 -> 1 -> q2_next=1
+
+c3: q5=1, q4=0 -> 1
+c3_1: 1, q7=0 -> 1
+c3_2: 1, q0=1 -> 0
+c3_3: 0, in0=1 -> 1
+c3_4: 1, q7=0 -> 1 -> q3_next=1
+
+c4: q19=1, q8=1 -> 0
+c4_1: 0, q16=0 -> 1
+c4_2: 1, q13=1 -> 0
+c4_3: 0, q0=1 -> 1
+c4_4: 1, q4=0 -> 1 -> q4_next=1
+
+c5: q9=0, q2=1 -> 1
+c5_1: 1, q17=0 -> 1
+c5_2: 1, q14=0 -> 1
+c5_3: 1, q13=1 -> 0
+c5_4: 0, q8=1 -> 1 -> q5_next=1
+
+c6: q15=1, q2=1 -> 0
+c6_1: 0, q1=0 -> 1
+c6_2: 1, q7=0 -> 1
+c6_3: 1, in1=1 -> 0
+c6_4: 0, q10=1 -> 1 -> q6_next=1
+
+c7: q6=1, q7=0 -> 1
+c7_1: 1, q4=0 -> 1
+c7_2: 1, q10=1 -> 0
+c7_3: 0, q19=1 -> 1
+c7_4: 1, q15=1 -> 0 -> q7_next=0
+
+c8: q9=0, q1=0 -> 1
+c8_1: 1, q19=1 -> 0
+c8_2: 0, q19=1 -> 1
+c8_3: 1, q18=0 -> 1
+c8_4: 1, q17=0 -> 1 -> q8_next=1
+
+c9: q16=0, q19=1 -> 1
+c9_1: 1, q3=1 -> 0
+c9_2: 0, q5=1 -> 1
+c9_3: 1, q16=0 -> 1
+c9_4: 1, q12=1 -> 0 -> q9_next=0
+
+c10: q11=0, q19=1 -> 1
+c10_1: 1, q13=1 -> 0
+c10_2: 0, in1=1 -> 1
+c10_3: 1, q14=0 -> 1
+c10_4: 1, q10=1 -> 0 -> q10_next=0
+
+c11: q2=1, in0=1 -> 0
+c11_1: 0, q5=1 -> 1
+c11_2: 1, q1=0 -> 1
+c11_3: 1, q0=1 -> 0
+c11_4: 0, in0=1 -> 1 -> q11_next=1
+
+c12: q10=1, q8=1 -> 0
+c12_1: 0, q13=1 -> 1
+c12_2: 1, q15=1 -> 0
+c12_3: 0, q5=1 -> 1
+c12_4: 1, q7=0 -> 1 -> q12_next=1
+
+c13: q17=0, q7=0 -> 1
+c13_1: 1, q8=1 -> 0
+c13_2: 0, q19=1 -> 1
+c13_3: 1, q12=1 -> 0
+c13_4: 0, in0=1 -> 1 -> q13_next=1
+
+c14: q12=1 -> 0
+c14_1: 0, q19=1 -> 1
+c14_2: 1, in0=1 -> 0
+c14_3: 0, q1=0 -> 1
+c14_4: 1, q16=0 -> 1 -> q14_next=1
+
+c15: q1=0, q7=0 -> 1
+c15_1: 1, in1=1 -> 0
+c15_2: 0, q15=1 -> 1
+c15_3: 1, q5=1 -> 0
+c15_4: 0, in1=1 -> 1 -> q15_next=1
+
+c16: q5=1, q6=1 -> 0
+c16_1: 0, q11=0 -> 1
+c16_2: 1, q4=0 -> 1
+c16_3: 1, q9=0 -> 1
+c16_4: 1, q14=0 -> 1 -> q16_next=1
+
+c17: q1=0, q10=1 -> 1
+c17_1: 1, q19=1 -> 0
+c17_2: 0, q14=0 -> 1
+c17_3: 1, q0=1 -> 0
+c17_4: 0, q15=1 -> 1 -> q17_next=1
+
+c18: q11=0, q4=0 -> 1
+c18_1: 1, q3=1 -> 0
+c18_2: 0, q1=0 -> 1
+c18_3: 1, q0=1 -> 0
+c18_4: 0, q15=1 -> 1 -> q18_next=1
+
+c19: in0=1, q1=0 -> 1
+c19_1: 1, q2=1 -> 0
+c19_2: 0, q7=0 -> 1
+c19_3: 1, q4=0 -> 1
+c19_4: 1, q18=0 -> 1 -> q19_next=1
+
+Next state cycle 39:
+q0=0, q1=1, q2=1, q3=1, q4=1, q5=1, q6=1, q7=0, q8=1, q9=0, q10=0, q11=1, q12=1, q13=1, q14=1, q15=1, q16=1, q17=1, q18=1, q19=1.
+
+Outputs cycle 38: start: q12=1, q15=1, q17=0, q4=0, q5=1, q6=1.
+
+Cycle 39: in0=0, in1=1.
+State: q0=0, q1=1, q2=1, q3=1, q4=1, q5=1, q6=1, q7=0, q8=1, q9=0, q10=0, q11=1, q12=1, q13=1, q14=1, q15=1, q16=1, q17=1, q18=1, q19=1.
+
+c0: q15=1, in1=1 -> 0
+c0_1: 0, q2=1 -> 1
+c0_2: 1, q15=1 -> 0
+c0_3: 0, q13=1 -> 1
+c0_4: 1, q13=1 -> 0 -> q0_next=0
+
+c1: q1=1, in0=0 -> 1
+c1_1: 1, q12=1 -> 0
+c1_2: 0, q4=1 -> 1
+c1_3: 1, q19=1 -> 0
+c1_4: 0, q5=1 -> 1 -> q1_next=1
+
+c2: q10=0, q5=1 -> 1
+c2_1: 1, q2=1 -> 0
+c2_2: 0, q4=1 -> 1
+c2_3: 1, q18=1 -> 0
+c2_4: 0, q16=1 -> 1 -> q2_next=1
+
+c3: q5=1, q4=1 -> 0
+c3_1: 0, q7=0 -> 1
+c3_2: 1, q0=0 -> 1
+c3_3: 1, in0=0 -> 1
+c3_4: 1, q7=0 -> 1 -> q3_next=1
+
+c4: q19=1, q8=1 -> 0
+c4_1: 0, q16=1 -> 1
+c4_2: 1, q13=1 -> 0
+c4_3: 0, q0=0 -> 1
+c4_4: 1, q4=1 -> 0 -> q4_next=0
+
+c5: q9=0, q2=1 -> 1
+c5_1: 1, q17=1 -> 0
+c5_2: 0, q14=1 -> 1
+c5_3: 1, q13=1 -> 0
+c5_4: 0, q8=1 -> 1 -> q5_next=1
+
+c6: q15=1, q2=1 -> 0
+c6_1: 0, q1=1 -> 1
+c6_2: 1, q7=0 -> 1
+c6_3: 1, in1=1 -> 0
+c6_4: 0, q10=0 -> 1 -> q6_next=1
+
+c7: q6=1, q7=0 -> 1
+c7_1: 1, q4=1 -> 0
+c7_2: 0, q10=0 -> 1
+c7_3: 1, q19=1 -> 0
+c7_4: 0, q15=1 -> 1 -> q7_next=1
+
+c8: q9=0, q1=1 -> 1
+c8_1: 1, q19=1 -> 0
+c8_2: 0, q19=1 -> 1
+c8_3: 1, q18=1 -> 0
+c8_4: 0, q17=1 -> 1 -> q8_next=1
+
+c9: q16=1, q19=1 -> 0
+c9_1: 0, q3=1 -> 1
+c9_2: 1, q5=1 -> 0
+c9_3: 0, q16=1 -> 1
+c9_4: 1, q12=1 -> 0 -> q9_next=0
+
+c10: q11=1, q19=1 -> 0
+c10_1: 0, q13=1 -> 1
+c10_2: 1, in1=1 -> 0
+c10_3: 0, q14=1 -> 1
+c10_4: 1, q10=0 -> 1 -> q10_next=1
+
+c11: q2=1, in0=0 -> 1
+c11_1: 1, q5=1 -> 0
+c11_2: 0, q1=1 -> 1
+c11_3: 1, q0=0 -> 1
+c11_4: 1, in0=0 -> 1 -> q11_next=1
+
+c12: q10=0, q8=1 -> 1
+c12_1: 1, q13=1 -> 0
+c12_2: 0, q15=1 -> 1
+c12_3: 1, q5=1 -> 0
+c12_4: 0, q7=0 -> 1 -> q12_next=1
+
+c13: q17=1, q7=0 -> 1
+c13_1: 1, q8=1 -> 0
+c13_2: 0, q19=1 -> 1
+c13_3: 1, q12=1 -> 0
+c13_4: 0, in0=0 -> 1 -> q13_next=1
+
+c14: q12=1 -> 0
+c14_1: 0, q19=1 -> 1
+c14_2: 1, in0=0 -> 1
+c14_3: 1, q1=1 -> 0
+c14_4: 0, q16=1 -> 1 -> q14_next=1
+
+c15: q1=1, q7=0 -> 1
+c15_1: 1, in1=1 -> 0
+c15_2: 0, q15=1 -> 1
+c15_3: 1, q5=1 -> 0
+c15_4: 0, in1=1 -> 1 -> q15_next=1
+
+c16: q5=1, q6=1 -> 0
+c16_1: 0, q11=1 -> 1
+c16_2: 1, q4=1 -> 0
+c16_3: 0, q9=0 -> 1
+c16_4: 1, q14=1 -> 0 -> q16_next=0
+
+c17: q1=1, q10=0 -> 1
+c17_1: 1, q19=1 -> 0
+c17_2: 0, q14=1 -> 1
+c17_3: 1, q0=0 -> 1
+c17_4: 1, q15=1 -> 0 -> q17_next=0
+
+c18: q11=1, q4=1 -> 0
+c18_1: 0, q3=1 -> 1
+c18_2: 1, q1=1 -> 0
+c18_3: 0, q0=0 -> 1
+c18_4: 1, q15=1 -> 0 -> q18_next=0
+
+c19: in0=0, q1=1 -> 1
+c19_1: 1, q2=1 -> 0
+c19_2: 0, q7=0 -> 1
+c19_3: 1, q4=1 -> 0
+c19_4: 0, q18=0 -> 1 -> q19_next=1
+
+Next state cycle 40:
+q0=0, q1=1, q2=1, q3=1, q4=0, q5=1, q6=1, q7=1, q8=1, q9=0, q10=1, q11=1, q12=1, q13=1, q14=1, q15=1, q16=0, q17=0, q18=0, q19=1.
+
+Outputs cycle 39: start: q12=1, q15=1, q17=1, q4=1, q5=1, q6=1.
+
+Cycle 40: in0=0, in1=1.
+State: q0=0, q1=1, q2=1, q3=1, q4=0, q5=1, q6=1, q7=1, q8=1, q9=0, q10=1, q11=1, q12=1, q13=1, q14=1, q15=1, q16=0, q17=0, q18=0, q19=1.
+
+c0: q15=1, in1=1 -> 0
+c0_1: 0, q2=1 -> 1
+c0_2: 1, q15=1 -> 0
+c0_3: 0, q13=1 -> 1
+c0_4: 1, q13=1 -> 0 -> q0_next=0
+
+c1: q1=1, in0=0 -> 1
+c1_1: 1, q12=1 -> 0
+c1_2: 0, q4=0 -> 1
+c1_3: 1, q19=1 -> 0
+c1_4: 0, q5=1 -> 1 -> q1_next=1
+
+c2: q10=1, q5=1 -> 0
+c2_1: 0, q2=1 -> 1
+c2_2: 1, q4=0 -> 1
+c2_3: 1, q18=0 -> 1
+c2_4: 1, q16=0 -> 1 -> q2_next=1
+
+c3: q5=1, q4=0 -> 1
+c3_1: 1, q7=1 -> 0
+c3_2: 0, q0=0 -> 1
+c3_3: 1, in0=0 -> 1
+c3_4: 1, q7=1 -> 0 -> q3_next=0
+
+c4: q19=1, q8=1 -> 0
+c4_1: 0, q16=0 -> 1
+c4_2: 1, q13=1 -> 0
+c4_3: 0, q0=0 -> 1
+c4_4: 1, q4=0 -> 1 -> q4_next=1
+
+c5: q9=0, q2=1 -> 1
+c5_1: 1, q17=0 -> 1
+c5_2: 1, q14=1 -> 0
+c5_3: 0, q13=1 -> 1
+c5_4: 1, q8=1 -> 0 -> q5_next=0
+
+c6: q15=1, q2=1 -> 0
+c6_1: 0, q1=1 -> 1
+c6_2: 1, q7=1 -> 0
+c6_3: 0, in1=1 -> 1
+c6_4: 1, q10=1 -> 0 -> q6_next=0
+
+c7: q6=1, q7=1 -> 0
+c7_1: 0, q4=0 -> 1
+c7_2: 1, q10=1 -> 0
+c7_3: 0, q19=1 -> 1
+c7_4: 1, q15=1 -> 0 -> q7_next=0
+
+c8: q9=0, q1=1 -> 1
+c8_1: 1, q19=1 -> 0
+c8_2: 0, q19=1 -> 1
+c8_3: 1, q18=0 -> 1
+c8_4: 1, q17=0 -> 1 -> q8_next=1
+
+c9: q16=0, q19=1 -> 1
+c9_1: 1, q3=1 -> 0
+c9_2: 0, q5=1 -> 1
+c9_3: 1, q16=0 -> 1
+c9_4: 1, q12=1 -> 0 -> q9_next=0
+
+c10: q11=1, q19=1 -> 0
+c10_1: 0, q13=1 -> 1
+c10_2: 1, in1=1 -> 0
+c10_3: 0, q14=1 -> 1
+c10_4: 1, q10=1 -> 0 -> q10_next=0
+
+c11: q2=1, in0=0 -> 1
+c11_1: 1, q5=1 -> 0
+c11_2: 0, q1=1 -> 1
+c11_3: 1, q0=0 -> 1
+c11_4: 1, in0=0 -> 1 -> q11_next=1
+
+c12: q10=1, q8=1 -> 0
+c12_1: 0, q13=1 -> 1
+c12_2: 1, q15=1 -> 0
+c12_3: 0, q5=1 -> 1
+c12_4: 1, q7=1 -> 0 -> q12_next=0
+
+c13: q17=0, q7=1 -> 1
+c13_1: 1, q8=1 -> 0
+c13_2: 0, q19=1 -> 1
+c13_3: 1, q12=1 -> 0
+c13_4: 0, in0=0 -> 1 -> q13_next=1
+
+c14: q12=1 -> 0
+c14_1: 0, q19=1 -> 1
+c14_2: 1, in0=0 -> 1
+c14_3: 1, q1=1 -> 0
+c14_4: 0, q16=0 -> 1 -> q14_next=1
+
+c15: q1=1, q7=1 -> 0
+c15_1: 0, in1=1 -> 1
+c15_2: 1, q15=1 -> 0
+c15_3: 0, q5=1 -> 1
+c15_4: 1, in1=1 -> 0 -> q15_next=0
+
+c16: q5=1, q6=1 -> 0
+c16_1: 0, q11=1 -> 1
+c16_2: 1, q4=0 -> 1
+c16_3: 1, q9=0 -> 1
+c16_4: 1, q14=1 -> 0 -> q16_next=0
+
+c17: q1=1, q10=1 -> 0
+c17_1: 0, q19=1 -> 1
+c17_2: 1, q14=1 -> 0
+c17_3: 0, q0=0 -> 1
+c17_4: 1, q15=1 -> 0 -> q17_next=0
+
+c18: q11=1, q4=0 -> 1
+c18_1: 1, q3=1 -> 0
+c18_2: 0, q1=1 -> 1
+c18_3: 1, q0=0 -> 1
+c18_4: 1, q15=1 -> 0 -> q18_next=0
+
+c19: in0=0, q1=1 -> 1
+c19_1: 1, q2=1 -> 0
+c19_2: 0, q7=1 -> 1
+c19_3: 1, q4=0 -> 1
+c19_4: 1, q18=0 -> 1 -> q19_next=1
+
+Next state cycle 41:
+q0=0, q1=1, q2=1, q3=0, q4=1, q5=0, q6=0, q7=0, q8=1, q9=0, q10=0, q11=1, q12=0, q13=1, q14=1, q15=0, q16=0, q17=0, q18=0, q19=1.
+
+Outputs cycle 40: start: q12=1, q15=1, q17=0, q4=0, q5=1, q6=1.
+
+Cycle 41: in0=1, in1=1.
+State: q0=0, q1=1, q2=1, q3=0, q4=1, q5=0, q6=0, q7=0, q8=1, q9=0, q10=0, q11=1, q12=0, q13=1, q14=1, q15=0, q16=0, q17=0, q18=0, q19=1.
+
+c0: q15=0, in1=1 -> 1
+c0_1: 1, q2=1 -> 0
+c0_2: 0, q15=0 -> 1
+c0_3: 1, q13=1 -> 0
+c0_4: 0, q13=1 -> 1 -> q0_next=1
+
+c1: q1=1, in0=1 -> 0
+c1_1: 0, q12=0 -> 1
+c1_2: 1, q4=1 -> 0
+c1_3: 0, q19=1 -> 1
+c1_4: 1, q5=0 -> 1 -> q1_next=1
+
+c2: q10=0, q5=0 -> 1
+c2_1: 1, q2=1 -> 0
+c2_2: 0, q4=1 -> 1
+c2_3: 1, q18=0 -> 1
+c2_4: 1, q16=0 -> 1 -> q2_next=1
+
+c3: q5=0, q4=1 -> 1
+c3_1: 1, q7=0 -> 1
+c3_2: 1, q0=0 -> 1
+c3_3: 1, in0=1 -> 0
+c3_4: 0, q7=0 -> 1 -> q3_next=1
+
+c4: q19=1, q8=1 -> 0
+c4_1: 0, q16=0 -> 1
+c4_2: 1, q13=1 -> 0
+c4_3: 0, q0=0 -> 1
+c4_4: 1, q4=1 -> 0 -> q4_next=0
+
+c5: q9=0, q2=1 -> 1
+c5_1: 1, q17=0 -> 1
+c5_2: 1, q14=1 -> 0
+c5_3: 0, q13=1 -> 1
+c5_4: 1, q8=1 -> 0 -> q5_next=0
+
+c6: q15=0, q2=1 -> 1
+c6_1: 1, q1=1 -> 0
+c6_2: 0, q7=0 -> 1
+c6_3: 1, in1=1 -> 0
+c6_4: 0, q10=0 -> 1 -> q6_next=1
+
+c7: q6=0, q7=0 -> 1
+c7_1: 1, q4=1 -> 0
+c7_2: 0, q10=0 -> 1
+c7_3: 1, q19=1 -> 0
+c7_4: 0, q15=0 -> 1 -> q7_next=1
+
+c8: q9=0, q1=1 -> 1
+c8_1: 1, q19=1 -> 0
+c8_2: 0, q19=1 -> 1
+c8_3: 1, q18=0 -> 1
+c8_4: 1, q17=0 -> 1 -> q8_next=1
+
+c9: q16=0, q19=1 -> 1
+c9_1: 1, q3=0 -> 1
+c9_2: 1, q5=0 -> 1
+c9_3: 1, q16=0 -> 1
+c9_4: 1, q12=0 -> 1 -> q9_next=1
+
+c10: q11=1, q19=1 -> 0
+c10_1: 0, q13=1 -> 1
+c10_2: 1, in1=1 -> 0
+c10_3: 0, q14=1 -> 1
+c10_4: 1, q10=0 -> 1 -> q10_next=1
+
+c11: q2=1, in0=1 -> 0
+c11_1: 0, q5=0 -> 1
+c11_2: 1, q1=1 -> 0
+c11_3: 0, q0=0 -> 1
+c11_4: 1, in0=1 -> 0 -> q11_next=0
+
+c12: q10=0, q8=1 -> 1
+c12_1: 1, q13=1 -> 0
+c12_2: 0, q15=0 -> 1
+c12_3: 1, q5=0 -> 1
+c12_4: 1, q7=0 -> 1 -> q12_next=1
+
+c13: q17=0, q7=0 -> 1
+c13_1: 1, q8=1 -> 0
+c13_2: 0, q19=1 -> 1
+c13_3: 1, q12=0 -> 1
+c13_4: 1, in0=1 -> 0 -> q13_next=0
+
+c14: q12=0 -> 1
+c14_1: 1, q19=1 -> 0
+c14_2: 0, in0=1 -> 1
+c14_3: 1, q1=1 -> 0
+c14_4: 0, q16=0 -> 1 -> q14_next=1
+
+c15: q1=1, q7=0 -> 1
+c15_1: 1, in1=1 -> 0
+c15_2: 0, q15=0 -> 1
+c15_3: 1, q5=0 -> 1
+c15_4: 1, in1=1 -> 0 -> q15_next=0
+
+c16: q5=0, q6=0 -> 1
+c16_1: 1, q11=1 -> 0
+c16_2: 0, q4=1 -> 1
+c16_3: 1, q9=0 -> 1
+c16_4: 1, q14=1 -> 0 -> q16_next=0
+
+c17: q1=1, q10=0 -> 1
+c17_1: 1, q19=1 -> 0
+c17_2: 0, q14=1 -> 1
+c17_3: 1, q0=0 -> 1
+c17_4: 1, q15=0 -> 1 -> q17_next=1
+
+c18: q11=1, q4=1 -> 0
+c18_1: 0, q3=0 -> 1
+c18_2: 1, q1=1 -> 0
+c18_3: 0, q0=0 -> 1
+c18_4: 1, q15=0 -> 1 -> q18_next=1
+
+c19: in0=1, q1=1 -> 0
+c19_1: 0, q2=1 -> 1
+c19_2: 1, q7=0 -> 1
+c19_3: 1, q4=1 -> 0
+c19_4: 0, q18=0 -> 1 -> q19_next=1
+
+Next state cycle 42:
+q0=1, q1=1, q2=1, q3=1, q4=0, q5=0, q6=1, q7=1, q8=1, q9=1, q10=1, q11=0, q12=1, q13=0, q14=1, q15=0, q16=0, q17=1, q18=1, q19=1.
+
+Outputs cycle 41: start: q12=0, q15=0, q17=0, q4=1, q5=0, q6=0.
+
+Cycle 42: in0=1, in1=1.
+State: q0=1, q1=1, q2=1, q3=1, q4=0, q5=0, q6=1, q7=1, q8=1, q9=1, q10=1, q11=0, q12=1, q13=0, q14=1, q15=0, q16=0, q17=1, q18=1, q19=1.
+
+c0: q15=0, in1=1 -> 1
+c0_1: 1, q2=1 -> 0
+c0_2: 0, q15=0 -> 1
+c0_3: 1, q13=0 -> 1
+c0_4: 1, q13=0 -> 1 -> q0_next=1
+
+c1: q1=1, in0=1 -> 0
+c1_1: 0, q12=1 -> 1
+c1_2: 1, q4=0 -> 1
+c1_3: 1, q19=1 -> 0
+c1_4: 0, q5=0 -> 1 -> q1_next=1
+
+c2: q10=1, q5=0 -> 1
+c2_1: 1, q2=1 -> 0
+c2_2: 0, q4=0 -> 1
+c2_3: 1, q18=1 -> 0
+c2_4: 0, q16=0 -> 1 -> q2_next=1
+
+c3: q5=0, q4=0 -> 1
+c3_1: 1, q7=1 -> 0
+c3_2: 0, q0=1 -> 1
+c3_3: 1, in0=1 -> 0
+c3_4: 0, q7=1 -> 1 -> q3_next=1
+
+c4: q19=1, q8=1 -> 0
+c4_1: 0, q16=0 -> 1
+c4_2: 1, q13=0 -> 1
+c4_3: 1, q0=1 -> 0
+c4_4: 0, q4=0 -> 1 -> q4_next=1
+
+c5: q9=1, q2=1 -> 0
+c5_1: 0, q17=1 -> 1
+c5_2: 1, q14=1 -> 0
+c5_3: 0, q13=0 -> 1
+c5_4: 1, q8=1 -> 0 -> q5_next=0
+
+c6: q15=0, q2=1 -> 1
+c6_1: 1, q1=1 -> 0
+c6_2: 0, q7=1 -> 1
+c6_3: 1, in1=1 -> 0
+c6_4: 0, q10=1 -> 1 -> q6_next=1
+
+c7: q6=1, q7=1 -> 0
+c7_1: 0, q4=0 -> 1
+c7_2: 1, q10=1 -> 0
+c7_3: 0, q19=1 -> 1
+c7_4: 1, q15=0 -> 1 -> q7_next=1
+
+c8: q9=1, q1=1 -> 0
+c8_1: 0, q19=1 -> 1
+c8_2: 1, q19=1 -> 0
+c8_3: 0, q18=1 -> 1
+c8_4: 1, q17=1 -> 0 -> q8_next=0
+
+c9: q16=0, q19=1 -> 1
+c9_1: 1, q3=1 -> 0
+c9_2: 0, q5=0 -> 1
+c9_3: 1, q16=0 -> 1
+c9_4: 1, q12=1 -> 0 -> q9_next=0
+
+c10: q11=0, q19=1 -> 1
+c10_1: 1, q13=0 -> 1
+c10_2: 1, in1=1 -> 0
+c10_3: 0, q14=1 -> 1
+c10_4: 1, q10=1 -> 0 -> q10_next=0
+
+c11: q2=1, in0=1 -> 0
+c11_1: 0, q5=0 -> 1
+c11_2: 1, q1=1 -> 0
+c11_3: 0, q0=1 -> 1
+c11_4: 1, in0=1 -> 0 -> q11_next=0
+
+c12: q10=1, q8=1 -> 0
+c12_1: 0, q13=0 -> 1
+c12_2: 1, q15=0 -> 1
+c12_3: 1, q5=0 -> 1
+c12_4: 1, q7=1 -> 0 -> q12_next=0
+
+c13: q17=1, q7=1 -> 0
+c13_1: 0, q8=1 -> 1
+c13_2: 1, q19=1 -> 0
+c13_3: 0, q12=1 -> 1
+c13_4: 1, in0=1 -> 0 -> q13_next=0
+
+c14: q12=1 -> 0
+c14_1: 0, q19=1 -> 1
+c14_2: 1, in0=1 -> 0
+c14_3: 0, q1=1 -> 1
+c14_4: 1, q16=0 -> 1 -> q14_next=1
+
+c15: q1=1, q7=1 -> 0
+c15_1: 0, in1=1 -> 1
+c15_2: 1, q15=0 -> 1
+c15_3: 1, q5=0 -> 1
+c15_4: 1, in1=1 -> 0 -> q15_next=0
+
+c16: q5=0, q6=1 -> 1
+c16_1: 1, q11=0 -> 1
+c16_2: 1, q4=0 -> 1
+c16_3: 1, q9=1 -> 0
+c16_4: 0, q14=1 -> 1 -> q16_next=1
+
+c17: q1=1, q10=1 -> 0
+c17_1: 0, q19=1 -> 1
+c17_2: 1, q14=1 -> 0
+c17_3: 0, q0=1 -> 1
+c17_4: 1, q15=0 -> 1 -> q17_next=1
+
+c18: q11=0, q4=0 -> 1
+c18_1: 1, q3=1 -> 0
+c18_2: 0, q1=1 -> 1
+c18_3: 1, q0=1 -> 0
+c18_4: 0, q15=0 -> 1 -> q18_next=1
+
+c19: in0=1, q1=1 -> 0
+c19_1: 0, q2=1 -> 1
+c19_2: 1, q7=1 -> 0
+c19_3: 0, q4=0 -> 1
+c19_4: 1, q18=1 -> 0 -> q19_next=0
+
+Next state cycle 43:
+q0=1, q1=1, q2=1, q3=1, q4=1, q5=0, q6=1, q7=1, q8=0, q9=0, q10=0, q11=0, q12=0, q13=0, q14=1, q15=0, q16=1, q17=1, q18=1, q19=0.
+
+Outputs cycle 42: start: q12=1, q15=0, q17=1, q4=0, q5=0, q6=1.
+
+Cycle 43: in0=1, in1=0.
+State: q0=1, q1=1, q2=1, q3=1, q4=1, q5=0, q6=1, q7=1, q8=0, q9=0, q10=0, q11=0, q12=0, q13=0, q14=1, q15=0, q16=1, q17=1, q18=1, q19=0.
+
+c0: q15=0, in1=0 -> 1
+c0_1: 1, q2=1 -> 0
+c0_2: 0, q15=0 -> 1
+c0_3: 1, q13=0 -> 1
+c0_4: 1, q13=0 -> 1 -> q0_next=1
+
+c1: q1=1, in0=1 -> 0
+c1_1: 0, q12=0 -> 1
+c1_2: 1, q4=1 -> 0
+c1_3: 0, q19=0 -> 1
+c1_4: 1, q5=0 -> 1 -> q1_next=1
+
+c2: q10=0, q5=0 -> 1
+c2_1: 1, q2=1 -> 0
+c2_2: 0, q4=1 -> 1
+c2_3: 1, q18=1 -> 0
+c2_4: 0, q16=1 -> 1 -> q2_next=1
+
+c3: q5=0, q4=1 -> 1
+c3_1: 1, q7=1 -> 0
+c3_2: 0, q0=1 -> 1
+c3_3: 1, in0=1 -> 0
+c3_4: 0, q7=1 -> 1 -> q3_next=1
+
+c4: q19=0, q8=0 -> 1
+c4_1: 1, q16=1 -> 0
+c4_2: 0, q13=0 -> 1
+c4_3: 1, q0=1 -> 0
+c4_4: 0, q4=1 -> 1 -> q4_next=1
+
+c5: q9=0, q2=1 -> 1
+c5_1: 1, q17=1 -> 0
+c5_2: 0, q14=1 -> 1
+c5_3: 1, q13=0 -> 1
+c5_4: 1, q8=0 -> 1 -> q5_next=1
+
+c6: q15=0, q2=1 -> 1
+c6_1: 1, q1=1 -> 0
+c6_2: 0, q7=1 -> 1
+c6_3: 1, in1=0 -> 1
+c6_4: 1, q10=0 -> 1 -> q6_next=1
+
+c7: q6=1, q7=1 -> 0
+c7_1: 0, q4=1 -> 1
+c7_2: 1, q10=0 -> 1
+c7_3: 1, q19=0 -> 1
+c7_4: 1, q15=0 -> 1 -> q7_next=1
+
+c8: q9=0, q1=1 -> 1
+c8_1: 1, q19=0 -> 1
+c8_2: 1, q19=0 -> 1
+c8_3: 1, q18=1 -> 0
+c8_4: 0, q17=1 -> 1 -> q8_next=1
+
+c9: q16=1, q19=0 -> 1
+c9_1: 1, q3=1 -> 0
+c9_2: 0, q5=0 -> 1
+c9_3: 1, q16=1 -> 0
+c9_4: 0, q12=0 -> 1 -> q9_next=1
+
+c10: q11=0, q19=0 -> 1
+c10_1: 1, q13=0 -> 1
+c10_2: 1, in1=0 -> 1
+c10_3: 1, q14=1 -> 0
+c10_4: 0, q10=0 -> 1 -> q10_next=1
+
+c11: q2=1, in0=1 -> 0
+c11_1: 0, q5=0 -> 1
+c11_2: 1, q1=1 -> 0
+c11_3: 0, q0=1 -> 1
+c11_4: 1, in0=1 -> 0 -> q11_next=0
+
+c12: q10=0, q8=0 -> 1
+c12_1: 1, q13=0 -> 1
+c12_2: 1, q15=0 -> 1
+c12_3: 1, q5=0 -> 1
+c12_4: 1, q7=1 -> 0 -> q12_next=0
+
+c13: q17=1, q7=1 -> 0
+c13_1: 0, q8=0 -> 1
+c13_2: 1, q19=0 -> 1
+c13_3: 1, q12=0 -> 1
+c13_4: 1, in0=1 -> 0 -> q13_next=0
+
+c14: q12=0 -> 1
+c14_1: 1, q19=0 -> 1
+c14_2: 1, in0=1 -> 0
+c14_3: 0, q1=1 -> 1
+c14_4: 1, q16=1 -> 0 -> q14_next=0
+
+c15: q1=1, q7=1 -> 0
+c15_1: 0, in1=0 -> 1
+c15_2: 1, q15=0 -> 1
+c15_3: 1, q5=0 -> 1
+c15_4: 1, in1=0 -> 1 -> q15_next=1
+
+c16: q5=0, q6=1 -> 1
+c16_1: 1, q11=0 -> 1
+c16_2: 1, q4=1 -> 0
+c16_3: 0, q9=0 -> 1
+c16_4: 1, q14=1 -> 0 -> q16_next=0
+
+c17: q1=1, q10=0 -> 1
+c17_1: 1, q19=0 -> 1
+c17_2: 1, q14=1 -> 0
+c17_3: 0, q0=1 -> 1
+c17_4: 1, q15=0 -> 1 -> q17_next=1
+
+c18: q11=0, q4=1 -> 1
+c18_1: 1, q3=1 -> 0
+c18_2: 0, q1=1 -> 1
+c18_3: 1, q0=1 -> 0
+c18_4: 0, q15=0 -> 1 -> q18_next=1
+
+c19: in0=1, q1=1 -> 0
+c19_1: 0, q2=1 -> 1
+c19_2: 1, q7=1 -> 0
+c19_3: 0, q4=1 -> 1
+c19_4: 1, q18=1 -> 0 -> q19_next=0
+
+Next state cycle 44:
+q0=1, q1=1, q2=1, q3=1, q4=1, q5=1, q6=1, q7=1, q8=1, q9=1, q10=1, q11=0, q12=0, q13=0, q14=0, q15=1, q16=0, q17=1, q18=1, q19=0.
+
+Outputs cycle 43: start: q12=0, q15=0, q17=1, q4=1, q5=0, q6=1.
+
+Cycle 44: in0=1, in1=0.
+State: q0=1, q1=1, q2=1, q3=1, q4=1, q5=1, q6=1, q7=1, q8=1, q9=1, q10=1, q11=0, q12=0, q13=0, q14=0, q15=1, q16=0, q17=1, q18=1, q19=0.
+
+c0: q15=1, in1=0 -> 1
+c0_1: 1, q2=1 -> 0
+c0_2: 0, q15=1 -> 1
+c0_3: 1, q13=0 -> 1
+c0_4: 1, q13=0 -> 1 -> q0_next=1
+
+c1: q1=1, in0=1 -> 0
+c1_1: 0, q12=0 -> 1
+c1_2: 1, q4=1 -> 0
+c1_3: 0, q19=0 -> 1
+c1_4: 1, q5=1 -> 0 -> q1_next=0
+
+c2: q10=1, q5=1 -> 0
+c2_1: 0, q2=1 -> 1
+c2_2: 1, q4=1 -> 0
+c2_3: 0, q18=1 -> 1
+c2_4: 1, q16=0 -> 1 -> q2_next=1
+
+c3: q5=1, q4=1 -> 0
+c3_1: 0, q7=1 -> 1
+c3_2: 1, q0=1 -> 0
+c3_3: 0, in0=1 -> 1
+c3_4: 1, q7=1 -> 0 -> q3_next=0
+
+c4: q19=0, q8=1 -> 1
+c4_1: 1, q16=0 -> 1
+c4_2: 1, q13=0 -> 1
+c4_3: 1, q0=1 -> 0
+c4_4: 0, q4=1 -> 1 -> q4_next=1
+
+c5: q9=1, q2=1 -> 0
+c5_1: 0, q17=1 -> 1
+c5_2: 1, q14=0 -> 1
+c5_3: 1, q13=0 -> 1
+c5_4: 1, q8=1 -> 0 -> q5_next=0
+
+c6: q15=1, q2=1 -> 0
+c6_1: 0, q1=1 -> 1
+c6_2: 1, q7=1 -> 0
+c6_3: 0, in1=0 -> 1
+c6_4: 1, q10=1 -> 0 -> q6_next=0
+
+c7: q6=1, q7=1 -> 0
+c7_1: 0, q4=1 -> 1
+c7_2: 1, q10=1 -> 0
+c7_3: 0, q19=0 -> 1
+c7_4: 1, q15=1 -> 0 -> q7_next=0
+
+c8: q9=1, q1=1 -> 0
+c8_1: 0, q19=0 -> 1
+c8_2: 1, q19=0 -> 1
+c8_3: 1, q18=1 -> 0
+c8_4: 0, q17=1 -> 1 -> q8_next=1
+
+c9: q16=0, q19=0 -> 1
+c9_1: 1, q3=1 -> 0
+c9_2: 0, q5=1 -> 1
+c9_3: 1, q16=0 -> 1
+c9_4: 1, q12=0 -> 1 -> q9_next=1
+
+c10: q11=0, q19=0 -> 1
+c10_1: 1, q13=0 -> 1
+c10_2: 1, in1=0 -> 1
+c10_3: 1, q14=0 -> 1
+c10_4: 1, q10=1 -> 0 -> q10_next=0
+
+c11: q2=1, in0=1 -> 0
+c11_1: 0, q5=1 -> 1
+c11_2: 1, q1=1 -> 0
+c11_3: 0, q0=1 -> 1
+c11_4: 1, in0=1 -> 0 -> q11_next=0
+
+c12: q10=1, q8=1 -> 0
+c12_1: 0, q13=0 -> 1
+c12_2: 1, q15=1 -> 0
+c12_3: 0, q5=1 -> 1
+c12_4: 1, q7=1 -> 0 -> q12_next=0
+
+c13: q17=1, q7=1 -> 0
+c13_1: 0, q8=1 -> 1
+c13_2: 1, q19=0 -> 1
+c13_3: 1, q12=0 -> 1
+c13_4: 1, in0=1 -> 0 -> q13_next=0
+
+c14: q12=0 -> 1
+c14_1: 1, q19=0 -> 1
+c14_2: 1, in0=1 -> 0
+c14_3: 0, q1=1 -> 1
+c14_4: 1, q16=0 -> 1 -> q14_next=1
+
+c15: q1=1, q7=1 -> 0
+c15_1: 0, in1=0 -> 1
+c15_2: 1, q15=1 -> 0
+c15_3: 0, q5=1 -> 1
+c15_4: 1, in1=0 -> 1 -> q15_next=1
+
+c16: q5=1, q6=1 -> 0
+c16_1: 0, q11=0 -> 1
+c16_2: 1, q4=1 -> 0
+c16_3: 0, q9=1 -> 1
+c16_4: 1, q14=0 -> 1 -> q16_next=1
+
+c17: q1=1, q10=1 -> 0
+c17_1: 0, q19=0 -> 1
+c17_2: 1, q14=0 -> 1
+c17_3: 1, q0=1 -> 0
+c17_4: 0, q15=1 -> 1 -> q17_next=1
+
+c18: q11=0, q4=1 -> 1
+c18_1: 1, q3=1 -> 0
+c18_2: 0, q1=1 -> 1
+c18_3: 1, q0=1 -> 0
+c18_4: 0, q15=1 -> 1 -> q18_next=1
+
+c19: in0=1, q1=1 -> 0
+c19_1: 0, q2=1 -> 1
+c19_2: 1, q7=1 -> 0
+c19_3: 0, q4=1 -> 1
+c19_4: 1, q18=1 -> 0 -> q19_next=0
+
+Next state cycle 45:
+q0=1, q1=0, q2=1, q3=0, q4=1, q5=0, q6=0, q7=0, q8=1, q9=1, q10=0, q11=0, q12=0, q13=0, q14=1, q15=1, q16=1, q17=1, q18=1, q19=0.
+
+Outputs cycle 44: start: q12=0, q15=1, q17=1, q4=1, q5=1, q6=1.
+
+Cycle 45: in0=1, in1=0.
+State: q0=1, q1=0, q2=1, q3=0, q4=1, q5=0, q6=0, q7=0, q8=1, q9=1, q10=0, q11=0, q12=0, q13=0, q14=1, q15=1, q16=1, q17=1, q18=1, q19=0.
+
+c0: q15=1, in1=0 -> 1
+c0_1: 1, q2=1 -> 0
+c0_2: 0, q15=1 -> 1
+c0_3: 1, q13=0 -> 1
+c0_4: 1, q13=0 -> 1 -> q0_next=1
+
+c1: q1=0, in0=1 -> 1
+c1_1: 1, q12=0 -> 1
+c1_2: 1, q4=1 -> 0
+c1_3: 0, q19=0 -> 1
+c1_4: 1, q5=0 -> 1 -> q1_next=1
+
+c2: q10=0, q5=0 -> 1
+c2_1: 1, q2=1 -> 0
+c2_2: 0, q4=1 -> 1
+c2_3: 1, q18=1 -> 0
+c2_4: 0, q16=1 -> 1 -> q2_next=1
+
+c3: q5=0, q4=1 -> 1
+c3_1: 1, q7=0 -> 1
+c3_2: 1, q0=1 -> 0
+c3_3: 0, in0=1 -> 1
+c3_4: 1, q7=0 -> 1 -> q3_next=1
+
+c4: q19=0, q8=1 -> 1
+c4_1: 1, q16=1 -> 0
+c4_2: 0, q13=0 -> 1
+c4_3: 1, q0=1 -> 0
+c4_4: 0, q4=1 -> 1 -> q4_next=1
+
+c5: q9=1, q2=1 -> 0
+c5_1: 0, q17=1 -> 1
+c5_2: 1, q14=1 -> 0
+c5_3: 0, q13=0 -> 1
+c5_4: 1, q8=1 -> 0 -> q5_next=0
+
+c6: q15=1, q2=1 -> 0
+c6_1: 0, q1=0 -> 1
+c6_2: 1, q7=0 -> 1
+c6_3: 1, in1=0 -> 1
+c6_4: 1, q10=0 -> 1 -> q6_next=1
+
+c7: q6=0, q7=0 -> 1
+c7_1: 1, q4=1 -> 0
+c7_2: 0, q10=0 -> 1
+c7_3: 1, q19=0 -> 1
+c7_4: 1, q15=1 -> 0 -> q7_next=0
+
+c8: q9=1, q1=0 -> 1
+c8_1: 1, q19=0 -> 1
+c8_2: 1, q19=0 -> 1
+c8_3: 1, q18=1 -> 0
+c8_4: 0, q17=1 -> 1 -> q8_next=1
+
+c9: q16=1, q19=0 -> 1
+c9_1: 1, q3=0 -> 1
+c9_2: 1, q5=0 -> 1
+c9_3: 1, q16=1 -> 0
+c9_4: 0, q12=0 -> 1 -> q9_next=1
+
+c10: q11=0, q19=0 -> 1
+c10_1: 1, q13=0 -> 1
+c10_2: 1, in1=0 -> 1
+c10_3: 1, q14=1 -> 0
+c10_4: 0, q10=0 -> 1 -> q10_next=1
+
+c11: q2=1, in0=1 -> 0
+c11_1: 0, q5=0 -> 1
+c11_2: 1, q1=0 -> 1
+c11_3: 1, q0=1 -> 0
+c11_4: 0, in0=1 -> 1 -> q11_next=1
+
+c12: q10=0, q8=1 -> 1
+c12_1: 1, q13=0 -> 1
+c12_2: 1, q15=1 -> 0
+c12_3: 0, q5=0 -> 1
+c12_4: 1, q7=0 -> 1 -> q12_next=1
+
+c13: q17=1, q7=0 -> 1
+c13_1: 1, q8=1 -> 0
+c13_2: 0, q19=0 -> 1
+c13_3: 1, q12=0 -> 1
+c13_4: 1, in0=1 -> 0 -> q13_next=0
+
+c14: q12=0 -> 1
+c14_1: 1, q19=0 -> 1
+c14_2: 1, in0=1 -> 0
+c14_3: 0, q1=0 -> 1
+c14_4: 1, q16=1 -> 0 -> q14_next=0
+
+c15: q1=0, q7=0 -> 1
+c15_1: 1, in1=0 -> 1
+c15_2: 1, q15=1 -> 0
+c15_3: 0, q5=0 -> 1
+c15_4: 1, in1=0 -> 1 -> q15_next=1
+
+c16: q5=0, q6=0 -> 1
+c16_1: 1, q11=0 -> 1
+c16_2: 1, q4=1 -> 0
+c16_3: 0, q9=1 -> 1
+c16_4: 1, q14=1 -> 0 -> q16_next=0
+
+c17: q1=0, q10=0 -> 1
+c17_1: 1, q19=0 -> 1
+c17_2: 1, q14=1 -> 0
+c17_3: 0, q0=1 -> 1
+c17_4: 1, q15=1 -> 0 -> q17_next=0
+
+c18: q11=0, q4=1 -> 1
+c18_1: 1, q3=0 -> 1
+c18_2: 1, q1=0 -> 1
+c18_3: 1, q0=1 -> 0
+c18_4: 0, q15=1 -> 1 -> q18_next=1
+
+c19: in0=1, q1=0 -> 1
+c19_1: 1, q2=1 -> 0
+c19_2: 0, q7=0 -> 1
+c19_3: 1, q4=1 -> 0
+c19_4: 0, q18=1 -> 1 -> q19_next=1
+
+Next state cycle 46:
+q0=1, q1=1, q2=1, q3=1, q4=1, q5=0, q6=1, q7=0, q8=1, q9=1, q10=1, q11=1, q12=1, q13=0, q14=0, q15=1, q16=0, q17=0, q18=1, q19=1.
+
+Outputs cycle 45: start: q12=0, q15=1, q17=1, q4=1, q5=0, q6=0.
+
+Cycle 46: in0=1, in1=0.
+State: q0=1, q1=1, q2=1, q3=1, q4=1, q5=0, q6=1, q7=0, q8=1, q9=1, q10=1, q11=1, q12=1, q13=0, q14=0, q15=1, q16=0, q17=0, q18=1, q19=1.
+
+c0: q15=1, in1=0 -> 1
+c0_1: 1, q2=1 -> 0
+c0_2: 0, q15=1 -> 1
+c0_3: 1, q13=0 -> 1
+c0_4: 1, q13=0 -> 1 -> q0_next=1
+
+c1: q1=1, in0=1 -> 0
+c1_1: 0, q12=1 -> 1
+c1_2: 1, q4=1 -> 0
+c1_3: 0, q19=1 -> 1
+c1_4: 1, q5=0 -> 1 -> q1_next=1
+
+c2: q10=1, q5=0 -> 1
+c2_1: 1, q2=1 -> 0
+c2_2: 0, q4=1 -> 1
+c2_3: 1, q18=1 -> 0
+c2_4: 0, q16=0 -> 1 -> q2_next=1
+
+c3: q5=0, q4=1 -> 1
+c3_1: 1, q7=0 -> 1
+c3_2: 1, q0=1 -> 0
+c3_3: 0, in0=1 -> 1
+c3_4: 1, q7=0 -> 1 -> q3_next=1
+
+c4: q19=1, q8=1 -> 0
+c4_1: 0, q16=0 -> 1
+c4_2: 1, q13=0 -> 1
+c4_3: 1, q0=1 -> 0
+c4_4: 0, q4=1 -> 1 -> q4_next=1
+
+c5: q9=1, q2=1 -> 0
+c5_1: 0, q17=0 -> 1
+c5_2: 1, q14=0 -> 1
+c5_3: 1, q13=0 -> 1
+c5_4: 1, q8=1 -> 0 -> q5_next=0
+
+c6: q15=1, q2=1 -> 0
+c6_1: 0, q1=1 -> 1
+c6_2: 1, q7=0 -> 1
+c6_3: 1, in1=0 -> 1
+c6_4: 1, q10=1 -> 0 -> q6_next=0
+
+c7: q6=1, q7=0 -> 1
+c7_1: 1, q4=1 -> 0
+c7_2: 0, q10=1 -> 1
+c7_3: 1, q19=1 -> 0
+c7_4: 0, q15=1 -> 1 -> q7_next=1
+
+c8: q9=1, q1=1 -> 0
+c8_1: 0, q19=1 -> 1
+c8_2: 1, q19=1 -> 0
+c8_3: 0, q18=1 -> 1
+c8_4: 1, q17=0 -> 1 -> q8_next=1
+
+c9: q16=0, q19=1 -> 1
+c9_1: 1, q3=1 -> 0
+c9_2: 0, q5=0 -> 1
+c9_3: 1, q16=0 -> 1
+c9_4: 1, q12=1 -> 0 -> q9_next=0
+
+c10: q11=1, q19=1 -> 0
+c10_1: 0, q13=0 -> 1
+c10_2: 1, in1=0 -> 1
+c10_3: 1, q14=0 -> 1
+c10_4: 1, q10=1 -> 0 -> q10_next=0
+
+c11: q2=1, in0=1 -> 0
+c11_1: 0, q5=0 -> 1
+c11_2: 1, q1=1 -> 0
+c11_3: 0, q0=1 -> 1
+c11_4: 1, in0=1 -> 0 -> q11_next=0
+
+c12: q10=1, q8=1 -> 0
+c12_1: 0, q13=0 -> 1
+c12_2: 1, q15=1 -> 0
+c12_3: 0, q5=0 -> 1
+c12_4: 1, q7=0 -> 1 -> q12_next=1
+
+c13: q17=0, q7=0 -> 1
+c13_1: 1, q8=1 -> 0
+c13_2: 0, q19=1 -> 1
+c13_3: 1, q12=1 -> 0
+c13_4: 0, in0=1 -> 1 -> q13_next=1
+
+c14: q12=1 -> 0
+c14_1: 0, q19=1 -> 1
+c14_2: 1, in0=1 -> 0
+c14_3: 0, q1=1 -> 1
+c14_4: 1, q16=0 -> 1 -> q14_next=1
+
+c15: q1=1, q7=0 -> 1
+c15_1: 1, in1=0 -> 1
+c15_2: 1, q15=1 -> 0
+c15_3: 0, q5=0 -> 1
+c15_4: 1, in1=0 -> 1 -> q15_next=1
+
+c16: q5=0, q6=1 -> 1
+c16_1: 1, q11=1 -> 0
+c16_2: 0, q4=1 -> 1
+c16_3: 1, q9=1 -> 0
+c16_4: 0, q14=0 -> 1 -> q16_next=1
+
+c17: q1=1, q10=1 -> 0
+c17_1: 0, q19=1 -> 1
+c17_2: 1, q14=0 -> 1
+c17_3: 1, q0=1 -> 0
+c17_4: 0, q15=1 -> 1 -> q17_next=1
+
+c18: q11=1, q4=1 -> 0
+c18_1: 0, q3=1 -> 1
+c18_2: 1, q1=1 -> 0
+c18_3: 0, q0=1 -> 1
+c18_4: 1, q15=1 -> 0 -> q18_next=0
+
+c19: in0=1, q1=1 -> 0
+c19_1: 0, q2=1 -> 1
+c19_2: 1, q7=0 -> 1
+c19_3: 1, q4=1 -> 0
+c19_4: 0, q18=0 -> 1 -> q19_next=1
+
+Next state cycle 47:
+q0=1, q1=1, q2=1, q3=1, q4=1, q5=0, q6=0, q7=1, q8=1, q9=0, q10=0, q11=0, q12=1, q13=1, q14=1, q15=1, q16=1, q17=1, q18=0, q19=1.
+
+Outputs cycle 46: start: q12=1, q15=1, q17=0, q4=1, q5=0, q6=1.
+
+Cycle 47: in0=1, in1=0.
+State: q0=1, q1=1, q2=1, q3=1, q4=1, q5=0, q6=0, q7=1, q8=1, q9=0, q10=0, q11=0, q12=1, q13=1, q14=1, q15=1, q16=1, q17=1, q18=0, q19=1.
+
+Outputs cycle 47: q12=1, q15=1, q17=1, q4=1, q5=0, q6=0.
+
+Now we have all outputs for cycles 0 through 47.
+
+Let's compile the output traces:
+
+q12:
+Cycle 0: 1
+1: 1
+2: 1
+3: 1
+4: 0
+5: 1
+6: 1
+7: 0
+8: 1
+9: 1
+10: 0
+11: 1
+12: 1
+13: 1
+14: 0
+15: 0
+16: 1
+17: 0
+18: 1
+19: 1
+20: 0
+21: 1
+22: 0
+23: 1
+24: 0
+25: 1
+26: 1
+27: 0
+28: 1
+29: 0
+30: 0
+31: 1
+32: 0
+33: 1
+34: 0
+35: 0
+36: 1
+37: 1
+38: 1
+39: 1
+40: 1
+41: 0
+42: 1
+43: 0
+44: 0
+45: 0
+46: 1
+47: 1
+
+Wait, let's verify cycle 47 output: at start of cycle 47, state is from cycle 46 next state: q12=1. So output is 1. Yes.
+
+q15:
+0: 1
+1: 1
+2: 1
+3: 1
+4: 0
+5: 0
+6: 1
+7: 1
+8: 1
+9: 1
+10: 0
+11: 1
+12: 1
+13: 1
+14: 0
+15: 0
+16: 1
+17: 0
+18: 1
+19: 1
+20: 0
+21: 1
+22: 1
+23: 1
+24: 1
+25: 0
+26: 1
+27: 0
+28: 1
+29: 1
+30: 1
+31: 1
+32: 1
+33: 1
+34: 1
+35: 0
+36: 1
+37: 1
+38: 1
+39: 1
+40: 1
+41: 0
+42: 0
+43: 0
+44: 1
+45: 1
+46: 1
+47: 1
+
+Check cycle 46: state start cycle 46: q15=1 -> output 1. cycle 47 start: q15=1 -> output 1.
+
+q17:
+0: 1
+1: 0
+2: 0
+3: 0
+4: 0
+5: 1
+6: 1
+7: 0
+8: 1
+9: 0
+10: 1
+11: 1
+12: 0
+13: 0
+14: 1
+15: 1
+16: 1
+17: 0
+18: 1
+19: 1
+20: 1
+21: 1
+22: 1
+23: 0
+24: 0
+25: 1
+26: 1
+27: 0
+28: 1
+29: 1
+30: 1
+31: 1
+32: 1
+33: 1
+34: 1
+35: 1
+36: 1
+37: 1
+38: 0
+39: 1
+40: 0
+41: 0
+42: 1
+43: 1
+44: 1
+45: 1
+46: 0
+47: 1
+
+q4:
+0: 1
+1: 0
+2: 1
+3: 0
+4: 1
+5: 0
+6: 1
+7: 1
+8: 0
+9: 1
+10: 0
+11: 1
+12: 1
+13: 0
+14: 1
+15: 0
+16: 1
+17: 1
+18: 0
+19: 1
+20: 1
+21: 1
+22: 0
+23: 1
+24: 1
+25: 0
+26: 1
+27: 1
+28: 0
+29: 1
+30: 1
+31: 0
+32: 1
+33: 1
+34: 1
+35: 1
+36: 0
+37: 1
+38: 0
+39: 1
+40: 0
+41: 1
+42: 0
+43: 1
+44: 1
+45: 1
+46: 1
+47: 1
+
+q5:
+0: 1
+1: 1
+2: 1
+3: 0
+4: 0
+5: 1
+6: 0
+7: 1
+8: 1
+9: 0
+10: 1
+11: 1
+12: 1
+13: 1
+14: 0
+15: 1
+16: 0
+17: 0
+18: 1
+19: 0
+20: 1
+21: 1
+22: 0
+23: 0
+24: 0
+25: 1
+26: 0
+27: 1
+28: 1
+29: 0
+30: 1
+31: 0
+32: 1
+33: 1
+34: 1
+35: 1
+36: 1
+37: 1
+38: 1
+39: 1
+40: 1
+41: 0
+42: 0
+43: 0
+44: 1
+45: 0
+46: 0
+47: 0
+
+q6:
+0: 1
+1: 1
+2: 0
+3: 1
+4: 1
+5: 1
+6: 0
+7: 0
+8: 1
+9: 1
+10: 0
+11: 1
+12: 0
+13: 0
+14: 1
+15: 1
+16: 1
+17: 0
+18: 0
+19: 1
+20: 0
+21: 1
+22: 0
+23: 1
+24: 0
+25: 1
+26: 1
+27: 0
+28: 1
+29: 1
+30: 0
+31: 1
+32: 0
+33: 0
+34: 1
+35: 1
+36: 1
+37: 0
+38: 1
+39: 1
+40: 1
+41: 0
+42: 1
+43: 1
+44: 1
+45: 0
+46: 1
+47: 0
+
+Let's double-check a few values with my notes.
+
+Cycle 0: q12=1, q15=1, q17=1, q4=1, q5=1, q6=1 -> correct.
+Cycle 1: q12=1, q15=1, q17=0, q4=0, q5=1, q6=1 -> correct.
+Cycle 2: q12=1, q15=1, q17=0, q4=1, q5=1, q6=0 -> correct.
+Cycle 3: q12=1, q15=1, q17=0, q4=0, q5=0, q6=1 -> correct.
+Cycle 4: q12=0, q15=0, q17=0, q4=1, q5=0, q6=1 -> correct.
+Cycle 5: q12=1, q15=0, q17=1, q4=0, q5=1, q6=1 -> correct.
+Cycle 6: q12=1, q15=1, q17=1, q4=1, q5=0, q6=0 -> correct.
+Cycle 7: q12=0, q15=1, q17=0, q4=1, q5=1, q6=0 -> correct.
+Cycle 8: q12=1, q15=1, q17=1, q4=0, q5=1, q6=1 -> correct.
+Cycle 9: q12=1, q15=1, q17=0, q4=1, q5=0, q6=1 -> correct.
+Cycle 10: q12=0, q15=0, q17=1, q4=0, q5=1, q6=0 -> correct.
+Cycle 11: q12=1, q15=1, q17=1, q4=1, q5=1, q6=1 -> correct.
+Cycle 12: q12=1, q15=1, q17=0, q4=1, q5=1, q6=0 -> correct.
+Cycle 13: q12=1, q15=1, q17=0, q4=0, q5=1, q6=0 -> correct.
+Cycle 14: q12=0, q15=0, q17=1, q4=1, q5=0, q6=1 -> correct.
+Cycle 15: q12=0, q15=0, q17=1, q4=0, q5=1, q6=1 -> correct.
+Cycle 16: q12=1, q15=1, q17=1, q4=1, q5=0, q6=1 -> correct.
+Cycle 17: q12=0, q15=0, q17=0, q4=1, q5=0, q6=0 -> correct.
+Cycle 18: q12=1, q15=1, q17=1, q4=0, q5=1, q6=0 -> correct.
+Cycle 19: q12=1, q15=1, q17=1, q4=1, q5=0, q6=1 -> correct.
+Cycle 20: q12=0, q15=0, q17=1, q4=1, q5=1, q6=0 -> correct.
+Cycle 21: q12=1, q15=1, q17=1, q4=1, q5=1, q6=1 -> correct.
+Cycle 22: q12=0, q15=1, q17=1, q4=0, q5=0, q6=0 -> correct.
+Cycle 23: q12=1, q15=1, q17=0, q4=1, q5=0, q6=1 -> correct.
+Cycle 24: q12=0, q15=1, q17=0, q4=1, q5=0, q6=0 -> correct.
+Cycle 25: q12=1, q15=0, q17=1, q4=0, q5=1, q6=1 -> correct.
+Cycle 26: q12=1, q15=1, q17=1, q4=1, q5=0, q6=1 -> correct.
+Cycle 27: q12=0, q15=0, q17=0, q4=1, q5=1, q6=0 -> correct.
+Cycle 28: q12=1, q15=1, q17=1, q4=0, q5=1, q6=1 -> correct.
+Cycle 29: q12=0, q15=1, q17=1, q4=1, q5=0, q6=1 -> correct.
+Cycle 30: q12=0, q15=1, q17=1, q4=1, q5=1, q6=0 -> correct.
+Cycle 31: q12=1, q15=1, q17=1, q4=0, q5=0, q6=1 -> correct.
+Cycle 32: q12=0, q15=1, q17=1, q4=1, q5=1, q6=0 -> correct.
+Cycle 33: q12=1, q15=1, q17=1, q4=1, q5=1, q6=0 -> correct.
+Cycle 34: q12=0, q15=1, q17=1, q4=1, q5=1, q6=1 -> correct.
+Cycle 35: q12=0, q15=0, q17=1, q4=1, q5=1, q6=1 -> correct.
+Cycle 36: q12=1, q15=1, q17=1, q4=0, q5=1, q6=1 -> correct.
+Cycle 37: q12=1, q15=1, q17=1, q4=1, q5=1, q6=0 -> correct.
+Cycle 38: q12=1, q15=1, q17=0, q4=0, q5=1, q6=1 -> correct.
+Cycle 39: q12=1, q15=1, q17=1, q4=1, q5=1, q6=1 -> correct.
+Cycle 40: q12=1, q15=1, q17=0, q4=0, q5=1, q6=1 -> correct.
+Cycle 41: q12=0, q15=0, q17=0, q4=1, q5=0, q6=0 -> correct.
+Cycle 42: q12=1, q15=0, q17=1, q4=0, q5=0, q6=1 -> correct.
+Cycle 43: q12=0, q15=0, q17=1, q4=1, q5=0, q6=1 -> correct.
+Cycle 44: q12=0, q15=1, q17=1, q4=1, q5=1, q6=1 -> correct.
+Cycle 45: q12=0, q15=1, q17=1, q4=1, q5=0, q6=0 -> correct.
+Cycle 46: q12=1, q15=1, q17=0, q4=1, q5=0, q6=1 -> correct.
+Cycle 47: q12=1, q15=1, q17=1, q4=1, q5=0, q6=0 -> correct.
+
+All 48 cycles accounted for. The output traces lists should have 48 integers each. Let's compile them:
+
+q12: [1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 1, 1]
+q15: [1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1]
+q17: [1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1, 1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 1, 1, 1, 0, 1]
+q4: [1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1]
+q5: [1, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0]
+q6: [1, 1, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0]
+
+I'll format exactly as requested.
+
+=== response ===
+```json
+{
+  "q12": [1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 1, 1],
+  "q15": [1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1],
+  "q17": [1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1, 1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 1, 1, 1, 0, 1],
+  "q4": [1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1],
+  "q5": [1, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0],
+  "q6": [1, 1, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0]
+}
+```

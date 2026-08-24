@@ -1,0 +1,2690 @@
+model: deepseek/deepseek-v4-pro
+circuit: perm_s4616_d16_c40
+score: {'status': 'ok', 'prefix_cycles': 40, 'pointwise': 1.0, 'exact': True}
+
+=== reasoning ===
+We are given a circuit with no gates (all NAND gates empty). It consists entirely of DFFs, inputs in0, in1, and outputs: q0, q1, q10, q12, q14, q2, q5, q6. The DFF connections form a shift-register-like structure, with some feedback, plus inputs in0 and in1 driving q9 and q13 respectively.
+
+Let's parse the DFFs:
+
+1. d: q13, q: q0, init 0
+2. d: q11, q: q1, init 1
+3. d: q12, q: q2, init 1
+4. d: q8, q: q3, init 1
+5. d: q3, q: q4, init 1
+6. d: q14, q: q5, init 1
+7. d: q4, q: q6, init 0
+8. d: q2, q: q7, init 1
+9. d: q0, q: q8, init 1
+10. d: in0, q: q9, init 1
+11. d: q9, q: q10, init 1
+12. d: q5, q: q11, init 0
+13. d: q6, q: q12, init 1
+14. d: in1, q: q13, init 0
+15. d: q10, q: q14, init 1
+16. d: q15, q: q15, init 0
+
+Note: There is also q15 which is not an output, but its d is q15, q is q15, init 0. So q15 stays 0 forever? Wait, init is 0, and d is its own q. So it loads 0 every cycle, so q15=0 always.
+
+We have outputs: q0, q1, q10, q12, q14, q2, q5, q6.
+
+We need to simulate 40 cycles.
+
+First, let's map all DFFs and their initial values (cycle 0 before any clock edge):
+Init values (q at t=0 before step 3):
+q0 = 0
+q1 = 1
+q2 = 1
+q3 = 1
+q4 = 1
+q5 = 1
+q6 = 0
+q7 = 1  (not output)
+q8 = 1
+q9 = 1
+q10 = 1
+q11 = 0
+q12 = 1
+q13 = 0
+q14 = 1
+q15 = 0
+
+We have inputs in0, in1 with trace arrays of length 40.
+
+For each cycle t=0..39:
+Step 1: Input nets take trace values for cycle t. DFF q nets hold current state.
+Step 2: Gates settle (none, so values are exactly the inputs and q nets). The d nets of DFFs are just the specified nets. Output nets are recorded.
+Step 3: Record the values of output nets (q0, q1, q10, q12, q14, q2, q5, q6).
+Step 4: Clock edge: Each DFF loads its d value.
+
+So we just need to track the state of all q nets, and update them each cycle.
+
+Let's make a table of the DFF dependencies and compute step by step.
+
+State variables (q0..q15) initialized as above.
+Input traces:
+in0 = [1,0,1,1,0,0,0,0,0,1,1,1,1,0,0,0,1,1,1,1,0,1,0,0,1,0,1,0,0,0,1,1,0,1,1,0,0,0,1,0]
+in1 = [0,1,1,1,1,1,1,0,1,1,1,1,1,0,0,0,1,1,0,0,0,1,0,1,0,1,1,1,1,0,0,1,0,0,1,0,0,0,0,1]
+
+We will simulate cycle by cycle. We can compute q(t+1) = d(t) for each DFF.
+
+List of DFFs with d sources:
+q0 -> d: q13
+q1 -> d: q11
+q2 -> d: q12
+q3 -> d: q8
+q4 -> d: q3
+q5 -> d: q14
+q6 -> d: q4
+q7 -> d: q2
+q8 -> d: q0
+q9 -> d: in0
+q10 -> d: q9
+q11 -> d: q5
+q12 -> d: q6
+q13 -> d: in1
+q14 -> d: q10
+q15 -> d: q15 (self-loop, fixed at 0 since init 0)
+
+Cycle 0:
+State: q0=0, q1=1, q2=1, q3=1, q4=1, q5=1, q6=0, q7=1, q8=1, q9=1, q10=1, q11=0, q12=1, q13=0, q14=1, q15=0.
+Inputs at cycle 0: in0=1, in1=0.
+Record outputs: q0=0, q1=1, q10=1, q12=1, q14=1, q2=1, q5=1, q6=0.
+Clock edge: each q loads its d:
+q0_next = q13 = 0
+q1_next = q11 = 0
+q2_next = q12 = 1
+q3_next = q8 = 1
+q4_next = q3 = 1
+q5_next = q14 = 1
+q6_next = q4 = 1
+q7_next = q2 = 1 (not needed for outputs, but keep track? Only if used as d for others. q2 is used for q7, q7 is not used anywhere? No DFF has d: q7. So we can ignore q7.)
+q8_next = q0 = 0
+q9_next = in0 = 1
+q10_next = q9 = 1
+q11_next = q5 = 1
+q12_next = q6 = 0
+q13_next = in1 = 0
+q14_next = q10 = 1
+q15_next = q15 = 0
+
+So state for start of cycle 1:
+q0=0, q1=0, q2=1, q3=1, q4=1, q5=1, q6=1, q8=0, q9=1, q10=1, q11=1, q12=0, q13=0, q14=1, q15=0.
+
+Cycle 1:
+State: as above. Inputs: in0=0, in1=1.
+Record outputs: q0=0, q1=0, q10=1, q12=0, q14=1, q2=1, q5=1, q6=1.
+Clock edge:
+q0_next = q13 = 0
+q1_next = q11 = 1
+q2_next = q12 = 0
+q3_next = q8 = 0
+q4_next = q3 = 1
+q5_next = q14 = 1
+q6_next = q4 = 1
+q8_next = q0 = 0
+q9_next = in0 = 0
+q10_next = q9 = 1
+q11_next = q5 = 1
+q12_next = q6 = 1
+q13_next = in1 = 1
+q14_next = q10 = 1
+q15_next = 0
+
+Cycle 2 state:
+q0=0, q1=1, q2=0, q3=0, q4=1, q5=1, q6=1, q8=0, q9=0, q10=0? Wait: q10_next = q9 which is 1 at cycle 1, so q10 = 1? Let's check: cycle 1 state: q9=1. So q10_next = 1. q9_next = 0. So after cycle 1 clock, q10 becomes 1, q9 becomes 0. So q10=1, q9=0.
+Let's recalc carefully:
+
+Cycle 1 clock edge computations:
+Current state at recording time (before edge): 
+q0=0, q1=0, q2=1, q3=1, q4=1, q5=1, q6=1, q8=0, q9=1, q10=1, q11=1, q12=0, q13=0, q14=1, q15=0.
+Inputs: in0=0, in1=1.
+
+Next state:
+q0_next = q13 = 0
+q1_next = q11 = 1
+q2_next = q12 = 0
+q3_next = q8 = 0
+q4_next = q3 = 1
+q5_next = q14 = 1
+q6_next = q4 = 1
+q7_next = q2 = 1 (unused)
+q8_next = q0 = 0
+q9_next = in0 = 0
+q10_next = q9 = 1
+q11_next = q5 = 1
+q12_next = q6 = 1
+q13_next = in1 = 1
+q14_next = q10 = 1
+q15_next = q15 = 0
+
+So after cycle 1 clock, state before cycle 2 is:
+q0=0, q1=1, q2=0, q3=0, q4=1, q5=1, q6=1, q8=0, q9=0, q10=1, q11=1, q12=1, q13=1, q14=1, q15=0.
+
+Cycle 2:
+State: as above. Inputs: in0=1, in1=1.
+Outputs: q0=0, q1=1, q10=1, q12=1, q14=1, q2=0, q5=1, q6=1.
+Clock edge:
+q0_next = q13 = 1
+q1_next = q11 = 1
+q2_next = q12 = 1
+q3_next = q8 = 0
+q4_next = q3 = 0
+q5_next = q14 = 1
+q6_next = q4 = 1
+q8_next = q0 = 0
+q9_next = in0 = 1
+q10_next = q9 = 0
+q11_next = q5 = 1
+q12_next = q6 = 1
+q13_next = in1 = 1
+q14_next = q10 = 1
+q15_next = 0
+
+Cycle 3 state:
+q0=1, q1=1, q2=1, q3=0, q4=0, q5=1, q6=1, q8=0, q9=1, q10=0, q11=1, q12=1, q13=1, q14=1, q15=0.
+
+Cycle 3:
+Inputs: in0=1, in1=1.
+Outputs: q0=1, q1=1, q10=0, q12=1, q14=1, q2=1, q5=1, q6=1.
+Clock edge:
+q0_next = q13 = 1
+q1_next = q11 = 1
+q2_next = q12 = 1
+q3_next = q8 = 0
+q4_next = q3 = 0
+q5_next = q14 = 1
+q6_next = q4 = 0
+q8_next = q0 = 1
+q9_next = in0 = 1
+q10_next = q9 = 1
+q11_next = q5 = 1
+q12_next = q6 = 1
+q13_next = in1 = 1
+q14_next = q10 = 0
+q15_next = 0
+
+Cycle 4 state:
+q0=1, q1=1, q2=1, q3=0, q4=0, q5=1, q6=0, q8=1, q9=1, q10=1, q11=1, q12=1, q13=1, q14=0, q15=0.
+
+Cycle 4:
+Inputs: in0=0, in1=1.
+Outputs: q0=1, q1=1, q10=1, q12=1, q14=0, q2=1, q5=1, q6=0.
+Clock edge:
+q0_next = q13 = 1
+q1_next = q11 = 1
+q2_next = q12 = 1
+q3_next = q8 = 1
+q4_next = q3 = 0
+q5_next = q14 = 0
+q6_next = q4 = 0
+q8_next = q0 = 1
+q9_next = in0 = 0
+q10_next = q9 = 1
+q11_next = q5 = 1
+q12_next = q6 = 0
+q13_next = in1 = 1
+q14_next = q10 = 1
+q15_next = 0
+
+Cycle 5 state:
+q0=1, q1=1, q2=1, q3=1, q4=0, q5=0, q6=0, q8=1, q9=0, q10=1, q11=1, q12=0, q13=1, q14=1, q15=0.
+
+Cycle 5:
+Inputs: in0=0, in1=1.
+Outputs: q0=1, q1=1, q10=1, q12=0, q14=1, q2=1, q5=0, q6=0.
+Clock edge:
+q0_next = q13 = 1
+q1_next = q11 = 1
+q2_next = q12 = 0
+q3_next = q8 = 1
+q4_next = q3 = 1
+q5_next = q14 = 1
+q6_next = q4 = 0
+q8_next = q0 = 1
+q9_next = in0 = 0
+q10_next = q9 = 0
+q11_next = q5 = 0
+q12_next = q6 = 0
+q13_next = in1 = 1
+q14_next = q10 = 1
+q15_next = 0
+
+Cycle 6 state:
+q0=1, q1=1, q2=0, q3=1, q4=1, q5=1, q6=0, q8=1, q9=0, q10=0, q11=0, q12=0, q13=1, q14=1, q15=0.
+
+Cycle 6:
+Inputs: in0=0, in1=1.
+Outputs: q0=1, q1=1, q10=0, q12=0, q14=1, q2=0, q5=1, q6=0.
+Clock edge:
+q0_next = q13 = 1
+q1_next = q11 = 0
+q2_next = q12 = 0
+q3_next = q8 = 1
+q4_next = q3 = 1
+q5_next = q14 = 1
+q6_next = q4 = 1
+q8_next = q0 = 1
+q9_next = in0 = 0
+q10_next = q9 = 0
+q11_next = q5 = 1
+q12_next = q6 = 0
+q13_next = in1 = 1
+q14_next = q10 = 0
+q15_next = 0
+
+Cycle 7 state:
+q0=1, q1=0, q2=0, q3=1, q4=1, q5=1, q6=1, q8=1, q9=0, q10=0, q11=1, q12=0, q13=1, q14=0, q15=0.
+
+Cycle 7:
+Inputs: in0=0, in1=0.
+Outputs: q0=1, q1=0, q10=0, q12=0, q14=0, q2=0, q5=1, q6=1.
+Clock edge:
+q0_next = q13 = 1
+q1_next = q11 = 1
+q2_next = q12 = 0
+q3_next = q8 = 1
+q4_next = q3 = 1
+q5_next = q14 = 0
+q6_next = q4 = 1
+q8_next = q0 = 1
+q9_next = in0 = 0
+q10_next = q9 = 0
+q11_next = q5 = 1
+q12_next = q6 = 1
+q13_next = in1 = 0
+q14_next = q10 = 0
+q15_next = 0
+
+Cycle 8 state:
+q0=1, q1=1, q2=0, q3=1, q4=1, q5=0, q6=1, q8=1, q9=0, q10=0, q11=1, q12=1, q13=0, q14=0, q15=0.
+
+Cycle 8:
+Inputs: in0=0, in1=1.
+Outputs: q0=1, q1=1, q10=0, q12=1, q14=0, q2=0, q5=0, q6=1.
+Clock edge:
+q0_next = q13 = 0
+q1_next = q11 = 1
+q2_next = q12 = 1
+q3_next = q8 = 1
+q4_next = q3 = 1
+q5_next = q14 = 0
+q6_next = q4 = 1
+q8_next = q0 = 1
+q9_next = in0 = 0
+q10_next = q9 = 0
+q11_next = q5 = 0
+q12_next = q6 = 1
+q13_next = in1 = 1
+q14_next = q10 = 0
+q15_next = 0
+
+Cycle 9 state:
+q0=0, q1=1, q2=1, q3=1, q4=1, q5=0, q6=1, q8=1, q9=0, q10=0, q11=0, q12=1, q13=1, q14=0, q15=0.
+
+Cycle 9:
+Inputs: in0=1, in1=1.
+Outputs: q0=0, q1=1, q10=0, q12=1, q14=0, q2=1, q5=0, q6=1.
+Clock edge:
+q0_next = q13 = 1
+q1_next = q11 = 0
+q2_next = q12 = 1
+q3_next = q8 = 1
+q4_next = q3 = 1
+q5_next = q14 = 0
+q6_next = q4 = 1
+q8_next = q0 = 0
+q9_next = in0 = 1
+q10_next = q9 = 0
+q11_next = q5 = 0
+q12_next = q6 = 1
+q13_next = in1 = 1
+q14_next = q10 = 0
+q15_next = 0
+
+Cycle 10 state:
+q0=1, q1=0, q2=1, q3=1, q4=1, q5=0, q6=1, q8=0, q9=1, q10=0, q11=0, q12=1, q13=1, q14=0, q15=0.
+
+Cycle 10:
+Inputs: in0=1, in1=1.
+Outputs: q0=1, q1=0, q10=0, q12=1, q14=0, q2=1, q5=0, q6=1.
+Clock edge:
+q0_next = q13 = 1
+q1_next = q11 = 0
+q2_next = q12 = 1
+q3_next = q8 = 0
+q4_next = q3 = 1
+q5_next = q14 = 0
+q6_next = q4 = 1
+q8_next = q0 = 1
+q9_next = in0 = 1
+q10_next = q9 = 1
+q11_next = q5 = 0
+q12_next = q6 = 1
+q13_next = in1 = 1
+q14_next = q10 = 0
+q15_next = 0
+
+Cycle 11 state:
+q0=1, q1=0, q2=1, q3=0, q4=1, q5=0, q6=1, q8=1, q9=1, q10=1, q11=0, q12=1, q13=1, q14=0, q15=0.
+
+Cycle 11:
+Inputs: in0=1, in1=1.
+Outputs: q0=1, q1=0, q10=1, q12=1, q14=0, q2=1, q5=0, q6=1.
+Clock edge:
+q0_next = q13 = 1
+q1_next = q11 = 0
+q2_next = q12 = 1
+q3_next = q8 = 1
+q4_next = q3 = 0
+q5_next = q14 = 0
+q6_next = q4 = 1
+q8_next = q0 = 1
+q9_next = in0 = 1
+q10_next = q9 = 1
+q11_next = q5 = 0
+q12_next = q6 = 1
+q13_next = in1 = 1
+q14_next = q10 = 1
+q15_next = 0
+
+Cycle 12 state:
+q0=1, q1=0, q2=1, q3=1, q4=0, q5=0, q6=1, q8=1, q9=1, q10=1, q11=0, q12=1, q13=1, q14=1, q15=0.
+
+Cycle 12:
+Inputs: in0=1, in1=1.
+Outputs: q0=1, q1=0, q10=1, q12=1, q14=1, q2=1, q5=0, q6=1.
+Clock edge:
+q0_next = q13 = 1
+q1_next = q11 = 0
+q2_next = q12 = 1
+q3_next = q8 = 1
+q4_next = q3 = 1
+q5_next = q14 = 1
+q6_next = q4 = 0
+q8_next = q0 = 1
+q9_next = in0 = 1
+q10_next = q9 = 1
+q11_next = q5 = 0
+q12_next = q6 = 1
+q13_next = in1 = 1
+q14_next = q10 = 1
+q15_next = 0
+
+Cycle 13 state:
+q0=1, q1=0, q2=1, q3=1, q4=1, q5=1, q6=0, q8=1, q9=1, q10=1, q11=0, q12=1, q13=1, q14=1, q15=0.
+
+Cycle 13:
+Inputs: in0=0, in1=0.
+Outputs: q0=1, q1=0, q10=1, q12=1, q14=1, q2=1, q5=1, q6=0.
+Clock edge:
+q0_next = q13 = 1
+q1_next = q11 = 0
+q2_next = q12 = 1
+q3_next = q8 = 1
+q4_next = q3 = 1
+q5_next = q14 = 1
+q6_next = q4 = 1
+q8_next = q0 = 1
+q9_next = in0 = 0
+q10_next = q9 = 1
+q11_next = q5 = 1
+q12_next = q6 = 0
+q13_next = in1 = 0
+q14_next = q10 = 1
+q15_next = 0
+
+Cycle 14 state:
+q0=1, q1=0, q2=1, q3=1, q4=1, q5=1, q6=1, q8=1, q9=0, q10=1, q11=1, q12=0, q13=0, q14=1, q15=0.
+
+Cycle 14:
+Inputs: in0=0, in1=0.
+Outputs: q0=1, q1=0, q10=1, q12=0, q14=1, q2=1, q5=1, q6=1.
+Clock edge:
+q0_next = q13 = 0
+q1_next = q11 = 1
+q2_next = q12 = 0
+q3_next = q8 = 1
+q4_next = q3 = 1
+q5_next = q14 = 1
+q6_next = q4 = 1
+q8_next = q0 = 1
+q9_next = in0 = 0
+q10_next = q9 = 0
+q11_next = q5 = 1
+q12_next = q6 = 1
+q13_next = in1 = 0
+q14_next = q10 = 1
+q15_next = 0
+
+Cycle 15 state:
+q0=0, q1=1, q2=0, q3=1, q4=1, q5=1, q6=1, q8=1, q9=0, q10=0, q11=1, q12=1, q13=0, q14=1, q15=0.
+
+Cycle 15:
+Inputs: in0=0, in1=0.
+Outputs: q0=0, q1=1, q10=0, q12=1, q14=1, q2=0, q5=1, q6=1.
+Clock edge:
+q0_next = q13 = 0
+q1_next = q11 = 1
+q2_next = q12 = 1
+q3_next = q8 = 1
+q4_next = q3 = 1
+q5_next = q14 = 1
+q6_next = q4 = 1
+q8_next = q0 = 0
+q9_next = in0 = 0
+q10_next = q9 = 0
+q11_next = q5 = 1
+q12_next = q6 = 1
+q13_next = in1 = 0
+q14_next = q10 = 0
+q15_next = 0
+
+Cycle 16 state:
+q0=0, q1=1, q2=1, q3=1, q4=1, q5=1, q6=1, q8=0, q9=0, q10=0, q11=1, q12=1, q13=0, q14=0, q15=0.
+
+Cycle 16:
+Inputs: in0=1, in1=1.
+Outputs: q0=0, q1=1, q10=0, q12=1, q14=0, q2=1, q5=1, q6=1.
+Clock edge:
+q0_next = q13 = 0
+q1_next = q11 = 1
+q2_next = q12 = 1
+q3_next = q8 = 0
+q4_next = q3 = 1
+q5_next = q14 = 0
+q6_next = q4 = 1
+q8_next = q0 = 0
+q9_next = in0 = 1
+q10_next = q9 = 0
+q11_next = q5 = 1
+q12_next = q6 = 1
+q13_next = in1 = 1
+q14_next = q10 = 0
+q15_next = 0
+
+Cycle 17 state:
+q0=0, q1=1, q2=1, q3=0, q4=1, q5=0, q6=1, q8=0, q9=1, q10=0, q11=1, q12=1, q13=1, q14=0, q15=0.
+
+Cycle 17:
+Inputs: in0=1, in1=1.
+Outputs: q0=0, q1=1, q10=0, q12=1, q14=0, q2=1, q5=0, q6=1.
+Clock edge:
+q0_next = q13 = 1
+q1_next = q11 = 1
+q2_next = q12 = 1
+q3_next = q8 = 0
+q4_next = q3 = 0
+q5_next = q14 = 0
+q6_next = q4 = 1
+q8_next = q0 = 0
+q9_next = in0 = 1
+q10_next = q9 = 1
+q11_next = q5 = 0
+q12_next = q6 = 1
+q13_next = in1 = 1
+q14_next = q10 = 0
+q15_next = 0
+
+Cycle 18 state:
+q0=1, q1=1, q2=1, q3=0, q4=0, q5=0, q6=1, q8=0, q9=1, q10=1, q11=0, q12=1, q13=1, q14=0, q15=0.
+
+Cycle 18:
+Inputs: in0=1, in1=0.
+Outputs: q0=1, q1=1, q10=1, q12=1, q14=0, q2=1, q5=0, q6=1.
+Clock edge:
+q0_next = q13 = 1
+q1_next = q11 = 0
+q2_next = q12 = 1
+q3_next = q8 = 0
+q4_next = q3 = 0
+q5_next = q14 = 0
+q6_next = q4 = 0
+q8_next = q0 = 1
+q9_next = in0 = 1
+q10_next = q9 = 1
+q11_next = q5 = 0
+q12_next = q6 = 1
+q13_next = in1 = 0
+q14_next = q10 = 1
+q15_next = 0
+
+Cycle 19 state:
+q0=1, q1=0, q2=1, q3=0, q4=0, q5=0, q6=0, q8=1, q9=1, q10=1, q11=0, q12=1, q13=0, q14=1, q15=0.
+
+Cycle 19:
+Inputs: in0=1, in1=0.
+Outputs: q0=1, q1=0, q10=1, q12=1, q14=1, q2=1, q5=0, q6=0.
+Clock edge:
+q0_next = q13 = 0
+q1_next = q11 = 0
+q2_next = q12 = 1
+q3_next = q8 = 1
+q4_next = q3 = 0
+q5_next = q14 = 1
+q6_next = q4 = 0
+q8_next = q0 = 1
+q9_next = in0 = 1
+q10_next = q9 = 1
+q11_next = q5 = 0
+q12_next = q6 = 0
+q13_next = in1 = 0
+q14_next = q10 = 1
+q15_next = 0
+
+Cycle 20 state:
+q0=0, q1=0, q2=1, q3=1, q4=0, q5=1, q6=0, q8=1, q9=1, q10=1, q11=0, q12=0, q13=0, q14=1, q15=0.
+
+Cycle 20:
+Inputs: in0=0, in1=0.
+Outputs: q0=0, q1=0, q10=1, q12=0, q14=1, q2=1, q5=1, q6=0.
+Clock edge:
+q0_next = q13 = 0
+q1_next = q11 = 0
+q2_next = q12 = 0
+q3_next = q8 = 1
+q4_next = q3 = 1
+q5_next = q14 = 1
+q6_next = q4 = 0
+q8_next = q0 = 0
+q9_next = in0 = 0
+q10_next = q9 = 1
+q11_next = q5 = 1
+q12_next = q6 = 0
+q13_next = in1 = 0
+q14_next = q10 = 1
+q15_next = 0
+
+Cycle 21 state:
+q0=0, q1=0, q2=0, q3=1, q4=1, q5=1, q6=0, q8=0, q9=0, q10=1, q11=1, q12=0, q13=0, q14=1, q15=0.
+
+Cycle 21:
+Inputs: in0=1, in1=1.
+Outputs: q0=0, q1=0, q10=1, q12=0, q14=1, q2=0, q5=1, q6=0.
+Clock edge:
+q0_next = q13 = 0
+q1_next = q11 = 1
+q2_next = q12 = 0
+q3_next = q8 = 0
+q4_next = q3 = 1
+q5_next = q14 = 1
+q6_next = q4 = 1
+q8_next = q0 = 0
+q9_next = in0 = 1
+q10_next = q9 = 0
+q11_next = q5 = 1
+q12_next = q6 = 0
+q13_next = in1 = 1
+q14_next = q10 = 1
+q15_next = 0
+
+Cycle 22 state:
+q0=0, q1=1, q2=0, q3=0, q4=1, q5=1, q6=1, q8=0, q9=1, q10=0, q11=1, q12=0, q13=1, q14=1, q15=0.
+
+Cycle 22:
+Inputs: in0=0, in1=0.
+Outputs: q0=0, q1=1, q10=0, q12=0, q14=1, q2=0, q5=1, q6=1.
+Clock edge:
+q0_next = q13 = 1
+q1_next = q11 = 1
+q2_next = q12 = 0
+q3_next = q8 = 0
+q4_next = q3 = 0
+q5_next = q14 = 1
+q6_next = q4 = 1
+q8_next = q0 = 0
+q9_next = in0 = 0
+q10_next = q9 = 1
+q11_next = q5 = 1
+q12_next = q6 = 1
+q13_next = in1 = 0
+q14_next = q10 = 0
+q15_next = 0
+
+Cycle 23 state:
+q0=1, q1=1, q2=0, q3=0, q4=0, q5=1, q6=1, q8=0, q9=0, q10=1, q11=1, q12=1, q13=0, q14=0, q15=0.
+
+Cycle 23:
+Inputs: in0=0, in1=1.
+Outputs: q0=1, q1=1, q10=1, q12=1, q14=0, q2=0, q5=1, q6=1.
+Clock edge:
+q0_next = q13 = 0
+q1_next = q11 = 1
+q2_next = q12 = 1
+q3_next = q8 = 0
+q4_next = q3 = 0
+q5_next = q14 = 0
+q6_next = q4 = 0
+q8_next = q0 = 1
+q9_next = in0 = 0
+q10_next = q9 = 0
+q11_next = q5 = 1
+q12_next = q6 = 1
+q13_next = in1 = 1
+q14_next = q10 = 1
+q15_next = 0
+
+Cycle 24 state:
+q0=0, q1=1, q2=1, q3=0, q4=0, q5=0, q6=0, q8=1, q9=0, q10=0, q11=1, q12=1, q13=1, q14=1, q15=0.
+
+Cycle 24:
+Inputs: in0=1, in1=0.
+Outputs: q0=0, q1=1, q10=0, q12=1, q14=1, q2=1, q5=0, q6=0.
+Clock edge:
+q0_next = q13 = 1
+q1_next = q11 = 1
+q2_next = q12 = 1
+q3_next = q8 = 1
+q4_next = q3 = 0
+q5_next = q14 = 1
+q6_next = q4 = 0
+q8_next = q0 = 0
+q9_next = in0 = 1
+q10_next = q9 = 0
+q11_next = q5 = 0
+q12_next = q6 = 0
+q13_next = in1 = 0
+q14_next = q10 = 0
+q15_next = 0
+
+Cycle 25 state:
+q0=1, q1=1, q2=1, q3=1, q4=0, q5=1, q6=0, q8=0, q9=1, q10=0, q11=0, q12=0, q13=0, q14=0, q15=0.
+
+Cycle 25:
+Inputs: in0=0, in1=1.
+Outputs: q0=1, q1=1, q10=0, q12=0, q14=0, q2=1, q5=1, q6=0.
+Clock edge:
+q0_next = q13 = 0
+q1_next = q11 = 0
+q2_next = q12 = 0
+q3_next = q8 = 0
+q4_next = q3 = 1
+q5_next = q14 = 0
+q6_next = q4 = 0
+q8_next = q0 = 1
+q9_next = in0 = 0
+q10_next = q9 = 1
+q11_next = q5 = 1
+q12_next = q6 = 0
+q13_next = in1 = 1
+q14_next = q10 = 0
+q15_next = 0
+
+Cycle 26 state:
+q0=0, q1=0, q2=0, q3=0, q4=1, q5=0, q6=0, q8=1, q9=0, q10=1, q11=1, q12=0, q13=1, q14=0, q15=0.
+
+Cycle 26:
+Inputs: in0=1, in1=1.
+Outputs: q0=0, q1=0, q10=1, q12=0, q14=0, q2=0, q5=0, q6=0.
+Clock edge:
+q0_next = q13 = 1
+q1_next = q11 = 1
+q2_next = q12 = 0
+q3_next = q8 = 1
+q4_next = q3 = 0
+q5_next = q14 = 0
+q6_next = q4 = 1
+q8_next = q0 = 0
+q9_next = in0 = 1
+q10_next = q9 = 0
+q11_next = q5 = 0
+q12_next = q6 = 0
+q13_next = in1 = 1
+q14_next = q10 = 1
+q15_next = 0
+
+Cycle 27 state:
+q0=1, q1=1, q2=0, q3=1, q4=0, q5=0, q6=1, q8=0, q9=1, q10=0, q11=0, q12=0, q13=1, q14=1, q15=0.
+
+Cycle 27:
+Inputs: in0=0, in1=1.
+Outputs: q0=1, q1=1, q10=0, q12=0, q14=1, q2=0, q5=0, q6=1.
+Clock edge:
+q0_next = q13 = 1
+q1_next = q11 = 0
+q2_next = q12 = 0
+q3_next = q8 = 0
+q4_next = q3 = 1
+q5_next = q14 = 1
+q6_next = q4 = 0
+q8_next = q0 = 1
+q9_next = in0 = 0
+q10_next = q9 = 1
+q11_next = q5 = 0
+q12_next = q6 = 1
+q13_next = in1 = 1
+q14_next = q10 = 0
+q15_next = 0
+
+Cycle 28 state:
+q0=1, q1=0, q2=0, q3=0, q4=1, q5=1, q6=0, q8=1, q9=0, q10=1, q11=0, q12=1, q13=1, q14=0, q15=0.
+
+Cycle 28:
+Inputs: in0=0, in1=1.
+Outputs: q0=1, q1=0, q10=1, q12=1, q14=0, q2=0, q5=1, q6=0.
+Clock edge:
+q0_next = q13 = 1
+q1_next = q11 = 0
+q2_next = q12 = 1
+q3_next = q8 = 1
+q4_next = q3 = 0
+q5_next = q14 = 0
+q6_next = q4 = 1
+q8_next = q0 = 1
+q9_next = in0 = 0
+q10_next = q9 = 0
+q11_next = q5 = 1
+q12_next = q6 = 0
+q13_next = in1 = 1
+q14_next = q10 = 1
+q15_next = 0
+
+Cycle 29 state:
+q0=1, q1=0, q2=1, q3=1, q4=0, q5=0, q6=1, q8=1, q9=0, q10=0, q11=1, q12=0, q13=1, q14=1, q15=0.
+
+Cycle 29:
+Inputs: in0=0, in1=0.
+Outputs: q0=1, q1=0, q10=0, q12=0, q14=1, q2=1, q5=0, q6=1.
+Clock edge:
+q0_next = q13 = 1
+q1_next = q11 = 1
+q2_next = q12 = 0
+q3_next = q8 = 1
+q4_next = q3 = 1
+q5_next = q14 = 1
+q6_next = q4 = 0
+q8_next = q0 = 1
+q9_next = in0 = 0
+q10_next = q9 = 0
+q11_next = q5 = 0
+q12_next = q6 = 1
+q13_next = in1 = 0
+q14_next = q10 = 0
+q15_next = 0
+
+Cycle 30 state:
+q0=1, q1=1, q2=0, q3=1, q4=1, q5=1, q6=0, q8=1, q9=0, q10=0, q11=0, q12=1, q13=0, q14=0, q15=0.
+
+Cycle 30:
+Inputs: in0=1, in1=0.
+Outputs: q0=1, q1=1, q10=0, q12=1, q14=0, q2=0, q5=1, q6=0.
+Clock edge:
+q0_next = q13 = 0
+q1_next = q11 = 0
+q2_next = q12 = 1
+q3_next = q8 = 1
+q4_next = q3 = 1
+q5_next = q14 = 0
+q6_next = q4 = 1
+q8_next = q0 = 1
+q9_next = in0 = 1
+q10_next = q9 = 0
+q11_next = q5 = 1
+q12_next = q6 = 0
+q13_next = in1 = 0
+q14_next = q10 = 0
+q15_next = 0
+
+Cycle 31 state:
+q0=0, q1=0, q2=1, q3=1, q4=1, q5=0, q6=1, q8=1, q9=1, q10=0, q11=1, q12=0, q13=0, q14=0, q15=0.
+
+Cycle 31:
+Inputs: in0=1, in1=1.
+Outputs: q0=0, q1=0, q10=0, q12=0, q14=0, q2=1, q5=0, q6=1.
+Clock edge:
+q0_next = q13 = 0
+q1_next = q11 = 1
+q2_next = q12 = 0
+q3_next = q8 = 1
+q4_next = q3 = 1
+q5_next = q14 = 0
+q6_next = q4 = 1
+q8_next = q0 = 0
+q9_next = in0 = 1
+q10_next = q9 = 1
+q11_next = q5 = 0
+q12_next = q6 = 1
+q13_next = in1 = 1
+q14_next = q10 = 0
+q15_next = 0
+
+Cycle 32 state:
+q0=0, q1=1, q2=0, q3=1, q4=1, q5=0, q6=1, q8=0, q9=1, q10=1, q11=0, q12=1, q13=1, q14=0, q15=0.
+
+Cycle 32:
+Inputs: in0=0, in1=0.
+Outputs: q0=0, q1=1, q10=1, q12=1, q14=0, q2=0, q5=0, q6=1.
+Clock edge:
+q0_next = q13 = 1
+q1_next = q11 = 0
+q2_next = q12 = 1
+q3_next = q8 = 0
+q4_next = q3 = 1
+q5_next = q14 = 0
+q6_next = q4 = 1
+q8_next = q0 = 0
+q9_next = in0 = 0
+q10_next = q9 = 1
+q11_next = q5 = 0
+q12_next = q6 = 1
+q13_next = in1 = 0
+q14_next = q10 = 1
+q15_next = 0
+
+Cycle 33 state:
+q0=1, q1=0, q2=1, q3=0, q4=1, q5=0, q6=1, q8=0, q9=0, q10=1, q11=0, q12=1, q13=0, q14=1, q15=0.
+
+Cycle 33:
+Inputs: in0=1, in1=0.
+Outputs: q0=1, q1=0, q10=1, q12=1, q14=1, q2=1, q5=0, q6=1.
+Clock edge:
+q0_next = q13 = 0
+q1_next = q11 = 0
+q2_next = q12 = 1
+q3_next = q8 = 0
+q4_next = q3 = 0
+q5_next = q14 = 1
+q6_next = q4 = 1
+q8_next = q0 = 1
+q9_next = in0 = 1
+q10_next = q9 = 0
+q11_next = q5 = 0
+q12_next = q6 = 1
+q13_next = in1 = 0
+q14_next = q10 = 1
+q15_next = 0
+
+Cycle 34 state:
+q0=0, q1=0, q2=1, q3=0, q4=0, q5=1, q6=1, q8=1, q9=1, q10=0, q11=0, q12=1, q13=0, q14=1, q15=0.
+
+Cycle 34:
+Inputs: in0=1, in1=1.
+Outputs: q0=0, q1=0, q10=0, q12=1, q14=1, q2=1, q5=1, q6=1.
+Clock edge:
+q0_next = q13 = 0
+q1_next = q11 = 0
+q2_next = q12 = 1
+q3_next = q8 = 1
+q4_next = q3 = 0
+q5_next = q14 = 1
+q6_next = q4 = 0
+q8_next = q0 = 0
+q9_next = in0 = 1
+q10_next = q9 = 1
+q11_next = q5 = 1
+q12_next = q6 = 1
+q13_next = in1 = 1
+q14_next = q10 = 0
+q15_next = 0
+
+Cycle 35 state:
+q0=0, q1=0, q2=1, q3=1, q4=0, q5=1, q6=0, q8=0, q9=1, q10=1, q11=1, q12=1, q13=1, q14=0, q15=0.
+
+Cycle 35:
+Inputs: in0=0, in1=0.
+Outputs: q0=0, q1=0, q10=1, q12=1, q14=0, q2=1, q5=1, q6=0.
+Clock edge:
+q0_next = q13 = 1
+q1_next = q11 = 1
+q2_next = q12 = 1
+q3_next = q8 = 0
+q4_next = q3 = 1
+q5_next = q14 = 0
+q6_next = q4 = 0
+q8_next = q0 = 0
+q9_next = in0 = 0
+q10_next = q9 = 1
+q11_next = q5 = 1
+q12_next = q6 = 0
+q13_next = in1 = 0
+q14_next = q10 = 1
+q15_next = 0
+
+Cycle 36 state:
+q0=1, q1=1, q2=1, q3=0, q4=1, q5=0, q6=0, q8=0, q9=0, q10=1, q11=1, q12=0, q13=0, q14=1, q15=0.
+
+Cycle 36:
+Inputs: in0=0, in1=0.
+Outputs: q0=1, q1=1, q10=1, q12=0, q14=1, q2=1, q5=0, q6=0.
+Clock edge:
+q0_next = q13 = 0
+q1_next = q11 = 1
+q2_next = q12 = 0
+q3_next = q8 = 0
+q4_next = q3 = 0
+q5_next = q14 = 1
+q6_next = q4 = 1
+q8_next = q0 = 1
+q9_next = in0 = 0
+q10_next = q9 = 0
+q11_next = q5 = 0
+q12_next = q6 = 0
+q13_next = in1 = 0
+q14_next = q10 = 1
+q15_next = 0
+
+Cycle 37 state:
+q0=0, q1=1, q2=0, q3=0, q4=0, q5=1, q6=1, q8=1, q9=0, q10=0, q11=0, q12=0, q13=0, q14=1, q15=0.
+
+Cycle 37:
+Inputs: in0=0, in1=0.
+Outputs: q0=0, q1=1, q10=0, q12=0, q14=1, q2=0, q5=1, q6=1.
+Clock edge:
+q0_next = q13 = 0
+q1_next = q11 = 0
+q2_next = q12 = 0
+q3_next = q8 = 1
+q4_next = q3 = 0
+q5_next = q14 = 1
+q6_next = q4 = 0
+q8_next = q0 = 0
+q9_next = in0 = 0
+q10_next = q9 = 0
+q11_next = q5 = 1
+q12_next = q6 = 1
+q13_next = in1 = 0
+q14_next = q10 = 0
+q15_next = 0
+
+Cycle 38 state:
+q0=0, q1=0, q2=0, q3=1, q4=0, q5=1, q6=0, q8=0, q9=0, q10=0, q11=1, q12=1, q13=0, q14=0, q15=0.
+
+Cycle 38:
+Inputs: in0=1, in1=0.
+Outputs: q0=0, q1=0, q10=0, q12=1, q14=0, q2=0, q5=1, q6=0.
+Clock edge:
+q0_next = q13 = 0
+q1_next = q11 = 1
+q2_next = q12 = 1
+q3_next = q8 = 0
+q4_next = q3 = 1
+q5_next = q14 = 0
+q6_next = q4 = 0
+q8_next = q0 = 0
+q9_next = in0 = 1
+q10_next = q9 = 0
+q11_next = q5 = 1
+q12_next = q6 = 0
+q13_next = in1 = 0
+q14_next = q10 = 0
+q15_next = 0
+
+Cycle 39 state:
+q0=0, q1=1, q2=1, q3=0, q4=1, q5=0, q6=0, q8=0, q9=1, q10=0, q11=1, q12=0, q13=0, q14=0, q15=0.
+
+Cycle 39:
+Inputs: in0=0, in1=1.
+Outputs: q0=0, q1=1, q10=0, q12=0, q14=0, q2=1, q5=0, q6=0.
+Clock edge (not needed for output, as we only need 40 cycles of output).
+
+Now, let's compile the recorded output traces. We need the lists for each output: q0, q1, q10, q12, q14, q2, q5, q6, in order of cycles 0 to 39.
+
+Let's transcribe them from my notes:
+
+Cycle outputs:
+t0: q0=0, q1=1, q10=1, q12=1, q14=1, q2=1, q5=1, q6=0
+t1: q0=0, q1=0, q10=1, q12=0, q14=1, q2=1, q5=1, q6=1
+t2: q0=0, q1=1, q10=1, q12=1, q14=1, q2=0, q5=1, q6=1
+t3: q0=1, q1=1, q10=0, q12=1, q14=1, q2=1, q5=1, q6=1
+t4: q0=1, q1=1, q10=1, q12=1, q14=0, q2=1, q5=1, q6=0
+t5: q0=1, q1=1, q10=1, q12=0, q14=1, q2=1, q5=0, q6=0
+t6: q0=1, q1=1, q10=0, q12=0, q14=1, q2=0, q5=1, q6=0
+t7: q0=1, q1=0, q10=0, q12=0, q14=0, q2=0, q5=1, q6=1
+t8: q0=1, q1=1, q10=0, q12=1, q14=0, q2=0, q5=0, q6=1
+t9: q0=0, q1=1, q10=0, q12=1, q14=0, q2=1, q5=0, q6=1
+t10: q0=1, q1=0, q10=0, q12=1, q14=0, q2=1, q5=0, q6=1
+t11: q0=1, q1=0, q10=1, q12=1, q14=0, q2=1, q5=0, q6=1
+t12: q0=1, q1=0, q10=1, q12=1, q14=1, q2=1, q5=0, q6=1
+t13: q0=1, q1=0, q10=1, q12=1, q14=1, q2=1, q5=1, q6=0
+t14: q0=1, q1=0, q10=1, q12=0, q14=1, q2=1, q5=1, q6=1
+t15: q0=0, q1=1, q10=0, q12=1, q14=1, q2=0, q5=1, q6=1
+t16: q0=0, q1=1, q10=0, q12=1, q14=0, q2=1, q5=1, q6=1
+t17: q0=0, q1=1, q10=0, q12=1, q14=0, q2=1, q5=0, q6=1
+t18: q0=1, q1=1, q10=1, q12=1, q14=0, q2=1, q5=0, q6=1
+t19: q0=1, q1=0, q10=1, q12=1, q14=1, q2=1, q5=0, q6=0
+t20: q0=0, q1=0, q10=1, q12=0, q14=1, q2=1, q5=1, q6=0
+t21: q0=0, q1=0, q10=1, q12=0, q14=1, q2=0, q5=1, q6=0
+t22: q0=0, q1=1, q10=0, q12=0, q14=1, q2=0, q5=1, q6=1
+t23: q0=1, q1=1, q10=1, q12=1, q14=0, q2=0, q5=1, q6=1
+t24: q0=0, q1=1, q10=0, q12=1, q14=1, q2=1, q5=0, q6=0
+t25: q0=1, q1=1, q10=0, q12=0, q14=0, q2=1, q5=1, q6=0
+t26: q0=0, q1=0, q10=1, q12=0, q14=0, q2=0, q5=0, q6=0
+t27: q0=1, q1=1, q10=0, q12=0, q14=1, q2=0, q5=0, q6=1
+t28: q0=1, q1=0, q10=1, q12=1, q14=0, q2=0, q5=1, q6=0
+t29: q0=1, q1=0, q10=0, q12=0, q14=1, q2=1, q5=0, q6=1
+t30: q0=1, q1=1, q10=0, q12=1, q14=0, q2=0, q5=1, q6=0
+t31: q0=0, q1=0, q10=0, q12=0, q14=0, q2=1, q5=0, q6=1
+t32: q0=0, q1=1, q10=1, q12=1, q14=0, q2=0, q5=0, q6=1
+t33: q0=1, q1=0, q10=1, q12=1, q14=1, q2=1, q5=0, q6=1
+t34: q0=0, q1=0, q10=0, q12=1, q14=1, q2=1, q5=1, q6=1
+t35: q0=0, q1=0, q10=1, q12=1, q14=0, q2=1, q5=1, q6=0
+t36: q0=1, q1=1, q10=1, q12=0, q14=1, q2=1, q5=0, q6=0
+t37: q0=0, q1=1, q10=0, q12=0, q14=1, q2=0, q5=1, q6=1
+t38: q0=0, q1=0, q10=0, q12=1, q14=0, q2=0, q5=1, q6=0
+t39: q0=0, q1=1, q10=0, q12=0, q14=0, q2=1, q5=0, q6=0
+
+Now, let's compile into arrays:
+
+q0: [0,0,0,1,1,1,1,1,1,0,1,1,1,1,1,0,0,0,1,1,0,0,0,1,0,1,0,1,1,1,1,0,0,1,0,0,1,0,0,0]
+Wait, let's double-check each cycle's q0 from notes:
+
+0: 0
+1: 0
+2: 0
+3: 1
+4: 1
+5: 1
+6: 1
+7: 1
+8: 1
+9: 0
+10: 1
+11: 1
+12: 1
+13: 1
+14: 1
+15: 0
+16: 0
+17: 0
+18: 1
+19: 1
+20: 0
+21: 0
+22: 0
+23: 1
+24: 0
+25: 1
+26: 0
+27: 1
+28: 1
+29: 1
+30: 1
+31: 0
+32: 0
+33: 1
+34: 0
+35: 0
+36: 1
+37: 0
+38: 0
+39: 0
+
+q0 = [0,0,0,1,1,1,1,1,1,0,1,1,1,1,1,0,0,0,1,1,0,0,0,1,0,1,0,1,1,1,1,0,0,1,0,0,1,0,0,0]
+
+q1:
+0: 1
+1: 0
+2: 1
+3: 1
+4: 1
+5: 1
+6: 1
+7: 0
+8: 1
+9: 1
+10: 0
+11: 0
+12: 0
+13: 0
+14: 0
+15: 1
+16: 1
+17: 1
+18: 1
+19: 0
+20: 0
+21: 0
+22: 1
+23: 1
+24: 1
+25: 1
+26: 0
+27: 1
+28: 0
+29: 0
+30: 1
+31: 0
+32: 1
+33: 0
+34: 0
+35: 0
+36: 1
+37: 1
+38: 0
+39: 1
+
+q1 = [1,0,1,1,1,1,1,0,1,1,0,0,0,0,0,1,1,1,1,0,0,0,1,1,1,1,0,1,0,0,1,0,1,0,0,0,1,1,0,1]
+
+q10:
+0: 1
+1: 1
+2: 1
+3: 0
+4: 1
+5: 1
+6: 0
+7: 0
+8: 0
+9: 0
+10: 0
+11: 1
+12: 1
+13: 1
+14: 1
+15: 0
+16: 0
+17: 0
+18: 1
+19: 1
+20: 1
+21: 1
+22: 0
+23: 1
+24: 0
+25: 0
+26: 1
+27: 0
+28: 1
+29: 0
+30: 0
+31: 0
+32: 1
+33: 1
+34: 0
+35: 1
+36: 1
+37: 0
+38: 0
+39: 0
+
+q10 = [1,1,1,0,1,1,0,0,0,0,0,1,1,1,1,0,0,0,1,1,1,1,0,1,0,0,1,0,1,0,0,0,1,1,0,1,1,0,0,0]
+
+q12:
+0: 1
+1: 0
+2: 1
+3: 1
+4: 1
+5: 0
+6: 0
+7: 0
+8: 1
+9: 1
+10: 1
+11: 1
+12: 1
+13: 1
+14: 0
+15: 1
+16: 1
+17: 1
+18: 1
+19: 1
+20: 0
+21: 0
+22: 0
+23: 1
+24: 1
+25: 0
+26: 0
+27: 0
+28: 1
+29: 0
+30: 1
+31: 0
+32: 1
+33: 1
+34: 1
+35: 1
+36: 0
+37: 0
+38: 1
+39: 0
+
+q12 = [1,0,1,1,1,0,0,0,1,1,1,1,1,1,0,1,1,1,1,1,0,0,0,1,1,0,0,0,1,0,1,0,1,1,1,1,0,0,1,0]
+
+q14:
+0: 1
+1: 1
+2: 1
+3: 1
+4: 0
+5: 1
+6: 1
+7: 0
+8: 0
+9: 0
+10: 0
+11: 0
+12: 1
+13: 1
+14: 1
+15: 1
+16: 0
+17: 0
+18: 0
+19: 1
+20: 1
+21: 1
+22: 1
+23: 0
+24: 1
+25: 0
+26: 0
+27: 1
+28: 0
+29: 1
+30: 0
+31: 0
+32: 0
+33: 1
+34: 1
+35: 0
+36: 1
+37: 1
+38: 0
+39: 0
+
+q14 = [1,1,1,1,0,1,1,0,0,0,0,0,1,1,1,1,0,0,0,1,1,1,1,0,1,0,0,1,0,1,0,0,0,1,1,0,1,1,0,0]
+
+q2:
+0: 1
+1: 1
+2: 0
+3: 1
+4: 1
+5: 1
+6: 0
+7: 0
+8: 0
+9: 1
+10: 1
+11: 1
+12: 1
+13: 1
+14: 1
+15: 0
+16: 1
+17: 1
+18: 1
+19: 1
+20: 1
+21: 0
+22: 0
+23: 0
+24: 1
+25: 1
+26: 0
+27: 0
+28: 0
+29: 1
+30: 0
+31: 1
+32: 0
+33: 1
+34: 1
+35: 1
+36: 1
+37: 0
+38: 0
+39: 1
+
+q2 = [1,1,0,1,1,1,0,0,0,1,1,1,1,1,1,0,1,1,1,1,1,0,0,0,1,1,0,0,0,1,0,1,0,1,1,1,1,0,0,1]
+
+q5:
+0: 1
+1: 1
+2: 1
+3: 1
+4: 1
+5: 0
+6: 1
+7: 1
+8: 0
+9: 0
+10: 0
+11: 0
+12: 0
+13: 1
+14: 1
+15: 1
+16: 1
+17: 0
+18: 0
+19: 0
+20: 1
+21: 1
+22: 1
+23: 1
+24: 0
+25: 1
+26: 0
+27: 0
+28: 1
+29: 0
+30: 1
+31: 0
+32: 0
+33: 0
+34: 1
+35: 1
+36: 0
+37: 1
+38: 1
+39: 0
+
+q5 = [1,1,1,1,1,0,1,1,0,0,0,0,0,1,1,1,1,0,0,0,1,1,1,1,0,1,0,0,1,0,1,0,0,0,1,1,0,1,1,0]
+
+q6:
+0: 0
+1: 1
+2: 1
+3: 1
+4: 0
+5: 0
+6: 0
+7: 1
+8: 1
+9: 1
+10: 1
+11: 1
+12: 1
+13: 0
+14: 1
+15: 1
+16: 1
+17: 1
+18: 1
+19: 0
+20: 0
+21: 0
+22: 1
+23: 1
+24: 0
+25: 0
+26: 0
+27: 1
+28: 0
+29: 1
+30: 0
+31: 1
+32: 1
+33: 1
+34: 1
+35: 0
+36: 0
+37: 1
+38: 0
+39: 0
+
+q6 = [0,1,1,1,0,0,0,1,1,1,1,1,1,0,1,1,1,1,1,0,0,0,1,1,0,0,0,1,0,1,0,1,1,1,1,0,0,1,0,0]
+
+Let me double-check a few cycles to make sure there's no mistake.
+
+Cycle 0:
+State: q0=0, q1=1, q2=1, q3=1, q4=1, q5=1, q6=0, q8=1, q9=1, q10=1, q11=0, q12=1, q13=0, q14=1.
+Outputs: q0=0, q1=1, q10=1, q12=1, q14=1, q2=1, q5=1, q6=0. OK.
+
+Cycle 1:
+After first clock:
+q0_next = q13=0
+q1_next = q11=0
+q2_next = q12=1
+q3_next = q8=1
+q4_next = q3=1
+q5_next = q14=1
+q6_next = q4=1
+q8_next = q0=0
+q9_next = in0=1
+q10_next = q9=1
+q11_next = q5=1
+q12_next = q6=0
+q13_next = in1=0
+q14_next = q10=1
+State: q0=0, q1=0, q2=1, q3=1, q4=1, q5=1, q6=1, q8=0, q9=1, q10=1, q11=1, q12=0, q13=0, q14=1. (q15=0)
+Outputs: q0=0, q1=0, q10=1, q12=0, q14=1, q2=1, q5=1, q6=1. OK.
+
+Cycle 2:
+Inputs: in0=1, in1=1. (Trace index 2: in0=1, in1=1)
+State before edge: q0=0, q1=0, q2=1, q3=1, q4=1, q5=1, q6=1, q8=0, q9=1, q10=1, q11=1, q12=0, q13=0, q14=1.
+Outputs: q0=0, q1=0? Wait, my cycle 1 output had q1=0. Cycle 2 output should be q1=1? Let's check state at start of cycle 2: I had q1=1? In my cycle 2 state I wrote: q0=0, q1=1, q2=0... Wait, I see a discrepancy!
+Let's recalc cycle 1 clock edge carefully:
+Cycle 1 recording state: q0=0, q1=0, q2=1, q3=1, q4=1, q5=1, q6=1, q8=0, q9=1, q10=1, q11=1, q12=0, q13=0, q14=1.
+Cycle 1 clock edge:
+q0_next = q13 = 0
+q1_next = q11 = 1  (q11 is 1!)
+q2_next = q12 = 0
+q3_next = q8 = 0
+q4_next = q3 = 1
+q5_next = q14 = 1
+q6_next = q4 = 1
+q8_next = q0 = 0
+q9_next = in0 = 0
+q10_next = q9 = 1
+q11_next = q5 = 1
+q12_next = q6 = 1
+q13_next = in1 = 1
+q14_next = q10 = 1
+So cycle 2 state: q0=0, q1=1, q2=0, q3=0, q4=1, q5=1, q6=1, q8=0, q9=0, q10=1, q11=1, q12=1, q13=1, q14=1.
+My earlier cycle 2 state was: q0=0, q1=1, q2=0, q3=0, q4=1, q5=1, q6=1, q8=0, q9=0, q10=1, q11=1, q12=1, q13=1, q14=1. Yes, that matches.
+Then cycle 2 outputs:
+q0=0, q1=1, q10=1, q12=1, q14=1, q2=0, q5=1, q6=1.
+My earlier cycle 2 output list: q0=0, q1=1, q10=1, q12=1, q14=1, q2=0, q5=1, q6=1. OK.
+Wait, in my output compilation for q1 I had cycle 2 as 1? Let's check: I listed q1: 0:1, 1:0, 2:1? Wait, my t2 q1 I wrote "2: 1". In the array I wrote: [1,0,1,...] which matches t0=1, t1=0, t2=1. OK.
+
+Cycle 3:
+State: q0=0, q1=1, q2=0, q3=0, q4=1, q5=1, q6=1, q8=0, q9=0, q10=1, q11=1, q12=1, q13=1, q14=1.
+Inputs: in0=1, in1=1. (Trace index 3: 1,1)
+Outputs: q0=0? Wait, my earlier cycle 3 output had q0=1. Let's check state at start of cycle 3.
+Cycle 2 clock edge:
+State before edge (cycle 2): q0=0, q1=1, q2=0, q3=0, q4=1, q5=1, q6=1, q8=0, q9=0, q10=1, q11=1, q12=1, q13=1, q14=1.
+q0_next = q13 = 1
+q1_next = q11 = 1
+q2_next = q12 = 1
+q3_next = q8 = 0
+q4_next = q3 = 0
+q5_next = q14 = 1
+q6_next = q4 = 1
+q8_next = q0 = 0
+q9_next = in0 = 1
+q10_next = q9 = 0
+q11_next = q5 = 1
+q12_next = q6 = 1
+q13_next = in1 = 1
+q14_next = q10 = 1
+Cycle 3 state: q0=1, q1=1, q2=1, q3=0, q4=0, q5=1, q6=1, q8=0, q9=1, q10=0, q11=1, q12=1, q13=1, q14=1.
+My earlier cycle 3 state: q0=1, q1=1, q2=1, q3=0, q4=0, q5=1, q6=1, q8=0, q9=1, q10=0, q11=1, q12=1, q13=1, q14=1. Good.
+Cycle 3 outputs: q0=1, q1=1, q10=0, q12=1, q14=1, q2=1, q5=1, q6=1.
+My earlier: q0=1, q1=1, q10=0, q12=1, q14=1, q2=1, q5=1, q6=1. Good.
+
+Cycle 4:
+State: q0=1, q1=1, q2=1, q3=0, q4=0, q5=1, q6=1, q8=0, q9=1, q10=0, q11=1, q12=1, q13=1, q14=1.
+Inputs: in0=0, in1=1. (Trace index 4: 0,1)
+Outputs: q0=1, q1=1, q10=0? Wait, earlier I had q10=1 for cycle 4. Let's re-evaluate.
+Outputs are just the current q values. q10 is state at start of cycle 4: q10=0. But my earlier list for q10 at t4 is 1? Let me check my earlier compilation: "4: 1" for q10? No, I listed q10: "0:1, 1:1, 2:1, 3:0, 4:1". That contradicts state q10=0.
+Let's re-evaluate cycle 3 clock edge carefully.
+Cycle 3 state before edge: q0=1, q1=1, q2=1, q3=0, q4=0, q5=1, q6=1, q8=0, q9=1, q10=0, q11=1, q12=1, q13=1, q14=1.
+Inputs: in0=1, in1=1.
+Clock edge:
+q0_next = q13 = 1
+q1_next = q11 = 1
+q2_next = q12 = 1
+q3_next = q8 = 0
+q4_next = q3 = 0
+q5_next = q14 = 1
+q6_next = q4 = 0
+q8_next = q0 = 1
+q9_next = in0 = 1
+q10_next = q9 = 1   (q9 is 1!)
+q11_next = q5 = 1
+q12_next = q6 = 1
+q13_next = in1 = 1
+q14_next = q10 = 0  (q10 is 0!)
+So cycle 4 state: q0=1, q1=1, q2=1, q3=0, q4=0, q5=1, q6=0, q8=1, q9=1, q10=1, q11=1, q12=1, q13=1, q14=0.
+My earlier cycle 4 state: q0=1, q1=1, q2=1, q3=0, q4=0, q5=1, q6=0, q8=1, q9=1, q10=1, q11=1, q12=1, q13=1, q14=0.
+Ah! I see, in my earlier cycle 3 clock edge I had q6_next = q4 = 0, q8_next = q0 = 1, q10_next = q9 = 1, q14_next = q10 = 0. So q10 becomes 1. And I had cycle 4 output q10=1. That matches the state. But in my list above for cycle 3 I had q10=0? Wait, my cycle 3 output list had q10=0. Cycle 4 output has q10=1. Let's check my earlier cycle 4 output: I wrote "t4: q0=1, q1=1, q10=1, q12=1, q14=0, q2=1, q5=1, q6=0". Yes, q10=1. So my array for q10 should have 1 at index 4. My compiled array above: [1,1,1,0,1,...] OK, that matches: index 3 is 0, index 4 is 1. So it's correct.
+
+Cycle 5:
+State: q0=1, q1=1, q2=1, q3=0, q4=0, q5=1, q6=0, q8=1, q9=1, q10=1, q11=1, q12=1, q13=1, q14=0.
+Inputs: in0=0, in1=1. (Trace index 5: 0,1)
+Outputs: q0=1, q1=1, q10=1, q12=1, q14=0, q2=1, q5=1, q6=0. Wait, earlier I had q6=0 at t5? My earlier t5: q6=0. Let's check state: q6=0. Yes. t5 output: q6=0. But in my compiled array for q6 I have: [0,1,1,1,0,0,...] index 4 is 0? Wait, t0:0, t1:1, t2:1, t3:1, t4:0, t5:0. t4 output q6 was 0? Cycle 4 state q6=0, so t4 q6=0. Cycle 5 state q6=0, so t5 q6=0. My compiled q6: [0,1,1,1,0,0,0,1,...] That has t4=0, t5=0, t6=0. Let's verify t6 q6=0:
+Cycle 5 clock edge:
+q0_next = q13 = 1
+q1_next = q11 = 1
+q2_next = q12 = 1? Wait, q12 is 1, so q2_next=1? Earlier I had q2_next=0. Let's recalc carefully.
+
+Cycle 5 state: q0=1, q1=1, q2=1, q3=0, q4=0, q5=1, q6=0, q8=1, q9=1, q10=1, q11=1, q12=1? Wait, cycle 4 state q12=1. Cycle 5 state is the same as cycle 4 state because we haven't done cycle 4 clock edge yet. No, cycle 5 state is after cycle 4 clock edge.
+Let's list all states clearly:
+Init: q0=0, q1=1, q2=1, q3=1, q4=1, q5=1, q6=0, q8=1, q9=1, q10=1, q11=0, q12=1, q13=0, q14=1, q15=0.
+
+Cycle 0:
+Inputs: in0=1, in1=0.
+Outputs: record init state.
+Clock edge:
+q0_next = q13=0
+q1_next = q11=0
+q2_next = q12=1
+q3_next = q8=1
+q4_next = q3=1
+q5_next = q14=1
+q6_next = q4=1
+q8_next = q0=0
+q9_next = in0=1
+q10_next = q9=1
+q11_next = q5=1
+q12_next = q6=0
+q13_next = in1=0
+q14_next = q10=1
+q15_next = q15=0
+
+State 1: q0=0, q1=0, q2=1, q3=1, q4=1, q5=1, q6=1, q8=0, q9=1, q10=1, q11=1, q12=0, q13=0, q14=1, q15=0.
+
+Cycle 1:
+Inputs: in0=0, in1=1.
+Outputs: q0=0, q1=0, q10=1, q12=0, q14=1, q2=1, q5=1, q6=1.
+Clock edge:
+q0_next = q13=0
+q1_next = q11=1
+q2_next = q12=0
+q3_next = q8=0
+q4_next = q3=1
+q5_next = q14=1
+q6_next = q4=1
+q8_next = q0=0
+q9_next = in0=0
+q10_next = q9=1
+q11_next = q5=1
+q12_next = q6=1
+q13_next = in1=1
+q14_next = q10=1
+State 2: q0=0, q1=1, q2=0, q3=0, q4=1, q5=1, q6=1, q8=0, q9=0, q10=1, q11=1, q12=1, q13=1, q14=1.
+
+Cycle 2:
+Inputs: in0=1, in1=1.
+Outputs: q0=0, q1=1, q10=1, q12=1, q14=1, q2=0, q5=1, q6=1.
+Clock edge:
+q0_next = q13=1
+q1_next = q11=1
+q2_next = q12=1
+q3_next = q8=0
+q4_next = q3=0
+q5_next = q14=1
+q6_next = q4=1
+q8_next = q0=0
+q9_next = in0=1
+q10_next = q9=0
+q11_next = q5=1
+q12_next = q6=1
+q13_next = in1=1
+q14_next = q10=1
+State 3: q0=1, q1=1, q2=1, q3=0, q4=0, q5=1, q6=1, q8=0, q9=1, q10=0, q11=1, q12=1, q13=1, q14=1.
+
+Cycle 3:
+Inputs: in0=1, in1=1.
+Outputs: q0=1, q1=1, q10=0, q12=1, q14=1, q2=1, q5=1, q6=1.
+Clock edge:
+q0_next = q13=1
+q1_next = q11=1
+q2_next = q12=1
+q3_next = q8=0
+q4_next = q3=0
+q5_next = q14=1
+q6_next = q4=0
+q8_next = q0=1
+q9_next = in0=1
+q10_next = q9=1
+q11_next = q5=1
+q12_next = q6=1
+q13_next = in1=1
+q14_next = q10=0
+State 4: q0=1, q1=1, q2=1, q3=0, q4=0, q5=1, q6=0, q8=1, q9=1, q10=1, q11=1, q12=1, q13=1, q14=0.
+
+Cycle 4:
+Inputs: in0=0, in1=1.
+Outputs: q0=1, q1=1, q10=1, q12=1, q14=0, q2=1, q5=1, q6=0.
+Clock edge:
+q0_next = q13=1
+q1_next = q11=1
+q2_next = q12=1
+q3_next = q8=1
+q4_next = q3=0
+q5_next = q14=0
+q6_next = q4=0
+q8_next = q0=1
+q9_next = in0=0
+q10_next = q9=1
+q11_next = q5=1
+q12_next = q6=0
+q13_next = in1=1
+q14_next = q10=1
+State 5: q0=1, q1=1, q2=1, q3=1, q4=0, q5=0, q6=0, q8=1, q9=0, q10=1, q11=1, q12=0, q13=1, q14=1.
+
+Cycle 5:
+Inputs: in0=0, in1=1.
+Outputs: q0=1, q1=1, q10=1, q12=0, q14=1, q2=1, q5=0, q6=0.
+Clock edge:
+q0_next = q13=1
+q1_next = q11=1
+q2_next = q12=0
+q3_next = q8=1
+q4_next = q3=1
+q5_next = q14=1
+q6_next = q4=0
+q8_next = q0=1
+q9_next = in0=0
+q10_next = q9=0
+q11_next = q5=0
+q12_next = q6=0
+q13_next = in1=1
+q14_next = q10=1
+State 6: q0=1, q1=1, q2=0, q3=1, q4=1, q5=1, q6=0, q8=1, q9=0, q10=0, q11=0, q12=0, q13=1, q14=1.
+
+Cycle 6:
+Inputs: in0=0, in1=1.
+Outputs: q0=1, q1=1, q10=0, q12=0, q14=1, q2=0, q5=1, q6=0.
+Clock edge:
+q0_next = q13=1
+q1_next = q11=0
+q2_next = q12=0
+q3_next = q8=1
+q4_next = q3=1
+q5_next = q14=1
+q6_next = q4=1
+q8_next = q0=1
+q9_next = in0=0
+q10_next = q9=0
+q11_next = q5=1
+q12_next = q6=0
+q13_next = in1=1
+q14_next = q10=0
+State 7: q0=1, q1=0, q2=0, q3=1, q4=1, q5=1, q6=1, q8=1, q9=0, q10=0, q11=1, q12=0, q13=1, q14=0.
+
+Cycle 7:
+Inputs: in0=0, in1=0.
+Outputs: q0=1, q1=0, q10=0, q12=0, q14=0, q2=0, q5=1, q6=1.
+Clock edge:
+q0_next = q13=1
+q1_next = q11=1
+q2_next = q12=0
+q3_next = q8=1
+q4_next = q3=1
+q5_next = q14=0
+q6_next = q4=1
+q8_next = q0=1
+q9_next = in0=0
+q10_next = q9=0
+q11_next = q5=1
+q12_next = q6=1
+q13_next = in1=0
+q14_next = q10=0
+State 8: q0=1, q1=1, q2=0, q3=1, q4=1, q5=0, q6=1, q8=1, q9=0, q10=0, q11=1, q12=1, q13=0, q14=0.
+
+Cycle 8:
+Inputs: in0=0, in1=1.
+Outputs: q0=1, q1=1, q10=0, q12=1, q14=0, q2=0, q5=0, q6=1.
+Clock edge:
+q0_next = q13=0
+q1_next = q11=1
+q2_next = q12=1
+q3_next = q8=1
+q4_next = q3=1
+q5_next = q14=0
+q6_next = q4=1
+q8_next = q0=1
+q9_next = in0=0
+q10_next = q9=0
+q11_next = q5=0
+q12_next = q6=1
+q13_next = in1=1
+q14_next = q10=0
+State 9: q0=0, q1=1, q2=1, q3=1, q4=1, q5=0, q6=1, q8=1, q9=0, q10=0, q11=0, q12=1, q13=1, q14=0.
+
+Cycle 9:
+Inputs: in0=1, in1=1.
+Outputs: q0=0, q1=1, q10=0, q12=1, q14=0, q2=1, q5=0, q6=1.
+Clock edge:
+q0_next = q13=1
+q1_next = q11=0
+q2_next = q12=1
+q3_next = q8=1
+q4_next = q3=1
+q5_next = q14=0
+q6_next = q4=1
+q8_next = q0=0
+q9_next = in0=1
+q10_next = q9=0
+q11_next = q5=0
+q12_next = q6=1
+q13_next = in1=1
+q14_next = q10=0
+State 10: q0=1, q1=0, q2=1, q3=1, q4=1, q5=0, q6=1, q8=0, q9=1, q10=0, q11=0, q12=1, q13=1, q14=0.
+
+Cycle 10:
+Inputs: in0=1, in1=1.
+Outputs: q0=1, q1=0, q10=0, q12=1, q14=0, q2=1, q5=0, q6=1.
+Clock edge:
+q0_next = q13=1
+q1_next = q11=0
+q2_next = q12=1
+q3_next = q8=0
+q4_next = q3=1
+q5_next = q14=0
+q6_next = q4=1
+q8_next = q0=1
+q9_next = in0=1
+q10_next = q9=1
+q11_next = q5=0
+q12_next = q6=1
+q13_next = in1=1
+q14_next = q10=0
+State 11: q0=1, q1=0, q2=1, q3=0, q4=1, q5=0, q6=1, q8=1, q9=1, q10=1, q11=0, q12=1, q13=1, q14=0.
+
+Cycle 11:
+Inputs: in0=1, in1=1.
+Outputs: q0=1, q1=0, q10=1, q12=1, q14=0, q2=1, q5=0, q6=1.
+Clock edge:
+q0_next = q13=1
+q1_next = q11=0
+q2_next = q12=1
+q3_next = q8=1
+q4_next = q3=0
+q5_next = q14=0
+q6_next = q4=1
+q8_next = q0=1
+q9_next = in0=1
+q10_next = q9=1
+q11_next = q5=0
+q12_next = q6=1
+q13_next = in1=1
+q14_next = q10=1
+State 12: q0=1, q1=0, q2=1, q3=1, q4=0, q5=0, q6=1, q8=1, q9=1, q10=1, q11=0, q12=1, q13=1, q14=1.
+
+Cycle 12:
+Inputs: in0=1, in1=1.
+Outputs: q0=1, q1=0, q10=1, q12=1, q14=1, q2=1, q5=0, q6=1.
+Clock edge:
+q0_next = q13=1
+q1_next = q11=0
+q2_next = q12=1
+q3_next = q8=1
+q4_next = q3=1
+q5_next = q14=1
+q6_next = q4=0
+q8_next = q0=1
+q9_next = in0=1
+q10_next = q9=1
+q11_next = q5=0
+q12_next = q6=1
+q13_next = in1=1
+q14_next = q10=1
+State 13: q0=1, q1=0, q2=1, q3=1, q4=1, q5=1, q6=0, q8=1, q9=1, q10=1, q11=0, q12=1, q13=1, q14=1.
+
+Cycle 13:
+Inputs: in0=0, in1=0.
+Outputs: q0=1, q1=0, q10=1, q12=1, q14=1, q2=1, q5=1, q6=0.
+Clock edge:
+q0_next = q13=1
+q1_next = q11=0
+q2_next = q12=1
+q3_next = q8=1
+q4_next = q3=1
+q5_next = q14=1
+q6_next = q4=1
+q8_next = q0=1
+q9_next = in0=0
+q10_next = q9=1
+q11_next = q5=1
+q12_next = q6=0
+q13_next = in1=0
+q14_next = q10=1
+State 14: q0=1, q1=0, q2=1, q3=1, q4=1, q5=1, q6=1, q8=1, q9=0, q10=1, q11=1, q12=0, q13=0, q14=1.
+
+Cycle 14:
+Inputs: in0=0, in1=0.
+Outputs: q0=1, q1=0, q10=1, q12=0, q14=1, q2=1, q5=1, q6=1.
+Clock edge:
+q0_next = q13=0
+q1_next = q11=1
+q2_next = q12=0
+q3_next = q8=1
+q4_next = q3=1
+q5_next = q14=1
+q6_next = q4=1
+q8_next = q0=1
+q9_next = in0=0
+q10_next = q9=0
+q11_next = q5=1
+q12_next = q6=1
+q13_next = in1=0
+q14_next = q10=1
+State 15: q0=0, q1=1, q2=0, q3=1, q4=1, q5=1, q6=1, q8=1, q9=0, q10=0, q11=1, q12=1, q13=0, q14=1.
+
+Cycle 15:
+Inputs: in0=0, in1=0.
+Outputs: q0=0, q1=1, q10=0, q12=1, q14=1, q2=0, q5=1, q6=1.
+Clock edge:
+q0_next = q13=0
+q1_next = q11=1
+q2_next = q12=1
+q3_next = q8=1
+q4_next = q3=1
+q5_next = q14=1
+q6_next = q4=1
+q8_next = q0=0
+q9_next = in0=0
+q10_next = q9=0
+q11_next = q5=1
+q12_next = q6=1
+q13_next = in1=0
+q14_next = q10=0
+State 16: q0=0, q1=1, q2=1, q3=1, q4=1, q5=1, q6=1, q8=0, q9=0, q10=0, q11=1, q12=1, q13=0, q14=0.
+
+Cycle 16:
+Inputs: in0=1, in1=1.
+Outputs: q0=0, q1=1, q10=0, q12=1, q14=0, q2=1, q5=1, q6=1.
+Clock edge:
+q0_next = q13=0
+q1_next = q11=1
+q2_next = q12=1
+q3_next = q8=0
+q4_next = q3=1
+q5_next = q14=0
+q6_next = q4=1
+q8_next = q0=0
+q9_next = in0=1
+q10_next = q9=0
+q11_next = q5=1
+q12_next = q6=1
+q13_next = in1=1
+q14_next = q10=0
+State 17: q0=0, q1=1, q2=1, q3=0, q4=1, q5=0, q6=1, q8=0, q9=1, q10=0, q11=1, q12=1, q13=1, q14=0.
+
+Cycle 17:
+Inputs: in0=1, in1=1.
+Outputs: q0=0, q1=1, q10=0, q12=1, q14=0, q2=1, q5=0, q6=1.
+Clock edge:
+q0_next = q13=1
+q1_next = q11=1
+q2_next = q12=1
+q3_next = q8=0
+q4_next = q3=0
+q5_next = q14=0
+q6_next = q4=1
+q8_next = q0=0
+q9_next = in0=1
+q10_next = q9=1
+q11_next = q5=0
+q12_next = q6=1
+q13_next = in1=1
+q14_next = q10=0
+State 18: q0=1, q1=1, q2=1, q3=0, q4=0, q5=0, q6=1, q8=0, q9=1, q10=1, q11=0, q12=1, q13=1, q14=0.
+
+Cycle 18:
+Inputs: in0=1, in1=0.
+Outputs: q0=1, q1=1, q10=1, q12=1, q14=0, q2=1, q5=0, q6=1.
+Clock edge:
+q0_next = q13=1
+q1_next = q11=0
+q2_next = q12=1
+q3_next = q8=0
+q4_next = q3=0
+q5_next = q14=0
+q6_next = q4=0
+q8_next = q0=1
+q9_next = in0=1
+q10_next = q9=1
+q11_next = q5=0
+q12_next = q6=1
+q13_next = in1=0
+q14_next = q10=1
+State 19: q0=1, q1=0, q2=1, q3=0, q4=0, q5=0, q6=0, q8=1, q9=1, q10=1, q11=0, q12=1, q13=0, q14=1.
+
+Cycle 19:
+Inputs: in0=1, in1=0.
+Outputs: q0=1, q1=0, q10=1, q12=1, q14=1, q2=1, q5=0, q6=0.
+Clock edge:
+q0_next = q13=0
+q1_next = q11=0
+q2_next = q12=1
+q3_next = q8=1
+q4_next = q3=0
+q5_next = q14=1
+q6_next = q4=0
+q8_next = q0=1
+q9_next = in0=1
+q10_next = q9=1
+q11_next = q5=0
+q12_next = q6=0
+q13_next = in1=0
+q14_next = q10=1
+State 20: q0=0, q1=0, q2=1, q3=1, q4=0, q5=1, q6=0, q8=1, q9=1, q10=1, q11=0, q12=0, q13=0, q14=1.
+
+Cycle 20:
+Inputs: in0=0, in1=0.
+Outputs: q0=0, q1=0, q10=1, q12=0, q14=1, q2=1, q5=1, q6=0.
+Clock edge:
+q0_next = q13=0
+q1_next = q11=0
+q2_next = q12=0
+q3_next = q8=1
+q4_next = q3=1
+q5_next = q14=1
+q6_next = q4=0
+q8_next = q0=0
+q9_next = in0=0
+q10_next = q9=1
+q11_next = q5=1
+q12_next = q6=0
+q13_next = in1=0
+q14_next = q10=1
+State 21: q0=0, q1=0, q2=0, q3=1, q4=1, q5=1, q6=0, q8=0, q9=0, q10=1, q11=1, q12=0, q13=0, q14=1.
+
+Cycle 21:
+Inputs: in0=1, in1=1.
+Outputs: q0=0, q1=0, q10=1, q12=0, q14=1, q2=0, q5=1, q6=0.
+Clock edge:
+q0_next = q13=0
+q1_next = q11=1
+q2_next = q12=0
+q3_next = q8=0
+q4_next = q3=1
+q5_next = q14=1
+q6_next = q4=1
+q8_next = q0=0
+q9_next = in0=1
+q10_next = q9=0
+q11_next = q5=1
+q12_next = q6=0
+q13_next = in1=1
+q14_next = q10=1
+State 22: q0=0, q1=1, q2=0, q3=0, q4=1, q5=1, q6=1, q8=0, q9=1, q10=0, q11=1, q12=0, q13=1, q14=1.
+
+Cycle 22:
+Inputs: in0=0, in1=0.
+Outputs: q0=0, q1=1, q10=0, q12=0, q14=1, q2=0, q5=1, q6=1.
+Clock edge:
+q0_next = q13=1
+q1_next = q11=1
+q2_next = q12=0
+q3_next = q8=0
+q4_next = q3=0
+q5_next = q14=1
+q6_next = q4=1
+q8_next = q0=0
+q9_next = in0=0
+q10_next = q9=1
+q11_next = q5=1
+q12_next = q6=1
+q13_next = in1=0
+q14_next = q10=0
+State 23: q0=1, q1=1, q2=0, q3=0, q4=0, q5=1, q6=1, q8=0, q9=0, q10=1, q11=1, q12=1, q13=0, q14=0.
+
+Cycle 23:
+Inputs: in0=0, in1=1.
+Outputs: q0=1, q1=1, q10=1, q12=1, q14=0, q2=0, q5=1, q6=1.
+Clock edge:
+q0_next = q13=0
+q1_next = q11=1
+q2_next = q12=1
+q3_next = q8=0
+q4_next = q3=0
+q5_next = q14=0
+q6_next = q4=0
+q8_next = q0=1
+q9_next = in0=0
+q10_next = q9=0
+q11_next = q5=1
+q12_next = q6=1
+q13_next = in1=1
+q14_next = q10=1
+State 24: q0=0, q1=1, q2=1, q3=0, q4=0, q5=0, q6=0, q8=1, q9=0, q10=0, q11=1, q12=1, q13=1, q14=1.
+
+Cycle 24:
+Inputs: in0=1, in1=0.
+Outputs: q0=0, q1=1, q10=0, q12=1, q14=1, q2=1, q5=0, q6=0.
+Clock edge:
+q0_next = q13=1
+q1_next = q11=1
+q2_next = q12=1
+q3_next = q8=1
+q4_next = q3=0
+q5_next = q14=1
+q6_next = q4=0
+q8_next = q0=0
+q9_next = in0=1
+q10_next = q9=0
+q11_next = q5=0
+q12_next = q6=0
+q13_next = in1=0
+q14_next = q10=0
+State 25: q0=1, q1=1, q2=1, q3=1, q4=0, q5=1, q6=0, q8=0, q9=1, q10=0, q11=0, q12=0, q13=0, q14=0.
+
+Cycle 25:
+Inputs: in0=0, in1=1.
+Outputs: q0=1, q1=1, q10=0, q12=0, q14=0, q2=1, q5=1, q6=0.
+Clock edge:
+q0_next = q13=0
+q1_next = q11=0
+q2_next = q12=0
+q3_next = q8=0
+q4_next = q3=1
+q5_next = q14=0
+q6_next = q4=0
+q8_next = q0=1
+q9_next = in0=0
+q10_next = q9=1
+q11_next = q5=1
+q12_next = q6=0
+q13_next = in1=1
+q14_next = q10=0
+State 26: q0=0, q1=0, q2=0, q3=0, q4=1, q5=0, q6=0, q8=1, q9=0, q10=1, q11=1, q12=0, q13=1, q14=0.
+
+Cycle 26:
+Inputs: in0=1, in1=1.
+Outputs: q0=0, q1=0, q10=1, q12=0, q14=0, q2=0, q5=0, q6=0.
+Clock edge:
+q0_next = q13=1
+q1_next = q11=1
+q2_next = q12=0
+q3_next = q8=1
+q4_next = q3=0
+q5_next = q14=0
+q6_next = q4=1
+q8_next = q0=0
+q9_next = in0=1
+q10_next = q9=0
+q11_next = q5=0
+q12_next = q6=0
+q13_next = in1=1
+q14_next = q10=1
+State 27: q0=1, q1=1, q2=0, q3=1, q4=0, q5=0, q6=1, q8=0, q9=1, q10=0, q11=0, q12=0, q13=1, q14=1.
+
+Cycle 27:
+Inputs: in0=0, in1=1.
+Outputs: q0=1, q1=1, q10=0, q12=0, q14=1, q2=0, q5=0, q6=1.
+Clock edge:
+q0_next = q13=1
+q1_next = q11=0
+q2_next = q12=0
+q3_next = q8=0
+q4_next = q3=1
+q5_next = q14=1
+q6_next = q4=0
+q8_next = q0=1
+q9_next = in0=0
+q10_next = q9=1
+q11_next = q5=0
+q12_next = q6=1
+q13_next = in1=1
+q14_next = q10=0
+State 28: q0=1, q1=0, q2=0, q3=0, q4=1, q5=1, q6=0, q8=1, q9=0, q10=1, q11=0, q12=1, q13=1, q14=0.
+
+Cycle 28:
+Inputs: in0=0, in1=1.
+Outputs: q0=1, q1=0, q10=1, q12=1, q14=0, q2=0, q5=1, q6=0.
+Clock edge:
+q0_next = q13=1
+q1_next = q11=0
+q2_next = q12=1
+q3_next = q8=1
+q4_next = q3=0
+q5_next = q14=0
+q6_next = q4=1
+q8_next = q0=1
+q9_next = in0=0
+q10_next = q9=0
+q11_next = q5=1
+q12_next = q6=0
+q13_next = in1=1
+q14_next = q10=1
+State 29: q0=1, q1=0, q2=1, q3=1, q4=0, q5=0, q6=1, q8=1, q9=0, q10=0, q11=1, q12=0, q13=1, q14=1.
+
+Cycle 29:
+Inputs: in0=0, in1=0.
+Outputs: q0=1, q1=0, q10=0, q12=0, q14=1, q2=1, q5=0, q6=1.
+Clock edge:
+q0_next = q13=1
+q1_next = q11=1
+q2_next = q12=0
+q3_next = q8=1
+q4_next = q3=1
+q5_next = q14=1
+q6_next = q4=0
+q8_next = q0=1
+q9_next = in0=0
+q10_next = q9=0
+q11_next = q5=0
+q12_next = q6=1
+q13_next = in1=0
+q14_next = q10=0
+State 30: q0=1, q1=1, q2=0, q3=1, q4=1, q5=1, q6=0, q8=1, q9=0, q10=0, q11=0, q12=1, q13=0, q14=0.
+
+Cycle 30:
+Inputs: in0=1, in1=0.
+Outputs: q0=1, q1=1, q10=0, q12=1, q14=0, q2=0, q5=1, q6=0.
+Clock edge:
+q0_next = q13=0
+q1_next = q11=0
+q2_next = q12=1
+q3_next = q8=1
+q4_next = q3=1
+q5_next = q14=0
+q6_next = q4=1
+q8_next = q0=1
+q9_next = in0=1
+q10_next = q9=0
+q11_next = q5=1
+q12_next = q6=0
+q13_next = in1=0
+q14_next = q10=0
+State 31: q0=0, q1=0, q2=1, q3=1, q4=1, q5=0, q6=1, q8=1, q9=1, q10=0, q11=1, q12=0, q13=0, q14=0.
+
+Cycle 31:
+Inputs: in0=1, in1=1.
+Outputs: q0=0, q1=0, q10=0, q12=0, q14=0, q2=1, q5=0, q6=1.
+Clock edge:
+q0_next = q13=0
+q1_next = q11=1
+q2_next = q12=0
+q3_next = q8=1
+q4_next = q3=1
+q5_next = q14=0
+q6_next = q4=1
+q8_next = q0=0
+q9_next = in0=1
+q10_next = q9=1
+q11_next = q5=0
+q12_next = q6=1
+q13_next = in1=1
+q14_next = q10=0
+State 32: q0=0, q1=1, q2=0, q3=1, q4=1, q5=0, q6=1, q8=0, q9=1, q10=1, q11=0, q12=1, q13=1, q14=0.
+
+Cycle 32:
+Inputs: in0=0, in1=0.
+Outputs: q0=0, q1=1, q10=1, q12=1, q14=0, q2=0, q5=0, q6=1.
+Clock edge:
+q0_next = q13=1
+q1_next = q11=0
+q2_next = q12=1
+q3_next = q8=0
+q4_next = q3=1
+q5_next = q14=0
+q6_next = q4=1
+q8_next = q0=0
+q9_next = in0=0
+q10_next = q9=1
+q11_next = q5=0
+q12_next = q6=1
+q13_next = in1=0
+q14_next = q10=1
+State 33: q0=1, q1=0, q2=1, q3=0, q4=1, q5=0, q6=1, q8=0, q9=0, q10=1, q11=0, q12=1, q13=0, q14=1.
+
+Cycle 33:
+Inputs: in0=1, in1=0.
+Outputs: q0=1, q1=0, q10=1, q12=1, q14=1, q2=1, q5=0, q6=1.
+Clock edge:
+q0_next = q13=0
+q1_next = q11=0
+q2_next = q12=1
+q3_next = q8=0
+q4_next = q3=0
+q5_next = q14=1
+q6_next = q4=1
+q8_next = q0=1
+q9_next = in0=1
+q10_next = q9=0
+q11_next = q5=0
+q12_next = q6=1
+q13_next = in1=0
+q14_next = q10=1
+State 34: q0=0, q1=0, q2=1, q3=0, q4=0, q5=1, q6=1, q8=1, q9=1, q10=0, q11=0, q12=1, q13=0, q14=1.
+
+Cycle 34:
+Inputs: in0=1, in1=1.
+Outputs: q0=0, q1=0, q10=0, q12=1, q14=1, q2=1, q5=1, q6=1.
+Clock edge:
+q0_next = q13=0
+q1_next = q11=0
+q2_next = q12=1
+q3_next = q8=1
+q4_next = q3=0
+q5_next = q14=1
+q6_next = q4=0
+q8_next = q0=0
+q9_next = in0=1
+q10_next = q9=1
+q11_next = q5=1
+q12_next = q6=1
+q13_next = in1=1
+q14_next = q10=0
+State 35: q0=0, q1=0, q2=1, q3=1, q4=0, q5=1, q6=0, q8=0, q9=1, q10=1, q11=1, q12=1, q13=1, q14=0.
+
+Cycle 35:
+Inputs: in0=0, in1=0.
+Outputs: q0=0, q1=0, q10=1, q12=1, q14=0, q2=1, q5=1, q6=0.
+Clock edge:
+q0_next = q13=1
+q1_next = q11=1
+q2_next = q12=1
+q3_next = q8=0
+q4_next = q3=1
+q5_next = q14=0
+q6_next = q4=0
+q8_next = q0=0
+q9_next = in0=0
+q10_next = q9=1
+q11_next = q5=1
+q12_next = q6=0
+q13_next = in1=0
+q14_next = q10=1
+State 36: q0=1, q1=1, q2=1, q3=0, q4=1, q5=0, q6=0, q8=0, q9=0, q10=1, q11=1, q12=0, q13=0, q14=1.
+
+Cycle 36:
+Inputs: in0=0, in1=0.
+Outputs: q0=1, q1=1, q10=1, q12=0, q14=1, q2=1, q5=0, q6=0.
+Clock edge:
+q0_next = q13=0
+q1_next = q11=1
+q2_next = q12=0
+q3_next = q8=0
+q4_next = q3=0
+q5_next = q14=1
+q6_next = q4=1
+q8_next = q0=1
+q9_next = in0=0
+q10_next = q9=0
+q11_next = q5=0
+q12_next = q6=0
+q13_next = in1=0
+q14_next = q10=1
+State 37: q0=0, q1=1, q2=0, q3=0, q4=0, q5=1, q6=1, q8=1, q9=0, q10=0, q11=0, q12=0, q13=0, q14=1.
+
+Cycle 37:
+Inputs: in0=0, in1=0.
+Outputs: q0=0, q1=1, q10=0, q12=0, q14=1, q2=0, q5=1, q6=1.
+Clock edge:
+q0_next = q13=0
+q1_next = q11=0
+q2_next = q12=0
+q3_next = q8=1
+q4_next = q3=0
+q5_next = q14=1
+q6_next = q4=0
+q8_next = q0=0
+q9_next = in0=0
+q10_next = q9=0
+q11_next = q5=1
+q12_next = q6=1
+q13_next = in1=0
+q14_next = q10=0
+State 38: q0=0, q1=0, q2=0, q3=1, q4=0, q5=1, q6=0, q8=0, q9=0, q10=0, q11=1, q12=1, q13=0, q14=0.
+
+Cycle 38:
+Inputs: in0=1, in1=0.
+Outputs: q0=0, q1=0, q10=0, q12=1, q14=0, q2=0, q5=1, q6=0.
+Clock edge:
+q0_next = q13=0
+q1_next = q11=1
+q2_next = q12=1
+q3_next = q8=0
+q4_next = q3=1
+q5_next = q14=0
+q6_next = q4=0
+q8_next = q0=0
+q9_next = in0=1
+q10_next = q9=0
+q11_next = q5=1
+q12_next = q6=0
+q13_next = in1=0
+q14_next = q10=0
+State 39: q0=0, q1=1, q2=1, q3=0, q4=1, q5=0, q6=0, q8=0, q9=1, q10=0, q11=1, q12=0, q13=0, q14=0.
+
+Cycle 39:
+Inputs: in0=0, in1=1.
+Outputs: q0=0, q1=1, q10=0, q12=0, q14=0, q2=1, q5=0, q6=0.
+
+Now we have outputs for all 40 cycles (0 to 39). Let's compile them carefully.
+
+q0:
+0:0
+1:0
+2:0
+3:1
+4:1
+5:1
+6:1
+7:1
+8:1
+9:0
+10:1
+11:1
+12:1
+13:1
+14:1
+15:0
+16:0
+17:0
+18:1
+19:1
+20:0
+21:0
+22:0
+23:1
+24:0
+25:1
+26:0
+27:1
+28:1
+29:1
+30:1
+31:0
+32:0
+33:1
+34:0
+35:0
+36:1
+37:0
+38:0
+39:0
+List: [0,0,0,1,1,1,1,1,1,0,1,1,1,1,1,0,0,0,1,1,0,0,0,1,0,1,0,1,1,1,1,0,0,1,0,0,1,0,0,0]
+
+q1:
+0:1
+1:0
+2:1
+3:1
+4:1
+5:1
+6:1
+7:0
+8:1
+9:1
+10:0
+11:0
+12:0
+13:0
+14:0
+15:1
+16:1
+17:1
+18:1
+19:0
+20:0
+21:0
+22:1
+23:1
+24:1
+25:1
+26:0
+27:1
+28:0
+29:0
+30:1
+31:0
+32:1
+33:0
+34:0
+35:0
+36:1
+37:1
+38:0
+39:1
+List: [1,0,1,1,1,1,1,0,1,1,0,0,0,0,0,1,1,1,1,0,0,0,1,1,1,1,0,1,0,0,1,0,1,0,0,0,1,1,0,1]
+
+q10:
+0:1
+1:1
+2:1
+3:0
+4:1
+5:1
+6:0
+7:0
+8:0
+9:0
+10:0
+11:1
+12:1
+13:1
+14:1
+15:0
+16:0
+17:0
+18:1
+19:1
+20:1
+21:1
+22:0
+23:1
+24:0
+25:0
+26:1
+27:0
+28:1
+29:0
+30:0
+31:0
+32:1
+33:1
+34:0
+35:1
+36:1
+37:0
+38:0
+39:0
+List: [1,1,1,0,1,1,0,0,0,0,0,1,1,1,1,0,0,0,1,1,1,1,0,1,0,0,1,0,1,0,0,0,1,1,0,1,1,0,0,0]
+
+q12:
+0:1
+1:0
+2:1
+3:1
+4:1
+5:0
+6:0
+7:0
+8:1
+9:1
+10:1
+11:1
+12:1
+13:1
+14:0
+15:1
+16:1
+17:1
+18:1
+19:1
+20:0
+21:0
+22:0
+23:1
+24:1
+25:0
+26:0
+27:0
+28:1
+29:0
+30:1
+31:0
+32:1
+33:1
+34:1
+35:1
+36:0
+37:0
+38:1
+39:0
+List: [1,0,1,1,1,0,0,0,1,1,1,1,1,1,0,1,1,1,1,1,0,0,0,1,1,0,0,0,1,0,1,0,1,1,1,1,0,0,1,0]
+
+q14:
+0:1
+1:1
+2:1
+3:1
+4:0
+5:1
+6:1
+7:0
+8:0
+9:0
+10:0
+11:0
+12:1
+13:1
+14:1
+15:1
+16:0
+17:0
+18:0
+19:1
+20:1
+21:1
+22:1
+23:0
+24:1
+25:0
+26:0
+27:1
+28:0
+29:1
+30:0
+31:0
+32:0
+33:1
+34:1
+35:0
+36:1
+37:1
+38:0
+39:0
+List: [1,1,1,1,0,1,1,0,0,0,0,0,1,1,1,1,0,0,0,1,1,1,1,0,1,0,0,1,0,1,0,0,0,1,1,0,1,1,0,0]
+
+q2:
+0:1
+1:1
+2:0
+3:1
+4:1
+5:1
+6:0
+7:0
+8:0
+9:1
+10:1
+11:1
+12:1
+13:1
+14:1
+15:0
+16:1
+17:1
+18:1
+19:1
+20:1
+21:0
+22:0
+23:0
+24:1
+25:1
+26:0
+27:0
+28:0
+29:1
+30:0
+31:1
+32:0
+33:1
+34:1
+35:1
+36:1
+37:0
+38:0
+39:1
+List: [1,1,0,1,1,1,0,0,0,1,1,1,1,1,1,0,1,1,1,1,1,0,0,0,1,1,0,0,0,1,0,1,0,1,1,1,1,0,0,1]
+
+q5:
+0:1
+1:1
+2:1
+3:1
+4:1
+5:0
+6:1
+7:1
+8:0
+9:0
+10:0
+11:0
+12:0
+13:1
+14:1
+15:1
+16:1
+17:0
+18:0
+19:0
+20:1
+21:1
+22:1
+23:1
+24:0
+25:1
+26:0
+27:0
+28:1
+29:0
+30:1
+31:0
+32:0
+33:0
+34:1
+35:1
+36:0
+37:1
+38:1
+39:0
+List: [1,1,1,1,1,0,1,1,0,0,0,0,0,1,1,1,1,0,0,0,1,1,1,1,0,1,0,0,1,0,1,0,0,0,1,1,0,1,1,0]
+
+q6:
+0:0
+1:1
+2:1
+3:1
+4:0
+5:0
+6:0
+7:1
+8:1
+9:1
+10:1
+11:1
+12:1
+13:0
+14:1
+15:1
+16:1
+17:1
+18:1
+19:0
+20:0
+21:0
+22:1
+23:1
+24:0
+25:0
+26:0
+27:1
+28:0
+29:1
+30:0
+31:1
+32:1
+33:1
+34:1
+35:0
+36:0
+37:1
+38:0
+39:0
+List: [0,1,1,1,0,0,0,1,1,1,1,1,1,0,1,1,1,1,1,0,0,0,1,1,0,0,0,1,0,1,0,1,1,1,1,0,0,1,0,0]
+
+All lists have length 40.
+
+Now, we must output a fenced json code block with exactly one object mapping each output net name to its list.
+
+Output nets: q0, q1, q10, q12, q14, q2, q5, q6.
+
+=== response ===
+```json
+{
+  "q0": [0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0],
+  "q1": [1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1],
+  "q10": [1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0],
+  "q12": [1, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 0, 1, 0],
+  "q14": [1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0],
+  "q2": [1, 1, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 0, 1],
+  "q5": [1, 1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1, 1, 0],
+  "q6": [0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 0, 1, 0, 0]
+}
+```

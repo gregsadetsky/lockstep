@@ -1,0 +1,2148 @@
+model: deepseek/deepseek-v4-pro
+circuit: rand_s4041_g40_d8
+score: {'status': 'ok', 'prefix_cycles': 32, 'pointwise': 1.0, 'exact': True}
+
+=== reasoning ===
+We need to simulate the given circuit netlist manually for 32 cycles. The circuit has 3 inputs (in0, in1, in2) and 2 outputs (n20, q0). It has 8 DFFs (q0..q7) with given init values. It has many NAND gates, generating internal nets n0..n39.
+
+We must simulate step-by-step each cycle:
+1. Input nets take trace values for cycle t. DFF q nets hold current state (init at t=0).
+2. Evaluate all gates (in topological order? The graph is acyclic for gates; we can evaluate in order they are defined since they may refer to earlier defined nets? But they can refer to nets defined later? Gate definitions are in order; we need to respect dependencies. The gates are defined in a certain order; we need to find an evaluation order. We can compute all gate outputs given the values of inputs, DFF outputs, and previously computed gates. Since it's guaranteed acyclic, we can evaluate them sequentially as long as we know inputs. We might need to resolve dependencies: some gate y's are used as inputs to other gates; the definition order might not be topological? Let's check gate list order and see if any gate uses a net defined later. To be safe, we can iterate through gates repeatedly until all settle? Zero delay, so we can just compute in any order that respects dependencies. Since it's acyclic, there is a topological order. We can just evaluate the gates in the given order and if a gate uses a net not yet computed, we have a problem. So we need to reorder or evaluate multiple passes. I'll do a dependency analysis or simply evaluate gates in multiple passes until no changes. Since NAND gates are deterministic and there's no cycles, we can just evaluate each gate once its inputs are known. I'll probably build a dependency graph mentally and evaluate in order.
+
+First, note initial DFF values:
+q0=1
+q1=1
+q2=0
+q3=1
+q4=1
+q5=1
+q6=0
+q7=0
+
+Now, list of gates (40 gates: n0 to n39). Outputs: n20, q0 (q0 is a DFF output, its value each cycle is recorded as an output; n20 is a gate output). Note that q0 is also an output. The outputs are recorded after gates settle but before the clock edge? According to semantics: "3. the value of every net in outputs is recorded. this is the observed trace for cycle t." So we record q0's current state (which is from previous cycle's edge or init) during the cycle, and n20's settled value. Then clock edge: DFFs load their d values.
+
+So for each cycle t (0 to 31):
+- Set inputs from trace.
+- DFF q's hold their state.
+- Compute all gates.
+- Record n20 and q0.
+- DFFs update: q = d.
+
+Let's find the order of gate evaluation.
+Gates and their dependencies:
+n0: q7, q5
+n1: q5, q2
+n2: in2, q2
+n3: q7, q0
+n4: q3, q1
+n5: q6, n0
+n6: n5, q0
+n7: q1, n4
+n8: n4, n2
+n9: n2, n2
+n10: n3, n4
+n11: q4, q0
+n12: n7, q6
+n13: q4, q0
+n14: q4, q1
+n15: n5, n5
+n16: n7, in2
+n17: n13, n8
+n18: n15, n4
+n19: n18, n14
+n20: in2, n5
+n21: q3, n6
+n22: n6, q4
+n23: n19, n10
+n24: n5, n3
+n25: n4, n14
+n26: n8, n7
+n27: q2, in2
+n28: n19, n24
+n29: n8, n1
+n30: n26, n6
+n31: n8, q2
+n32: n30, n19
+n33: n16, n13
+n34: n16, n6
+n35: n16, n26
+n36: n7, n16
+n37: q7, n19
+n38: n28, n0
+n39: n17, q1
+
+We can see some dependencies: n0 uses q7,q5 (both DFFs, known). n5 uses q6,n0. So n5 can be computed after n0. n6 uses n5,q0. n7 uses q1,n4. n4 uses q3,q1. So n4 then n7. n8 uses n4,n2. n2 uses in2,q2. n9 uses n2. n10 uses n3,n4. n3 uses q7,q0. n11 uses q4,q0. n12 uses n7,q6. n13 uses q4,q0. n14 uses q4,q1. n15 uses n5. n16 uses n7,in2. n17 uses n13,n8. n18 uses n15,n4. n19 uses n18,n14. n20 uses in2,n5. n21 uses q3,n6. n22 uses n6,q4. n23 uses n19,n10. n24 uses n5,n3. n25 uses n4,n14. n26 uses n8,n7. n27 uses q2,in2. n28 uses n19,n24. n29 uses n8,n1. n1 uses q5,q2. n30 uses n26,n6. n31 uses n8,q2. n32 uses n30,n19. n33 uses n16,n13. n34 uses n16,n6. n35 uses n16,n26. n36 uses n7,n16. n37 uses q7,n19. n38 uses n28,n0. n39 uses n17,q1.
+
+We can evaluate in the following order (approximately as given, but some gates use later-defined gates? Let's check definition order:
+
+Defined in order:
+1: n0 (q7,q5)
+2: n1 (q5,q2)
+3: n2 (in2,q2)
+4: n3 (q7,q0)
+5: n4 (q3,q1)
+6: n5 (q6,n0) -> needs n0
+7: n6 (n5,q0) -> needs n5
+8: n7 (q1,n4) -> needs n4
+9: n8 (n4,n2) -> needs n4,n2
+10: n9 (n2,n2) -> needs n2
+11: n10 (n3,n4) -> needs n3,n4
+12: n11 (q4,q0)
+13: n12 (n7,q6) -> needs n7
+14: n13 (q4,q0)
+15: n14 (q4,q1)
+16: n15 (n5,n5) -> needs n5
+17: n16 (n7,in2) -> needs n7
+18: n17 (n13,n8) -> needs n13,n8
+19: n18 (n15,n4) -> needs n15,n4
+20: n19 (n18,n14) -> needs n18,n14
+21: n20 (in2,n5) -> needs n5
+22: n21 (q3,n6) -> needs n6
+23: n22 (n6,q4) -> needs n6
+24: n23 (n19,n10) -> needs n19,n10
+25: n24 (n5,n3) -> needs n5,n3
+26: n25 (n4,n14) -> needs n4,n14
+27: n26 (n8,n7) -> needs n8,n7
+28: n27 (q2,in2)
+29: n28 (n19,n24) -> needs n19,n24
+30: n29 (n8,n1) -> needs n8,n1
+31: n30 (n26,n6) -> needs n26,n6
+32: n31 (n8,q2) -> needs n8
+33: n32 (n30,n19) -> needs n30,n19
+34: n33 (n16,n13) -> needs n16,n13
+35: n34 (n16,n6) -> needs n16,n6
+36: n35 (n16,n26) -> needs n16,n26
+37: n36 (n7,n16) -> needs n7,n16
+38: n37 (q7,n19) -> needs n19
+39: n38 (n28,n0) -> needs n28,n0
+40: n39 (n17,q1) -> needs n17
+
+This order is almost topological, but let's check if any gate uses a net defined later in the list.
+- n5 uses n0 (def 1) OK.
+- n6 uses n5 (def 6) OK.
+- n7 uses n4 (def 5) OK.
+- n8 uses n4,n2 (def 5,3) OK.
+- n9 uses n2 OK.
+- n10 uses n3,n4 OK.
+- n12 uses n7 (def 8) OK.
+- n15 uses n5 OK.
+- n16 uses n7 OK.
+- n17 uses n13(14), n8(9) OK.
+- n18 uses n15(16), n4(5) OK.
+- n19 uses n18(19), n14(15) OK.
+- n20 uses n5 OK.
+- n21 uses n6 OK.
+- n22 uses n6 OK.
+- n23 uses n19(20), n10(11) OK.
+- n24 uses n5, n3(4) OK.
+- n25 uses n4, n14 OK.
+- n26 uses n8, n7 OK.
+- n28 uses n19, n24(25) OK.
+- n29 uses n8, n1(2) OK.
+- n30 uses n26(27), n6 OK.
+- n31 uses n8 OK.
+- n32 uses n30(31), n19 OK.
+- n33 uses n16(17), n13 OK.
+- n34 uses n16, n6 OK.
+- n35 uses n16, n26 OK.
+- n36 uses n7, n16 OK.
+- n37 uses q7, n19 OK.
+- n38 uses n28(29), n0 OK.
+- n39 uses n17(18), q1 OK.
+
+Wait, n17 is defined at 18, n13 at 14, n8 at 9. So n17 uses n13 and n8, both defined earlier. n18 uses n15(16) and n4(5). n19 uses n18(19) and n14(15). n23 uses n19(20) and n10(11). n24 uses n5 and n3. n28 uses n19 and n24(25). n30 uses n26(27) and n6. n32 uses n30(31) and n19. n35 uses n16 and n26. n38 uses n28(29) and n0. All good. So we can just evaluate in the given order 1..40, and by the time we need a net, it's already computed. Perfect.
+
+Let's start simulation.
+
+We will maintain state for q0..q7.
+Init:
+q0 = 1
+q1 = 1
+q2 = 0
+q3 = 1
+q4 = 1
+q5 = 1
+q6 = 0
+q7 = 0
+
+Trace:
+in0: [0,1,0,0,1,0,1,0,1,0,1,0,0,0,0,1,1,0,0,0,1,0,1,1,1,0,0,1,0,0,1,0]
+in1: [1,1,1,1,1,1,1,0,0,1,0,1,1,1,1,1,0,1,0,0,1,0,1,1,1,0,0,1,1,0,1,1]
+in2: [1,0,1,1,0,1,1,1,0,0,0,0,1,1,1,0,1,1,0,1,1,1,1,1,0,0,1,1,0,0,0,0]
+
+Outputs to record:
+n20, q0
+
+We do 32 cycles. I'll simulate cycle by cycle, keeping track of all net values.
+
+Let's define a function NAND(a,b) = 1 - (a & b). In boolean logic: NOT (a AND b). So if both 1 -> 0, else 1.
+
+I will do step-by-step manual computation. I'll create a table of states for each cycle.
+
+Because it's 32 cycles with many gates, I need to be systematic. I can maybe write a mental "code" or track values in a spreadsheet-like manner. Since I can't run code, I'll do it manually. I'll try to be careful and double-check.
+
+First, let's list all nets we need to compute each cycle:
+Inputs: in0, in1, in2 (given)
+DFFs: q0..q7 (initially given, then updated from d)
+Gates: n0..n39 (computed in order)
+Outputs: n20, q0
+
+I'll do each cycle step by step.
+
+**Cycle 0:**
+Inputs: in0=0, in1=1, in2=1
+DFFs: q0=1, q1=1, q2=0, q3=1, q4=1, q5=1, q6=0, q7=0
+
+Compute gates in order:
+1. n0 = NAND(q7=0, q5=1) = NAND(0,1) = 1
+2. n1 = NAND(q5=1, q2=0) = NAND(1,0) = 1
+3. n2 = NAND(in2=1, q2=0) = NAND(1,0) = 1
+4. n3 = NAND(q7=0, q0=1) = NAND(0,1) = 1
+5. n4 = NAND(q3=1, q1=1) = NAND(1,1) = 0
+6. n5 = NAND(q6=0, n0=1) = NAND(0,1) = 1
+7. n6 = NAND(n5=1, q0=1) = NAND(1,1) = 0
+8. n7 = NAND(q1=1, n4=0) = NAND(1,0) = 1
+9. n8 = NAND(n4=0, n2=1) = NAND(0,1) = 1
+10. n9 = NAND(n2=1, n2=1) = NAND(1,1) = 0
+11. n10 = NAND(n3=1, n4=0) = NAND(1,0) = 1
+12. n11 = NAND(q4=1, q0=1) = NAND(1,1) = 0
+13. n12 = NAND(n7=1, q6=0) = NAND(1,0) = 1
+14. n13 = NAND(q4=1, q0=1) = NAND(1,1) = 0
+15. n14 = NAND(q4=1, q1=1) = NAND(1,1) = 0
+16. n15 = NAND(n5=1, n5=1) = NAND(1,1) = 0
+17. n16 = NAND(n7=1, in2=1) = NAND(1,1) = 0
+18. n17 = NAND(n13=0, n8=1) = NAND(0,1) = 1
+19. n18 = NAND(n15=0, n4=0) = NAND(0,0) = 1
+20. n19 = NAND(n18=1, n14=0) = NAND(1,0) = 1
+21. n20 = NAND(in2=1, n5=1) = NAND(1,1) = 0
+22. n21 = NAND(q3=1, n6=0) = NAND(1,0) = 1
+23. n22 = NAND(n6=0, q4=1) = NAND(0,1) = 1
+24. n23 = NAND(n19=1, n10=1) = NAND(1,1) = 0
+25. n24 = NAND(n5=1, n3=1) = NAND(1,1) = 0
+26. n25 = NAND(n4=0, n14=0) = NAND(0,0) = 1
+27. n26 = NAND(n8=1, n7=1) = NAND(1,1) = 0
+28. n27 = NAND(q2=0, in2=1) = NAND(0,1) = 1
+29. n28 = NAND(n19=1, n24=0) = NAND(1,0) = 1
+30. n29 = NAND(n8=1, n1=1) = NAND(1,1) = 0
+31. n30 = NAND(n26=0, n6=0) = NAND(0,0) = 1
+32. n31 = NAND(n8=1, q2=0) = NAND(1,0) = 1
+33. n32 = NAND(n30=1, n19=1) = NAND(1,1) = 0
+34. n33 = NAND(n16=0, n13=0) = NAND(0,0) = 1
+35. n34 = NAND(n16=0, n6=0) = NAND(0,0) = 1
+36. n35 = NAND(n16=0, n26=0) = NAND(0,0) = 1
+37. n36 = NAND(n7=1, n16=0) = NAND(1,0) = 1
+38. n37 = NAND(q7=0, n19=1) = NAND(0,1) = 1
+39. n38 = NAND(n28=1, n0=1) = NAND(1,1) = 0
+40. n39 = NAND(n17=1, q1=1) = NAND(1,1) = 0
+
+Record outputs:
+n20 = 0
+q0 = 1
+
+Update DFFs (load d into q):
+q0 d = n17 = 1 -> q0=1
+q1 d = n30 = 1 -> q1=1
+q2 d = n23 = 0 -> q2=0
+q3 d = n11 = 0 -> q3=0
+q4 d = n16 = 0 -> q4=0
+q5 d = n20 = 0 -> q5=0
+q6 d = n9 = 0 -> q6=0
+q7 d = n37 = 1 -> q7=1
+
+End of cycle 0.
+
+**Cycle 1:**
+Inputs: in0=1, in1=1, in2=0
+DFFs: q0=1, q1=1, q2=0, q3=0, q4=0, q5=0, q6=0, q7=1
+
+Gates:
+1. n0 = NAND(q7=1, q5=0) = NAND(1,0) = 1
+2. n1 = NAND(q5=0, q2=0) = NAND(0,0) = 1
+3. n2 = NAND(in2=0, q2=0) = NAND(0,0) = 1
+4. n3 = NAND(q7=1, q0=1) = NAND(1,1) = 0
+5. n4 = NAND(q3=0, q1=1) = NAND(0,1) = 1
+6. n5 = NAND(q6=0, n0=1) = NAND(0,1) = 1
+7. n6 = NAND(n5=1, q0=1) = NAND(1,1) = 0
+8. n7 = NAND(q1=1, n4=1) = NAND(1,1) = 0
+9. n8 = NAND(n4=1, n2=1) = NAND(1,1) = 0
+10. n9 = NAND(n2=1, n2=1) = NAND(1,1) = 0
+11. n10 = NAND(n3=0, n4=1) = NAND(0,1) = 1
+12. n11 = NAND(q4=0, q0=1) = NAND(0,1) = 1
+13. n12 = NAND(n7=0, q6=0) = NAND(0,0) = 1
+14. n13 = NAND(q4=0, q0=1) = NAND(0,1) = 1
+15. n14 = NAND(q4=0, q1=1) = NAND(0,1) = 1
+16. n15 = NAND(n5=1, n5=1) = NAND(1,1) = 0
+17. n16 = NAND(n7=0, in2=0) = NAND(0,0) = 1
+18. n17 = NAND(n13=1, n8=0) = NAND(1,0) = 1
+19. n18 = NAND(n15=0, n4=1) = NAND(0,1) = 1
+20. n19 = NAND(n18=1, n14=1) = NAND(1,1) = 0
+21. n20 = NAND(in2=0, n5=1) = NAND(0,1) = 1
+22. n21 = NAND(q3=0, n6=0) = NAND(0,0) = 1
+23. n22 = NAND(n6=0, q4=0) = NAND(0,0) = 1
+24. n23 = NAND(n19=0, n10=1) = NAND(0,1) = 1
+25. n24 = NAND(n5=1, n3=0) = NAND(1,0) = 1
+26. n25 = NAND(n4=1, n14=1) = NAND(1,1) = 0
+27. n26 = NAND(n8=0, n7=0) = NAND(0,0) = 1
+28. n27 = NAND(q2=0, in2=0) = NAND(0,0) = 1
+29. n28 = NAND(n19=0, n24=1) = NAND(0,1) = 1
+30. n29 = NAND(n8=0, n1=1) = NAND(0,1) = 1
+31. n30 = NAND(n26=1, n6=0) = NAND(1,0) = 1
+32. n31 = NAND(n8=0, q2=0) = NAND(0,0) = 1
+33. n32 = NAND(n30=1, n19=0) = NAND(1,0) = 1
+34. n33 = NAND(n16=1, n13=1) = NAND(1,1) = 0
+35. n34 = NAND(n16=1, n6=0) = NAND(1,0) = 1
+36. n35 = NAND(n16=1, n26=1) = NAND(1,1) = 0
+37. n36 = NAND(n7=0, n16=1) = NAND(0,1) = 1
+38. n37 = NAND(q7=1, n19=0) = NAND(1,0) = 1
+39. n38 = NAND(n28=1, n0=1) = NAND(1,1) = 0
+40. n39 = NAND(n17=1, q1=1) = NAND(1,1) = 0
+
+Records: n20=1, q0=1
+DFFs update:
+q0 d = n17 = 1 -> q0=1
+q1 d = n30 = 1 -> q1=1
+q2 d = n23 = 1 -> q2=1
+q3 d = n11 = 1 -> q3=1
+q4 d = n16 = 1 -> q4=1
+q5 d = n20 = 1 -> q5=1
+q6 d = n9 = 0 -> q6=0
+q7 d = n37 = 1 -> q7=1
+
+**Cycle 2:**
+Inputs: in0=0, in1=1, in2=1
+DFFs: q0=1, q1=1, q2=1, q3=1, q4=1, q5=1, q6=0, q7=1
+
+Gates:
+1. n0 = NAND(q7=1, q5=1) = NAND(1,1) = 0
+2. n1 = NAND(q5=1, q2=1) = NAND(1,1) = 0
+3. n2 = NAND(in2=1, q2=1) = NAND(1,1) = 0
+4. n3 = NAND(q7=1, q0=1) = NAND(1,1) = 0
+5. n4 = NAND(q3=1, q1=1) = NAND(1,1) = 0
+6. n5 = NAND(q6=0, n0=0) = NAND(0,0) = 1
+7. n6 = NAND(n5=1, q0=1) = NAND(1,1) = 0
+8. n7 = NAND(q1=1, n4=0) = NAND(1,0) = 1
+9. n8 = NAND(n4=0, n2=0) = NAND(0,0) = 1
+10. n9 = NAND(n2=0, n2=0) = NAND(0,0) = 1
+11. n10 = NAND(n3=0, n4=0) = NAND(0,0) = 1
+12. n11 = NAND(q4=1, q0=1) = NAND(1,1) = 0
+13. n12 = NAND(n7=1, q6=0) = NAND(1,0) = 1
+14. n13 = NAND(q4=1, q0=1) = NAND(1,1) = 0
+15. n14 = NAND(q4=1, q1=1) = NAND(1,1) = 0
+16. n15 = NAND(n5=1, n5=1) = NAND(1,1) = 0
+17. n16 = NAND(n7=1, in2=1) = NAND(1,1) = 0
+18. n17 = NAND(n13=0, n8=1) = NAND(0,1) = 1
+19. n18 = NAND(n15=0, n4=0) = NAND(0,0) = 1
+20. n19 = NAND(n18=1, n14=0) = NAND(1,0) = 1
+21. n20 = NAND(in2=1, n5=1) = NAND(1,1) = 0
+22. n21 = NAND(q3=1, n6=0) = NAND(1,0) = 1
+23. n22 = NAND(n6=0, q4=1) = NAND(0,1) = 1
+24. n23 = NAND(n19=1, n10=1) = NAND(1,1) = 0
+25. n24 = NAND(n5=1, n3=0) = NAND(1,0) = 1
+26. n25 = NAND(n4=0, n14=0) = NAND(0,0) = 1
+27. n26 = NAND(n8=1, n7=1) = NAND(1,1) = 0
+28. n27 = NAND(q2=1, in2=1) = NAND(1,1) = 0
+29. n28 = NAND(n19=1, n24=1) = NAND(1,1) = 0
+30. n29 = NAND(n8=1, n1=0) = NAND(1,0) = 1
+31. n30 = NAND(n26=0, n6=0) = NAND(0,0) = 1
+32. n31 = NAND(n8=1, q2=1) = NAND(1,1) = 0
+33. n32 = NAND(n30=1, n19=1) = NAND(1,1) = 0
+34. n33 = NAND(n16=0, n13=0) = NAND(0,0) = 1
+35. n34 = NAND(n16=0, n6=0) = NAND(0,0) = 1
+36. n35 = NAND(n16=0, n26=0) = NAND(0,0) = 1
+37. n36 = NAND(n7=1, n16=0) = NAND(1,0) = 1
+38. n37 = NAND(q7=1, n19=1) = NAND(1,1) = 0
+39. n38 = NAND(n28=0, n0=0) = NAND(0,0) = 1
+40. n39 = NAND(n17=1, q1=1) = NAND(1,1) = 0
+
+Records: n20=0, q0=1
+DFFs update:
+q0 d = n17 = 1 -> q0=1
+q1 d = n30 = 1 -> q1=1
+q2 d = n23 = 0 -> q2=0
+q3 d = n11 = 0 -> q3=0
+q4 d = n16 = 0 -> q4=0
+q5 d = n20 = 0 -> q5=0
+q6 d = n9 = 1 -> q6=1
+q7 d = n37 = 0 -> q7=0
+
+**Cycle 3:**
+Inputs: in0=0, in1=1, in2=1
+DFFs: q0=1, q1=1, q2=0, q3=0, q4=0, q5=0, q6=1, q7=0
+
+Gates:
+1. n0 = NAND(q7=0, q5=0) = NAND(0,0) = 1
+2. n1 = NAND(q5=0, q2=0) = NAND(0,0) = 1
+3. n2 = NAND(in2=1, q2=0) = NAND(1,0) = 1
+4. n3 = NAND(q7=0, q0=1) = NAND(0,1) = 1
+5. n4 = NAND(q3=0, q1=1) = NAND(0,1) = 1
+6. n5 = NAND(q6=1, n0=1) = NAND(1,1) = 0
+7. n6 = NAND(n5=0, q0=1) = NAND(0,1) = 1
+8. n7 = NAND(q1=1, n4=1) = NAND(1,1) = 0
+9. n8 = NAND(n4=1, n2=1) = NAND(1,1) = 0
+10. n9 = NAND(n2=1, n2=1) = NAND(1,1) = 0
+11. n10 = NAND(n3=1, n4=1) = NAND(1,1) = 0
+12. n11 = NAND(q4=0, q0=1) = NAND(0,1) = 1
+13. n12 = NAND(n7=0, q6=1) = NAND(0,1) = 1
+14. n13 = NAND(q4=0, q0=1) = NAND(0,1) = 1
+15. n14 = NAND(q4=0, q1=1) = NAND(0,1) = 1
+16. n15 = NAND(n5=0, n5=0) = NAND(0,0) = 1
+17. n16 = NAND(n7=0, in2=1) = NAND(0,1) = 1
+18. n17 = NAND(n13=1, n8=0) = NAND(1,0) = 1
+19. n18 = NAND(n15=1, n4=1) = NAND(1,1) = 0
+20. n19 = NAND(n18=0, n14=1) = NAND(0,1) = 1
+21. n20 = NAND(in2=1, n5=0) = NAND(1,0) = 1
+22. n21 = NAND(q3=0, n6=1) = NAND(0,1) = 1
+23. n22 = NAND(n6=1, q4=0) = NAND(1,0) = 1
+24. n23 = NAND(n19=1, n10=0) = NAND(1,0) = 1
+25. n24 = NAND(n5=0, n3=1) = NAND(0,1) = 1
+26. n25 = NAND(n4=1, n14=1) = NAND(1,1) = 0
+27. n26 = NAND(n8=0, n7=0) = NAND(0,0) = 1
+28. n27 = NAND(q2=0, in2=1) = NAND(0,1) = 1
+29. n28 = NAND(n19=1, n24=1) = NAND(1,1) = 0
+30. n29 = NAND(n8=0, n1=1) = NAND(0,1) = 1
+31. n30 = NAND(n26=1, n6=1) = NAND(1,1) = 0
+32. n31 = NAND(n8=0, q2=0) = NAND(0,0) = 1
+33. n32 = NAND(n30=0, n19=1) = NAND(0,1) = 1
+34. n33 = NAND(n16=1, n13=1) = NAND(1,1) = 0
+35. n34 = NAND(n16=1, n6=1) = NAND(1,1) = 0
+36. n35 = NAND(n16=1, n26=1) = NAND(1,1) = 0
+37. n36 = NAND(n7=0, n16=1) = NAND(0,1) = 1
+38. n37 = NAND(q7=0, n19=1) = NAND(0,1) = 1
+39. n38 = NAND(n28=0, n0=1) = NAND(0,1) = 1
+40. n39 = NAND(n17=1, q1=1) = NAND(1,1) = 0
+
+Records: n20=1, q0=1
+DFFs update:
+q0 = n17=1 -> 1
+q1 = n30=0 -> 0
+q2 = n23=1 -> 1
+q3 = n11=1 -> 1
+q4 = n16=1 -> 1
+q5 = n20=1 -> 1
+q6 = n9=0 -> 0
+q7 = n37=1 -> 1
+
+**Cycle 4:**
+Inputs: in0=1, in1=1, in2=0
+DFFs: q0=1, q1=0, q2=1, q3=1, q4=1, q5=1, q6=0, q7=1
+
+Gates:
+1. n0 = NAND(q7=1, q5=1) = 0
+2. n1 = NAND(q5=1, q2=1) = 0
+3. n2 = NAND(in2=0, q2=1) = NAND(0,1)=1
+4. n3 = NAND(q7=1, q0=1) = 0
+5. n4 = NAND(q3=1, q1=0) = NAND(1,0)=1
+6. n5 = NAND(q6=0, n0=0) = 1
+7. n6 = NAND(n5=1, q0=1) = 0
+8. n7 = NAND(q1=0, n4=1) = NAND(0,1)=1
+9. n8 = NAND(n4=1, n2=1) = 0
+10. n9 = NAND(n2=1, n2=1) = 0
+11. n10 = NAND(n3=0, n4=1) = 1
+12. n11 = NAND(q4=1, q0=1) = 0
+13. n12 = NAND(n7=1, q6=0) = 1
+14. n13 = NAND(q4=1, q0=1) = 0
+15. n14 = NAND(q4=1, q1=0) = 1
+16. n15 = NAND(n5=1, n5=1) = 0
+17. n16 = NAND(n7=1, in2=0) = 1
+18. n17 = NAND(n13=0, n8=0) = NAND(0,0)=1
+19. n18 = NAND(n15=0, n4=1) = 1
+20. n19 = NAND(n18=1, n14=1) = 0
+21. n20 = NAND(in2=0, n5=1) = 1
+22. n21 = NAND(q3=1, n6=0) = 1
+23. n22 = NAND(n6=0, q4=1) = 1
+24. n23 = NAND(n19=0, n10=1) = 1
+25. n24 = NAND(n5=1, n3=0) = 1
+26. n25 = NAND(n4=1, n14=1) = 0
+27. n26 = NAND(n8=0, n7=1) = 1
+28. n27 = NAND(q2=1, in2=0) = 1
+29. n28 = NAND(n19=0, n24=1) = 1
+30. n29 = NAND(n8=0, n1=0) = 1
+31. n30 = NAND(n26=1, n6=0) = 1
+32. n31 = NAND(n8=0, q2=1) = 1
+33. n32 = NAND(n30=1, n19=0) = 1
+34. n33 = NAND(n16=1, n13=0) = 1
+35. n34 = NAND(n16=1, n6=0) = 1
+36. n35 = NAND(n16=1, n26=1) = 0
+37. n36 = NAND(n7=1, n16=1) = 0
+38. n37 = NAND(q7=1, n19=0) = 1
+39. n38 = NAND(n28=1, n0=0) = 1
+40. n39 = NAND(n17=1, q1=0) = 1
+
+Records: n20=1, q0=1
+DFFs update:
+q0 = n17=1
+q1 = n30=1 -> 1
+q2 = n23=1 -> 1
+q3 = n11=0 -> 0
+q4 = n16=1 -> 1
+q5 = n20=1 -> 1
+q6 = n9=0 -> 0
+q7 = n37=1 -> 1
+
+**Cycle 5:**
+Inputs: in0=0, in1=1, in2=1
+DFFs: q0=1, q1=1, q2=1, q3=0, q4=1, q5=1, q6=0, q7=1
+
+Gates:
+1. n0 = NAND(q7=1, q5=1) = 0
+2. n1 = NAND(q5=1, q2=1) = 0
+3. n2 = NAND(in2=1, q2=1) = 0
+4. n3 = NAND(q7=1, q0=1) = 0
+5. n4 = NAND(q3=0, q1=1) = 1
+6. n5 = NAND(q6=0, n0=0) = 1
+7. n6 = NAND(n5=1, q0=1) = 0
+8. n7 = NAND(q1=1, n4=1) = 0
+9. n8 = NAND(n4=1, n2=0) = 1
+10. n9 = NAND(n2=0, n2=0) = 1
+11. n10 = NAND(n3=0, n4=1) = 1
+12. n11 = NAND(q4=1, q0=1) = 0
+13. n12 = NAND(n7=0, q6=0) = 1
+14. n13 = NAND(q4=1, q0=1) = 0
+15. n14 = NAND(q4=1, q1=1) = 0
+16. n15 = NAND(n5=1, n5=1) = 0
+17. n16 = NAND(n7=0, in2=1) = 1
+18. n17 = NAND(n13=0, n8=1) = 1
+19. n18 = NAND(n15=0, n4=1) = 1
+20. n19 = NAND(n18=1, n14=0) = 1
+21. n20 = NAND(in2=1, n5=1) = 0
+22. n21 = NAND(q3=0, n6=0) = 1
+23. n22 = NAND(n6=0, q4=1) = 1
+24. n23 = NAND(n19=1, n10=1) = 0
+25. n24 = NAND(n5=1, n3=0) = 1
+26. n25 = NAND(n4=1, n14=0) = 1
+27. n26 = NAND(n8=1, n7=0) = 1
+28. n27 = NAND(q2=1, in2=1) = 0
+29. n28 = NAND(n19=1, n24=1) = 0
+30. n29 = NAND(n8=1, n1=0) = 1
+31. n30 = NAND(n26=1, n6=0) = 1
+32. n31 = NAND(n8=1, q2=1) = 0
+33. n32 = NAND(n30=1, n19=1) = 0
+34. n33 = NAND(n16=1, n13=0) = 1
+35. n34 = NAND(n16=1, n6=0) = 1
+36. n35 = NAND(n16=1, n26=1) = 0
+37. n36 = NAND(n7=0, n16=1) = 1
+38. n37 = NAND(q7=1, n19=1) = 0
+39. n38 = NAND(n28=0, n0=0) = 1
+40. n39 = NAND(n17=1, q1=1) = 0
+
+Records: n20=0, q0=1
+DFFs update:
+q0 = n17=1 -> 1
+q1 = n30=1 -> 1
+q2 = n23=0 -> 0
+q3 = n11=0 -> 0
+q4 = n16=1 -> 1
+q5 = n20=0 -> 0
+q6 = n9=1 -> 1
+q7 = n37=0 -> 0
+
+**Cycle 6:**
+Inputs: in0=1, in1=1, in2=1
+DFFs: q0=1, q1=1, q2=0, q3=0, q4=1, q5=0, q6=1, q7=0
+
+Gates:
+1. n0 = NAND(q7=0, q5=0) = 1
+2. n1 = NAND(q5=0, q2=0) = 1
+3. n2 = NAND(in2=1, q2=0) = 1
+4. n3 = NAND(q7=0, q0=1) = 1
+5. n4 = NAND(q3=0, q1=1) = 1
+6. n5 = NAND(q6=1, n0=1) = 0
+7. n6 = NAND(n5=0, q0=1) = 1
+8. n7 = NAND(q1=1, n4=1) = 0
+9. n8 = NAND(n4=1, n2=1) = 0
+10. n9 = NAND(n2=1, n2=1) = 0
+11. n10 = NAND(n3=1, n4=1) = 0
+12. n11 = NAND(q4=1, q0=1) = 0
+13. n12 = NAND(n7=0, q6=1) = 1
+14. n13 = NAND(q4=1, q0=1) = 0
+15. n14 = NAND(q4=1, q1=1) = 0
+16. n15 = NAND(n5=0, n5=0) = 1
+17. n16 = NAND(n7=0, in2=1) = 1
+18. n17 = NAND(n13=0, n8=0) = 1
+19. n18 = NAND(n15=1, n4=1) = 0
+20. n19 = NAND(n18=0, n14=0) = 1
+21. n20 = NAND(in2=1, n5=0) = 1
+22. n21 = NAND(q3=0, n6=1) = 1
+23. n22 = NAND(n6=1, q4=1) = 0
+24. n23 = NAND(n19=1, n10=0) = 1
+25. n24 = NAND(n5=0, n3=1) = 1
+26. n25 = NAND(n4=1, n14=0) = 1
+27. n26 = NAND(n8=0, n7=0) = 1
+28. n27 = NAND(q2=0, in2=1) = 1
+29. n28 = NAND(n19=1, n24=1) = 0
+30. n29 = NAND(n8=0, n1=1) = 1
+31. n30 = NAND(n26=1, n6=1) = 0
+32. n31 = NAND(n8=0, q2=0) = 1
+33. n32 = NAND(n30=0, n19=1) = 1
+34. n33 = NAND(n16=1, n13=0) = 1
+35. n34 = NAND(n16=1, n6=1) = 0
+36. n35 = NAND(n16=1, n26=1) = 0
+37. n36 = NAND(n7=0, n16=1) = 1
+38. n37 = NAND(q7=0, n19=1) = 1
+39. n38 = NAND(n28=0, n0=1) = 1
+40. n39 = NAND(n17=1, q1=1) = 0
+
+Records: n20=1, q0=1
+DFFs update:
+q0 = n17=1 -> 1
+q1 = n30=0 -> 0
+q2 = n23=1 -> 1
+q3 = n11=0 -> 0
+q4 = n16=1 -> 1
+q5 = n20=1 -> 1
+q6 = n9=0 -> 0
+q7 = n37=1 -> 1
+
+**Cycle 7:**
+Inputs: in0=0, in1=0, in2=1
+DFFs: q0=1, q1=0, q2=1, q3=0, q4=1, q5=1, q6=0, q7=1
+
+Gates:
+1. n0 = NAND(q7=1, q5=1) = 0
+2. n1 = NAND(q5=1, q2=1) = 0
+3. n2 = NAND(in2=1, q2=1) = 0
+4. n3 = NAND(q7=1, q0=1) = 0
+5. n4 = NAND(q3=0, q1=0) = 1
+6. n5 = NAND(q6=0, n0=0) = 1
+7. n6 = NAND(n5=1, q0=1) = 0
+8. n7 = NAND(q1=0, n4=1) = 1
+9. n8 = NAND(n4=1, n2=0) = 1
+10. n9 = NAND(n2=0, n2=0) = 1
+11. n10 = NAND(n3=0, n4=1) = 1
+12. n11 = NAND(q4=1, q0=1) = 0
+13. n12 = NAND(n7=1, q6=0) = 1
+14. n13 = NAND(q4=1, q0=1) = 0
+15. n14 = NAND(q4=1, q1=0) = 1
+16. n15 = NAND(n5=1, n5=1) = 0
+17. n16 = NAND(n7=1, in2=1) = 0
+18. n17 = NAND(n13=0, n8=1) = 1
+19. n18 = NAND(n15=0, n4=1) = 1
+20. n19 = NAND(n18=1, n14=1) = 0
+21. n20 = NAND(in2=1, n5=1) = 0
+22. n21 = NAND(q3=0, n6=0) = 1
+23. n22 = NAND(n6=0, q4=1) = 1
+24. n23 = NAND(n19=0, n10=1) = 1
+25. n24 = NAND(n5=1, n3=0) = 1
+26. n25 = NAND(n4=1, n14=1) = 0
+27. n26 = NAND(n8=1, n7=1) = 0
+28. n27 = NAND(q2=1, in2=1) = 0
+29. n28 = NAND(n19=0, n24=1) = 1
+30. n29 = NAND(n8=1, n1=0) = 1
+31. n30 = NAND(n26=0, n6=0) = 1
+32. n31 = NAND(n8=1, q2=1) = 0
+33. n32 = NAND(n30=1, n19=0) = 1
+34. n33 = NAND(n16=0, n13=0) = 1
+35. n34 = NAND(n16=0, n6=0) = 1
+36. n35 = NAND(n16=0, n26=0) = 1
+37. n36 = NAND(n7=1, n16=0) = 1
+38. n37 = NAND(q7=1, n19=0) = 1
+39. n38 = NAND(n28=1, n0=0) = 1
+40. n39 = NAND(n17=1, q1=0) = 1
+
+Records: n20=0, q0=1
+DFFs update:
+q0 = n17=1 -> 1
+q1 = n30=1 -> 1
+q2 = n23=1 -> 1
+q3 = n11=0 -> 0
+q4 = n16=0 -> 0
+q5 = n20=0 -> 0
+q6 = n9=1 -> 1
+q7 = n37=1 -> 1
+
+**Cycle 8:**
+Inputs: in0=1, in1=0, in2=0
+DFFs: q0=1, q1=1, q2=1, q3=0, q4=0, q5=0, q6=1, q7=1
+
+Gates:
+1. n0 = NAND(q7=1, q5=0) = 1
+2. n1 = NAND(q5=0, q2=1) = 1
+3. n2 = NAND(in2=0, q2=1) = 1
+4. n3 = NAND(q7=1, q0=1) = 0
+5. n4 = NAND(q3=0, q1=1) = 1
+6. n5 = NAND(q6=1, n0=1) = 0
+7. n6 = NAND(n5=0, q0=1) = 1
+8. n7 = NAND(q1=1, n4=1) = 0
+9. n8 = NAND(n4=1, n2=1) = 0
+10. n9 = NAND(n2=1, n2=1) = 0
+11. n10 = NAND(n3=0, n4=1) = 1
+12. n11 = NAND(q4=0, q0=1) = 1
+13. n12 = NAND(n7=0, q6=1) = 1
+14. n13 = NAND(q4=0, q0=1) = 1
+15. n14 = NAND(q4=0, q1=1) = 1
+16. n15 = NAND(n5=0, n5=0) = 1
+17. n16 = NAND(n7=0, in2=0) = 1
+18. n17 = NAND(n13=1, n8=0) = 1
+19. n18 = NAND(n15=1, n4=1) = 0
+20. n19 = NAND(n18=0, n14=1) = 1
+21. n20 = NAND(in2=0, n5=0) = 1
+22. n21 = NAND(q3=0, n6=1) = 1
+23. n22 = NAND(n6=1, q4=0) = 1
+24. n23 = NAND(n19=1, n10=1) = 0
+25. n24 = NAND(n5=0, n3=0) = 1
+26. n25 = NAND(n4=1, n14=1) = 0
+27. n26 = NAND(n8=0, n7=0) = 1
+28. n27 = NAND(q2=1, in2=0) = 1
+29. n28 = NAND(n19=1, n24=1) = 0
+30. n29 = NAND(n8=0, n1=1) = 1
+31. n30 = NAND(n26=1, n6=1) = 0
+32. n31 = NAND(n8=0, q2=1) = 1
+33. n32 = NAND(n30=0, n19=1) = 1
+34. n33 = NAND(n16=1, n13=1) = 0
+35. n34 = NAND(n16=1, n6=1) = 0
+36. n35 = NAND(n16=1, n26=1) = 0
+37. n36 = NAND(n7=0, n16=1) = 1
+38. n37 = NAND(q7=1, n19=1) = 0
+39. n38 = NAND(n28=0, n0=1) = 1
+40. n39 = NAND(n17=1, q1=1) = 0
+
+Records: n20=1, q0=1
+DFFs update:
+q0 = n17=1 -> 1
+q1 = n30=0 -> 0
+q2 = n23=0 -> 0
+q3 = n11=1 -> 1
+q4 = n16=1 -> 1
+q5 = n20=1 -> 1
+q6 = n9=0 -> 0
+q7 = n37=0 -> 0
+
+**Cycle 9:**
+Inputs: in0=0, in1=1, in2=0
+DFFs: q0=1, q1=0, q2=0, q3=1, q4=1, q5=1, q6=0, q7=0
+
+Gates:
+1. n0 = NAND(q7=0, q5=1) = 1
+2. n1 = NAND(q5=1, q2=0) = 1
+3. n2 = NAND(in2=0, q2=0) = 1
+4. n3 = NAND(q7=0, q0=1) = 1
+5. n4 = NAND(q3=1, q1=0) = 1
+6. n5 = NAND(q6=0, n0=1) = 1
+7. n6 = NAND(n5=1, q0=1) = 0
+8. n7 = NAND(q1=0, n4=1) = 1
+9. n8 = NAND(n4=1, n2=1) = 0
+10. n9 = NAND(n2=1, n2=1) = 0
+11. n10 = NAND(n3=1, n4=1) = 0
+12. n11 = NAND(q4=1, q0=1) = 0
+13. n12 = NAND(n7=1, q6=0) = 1
+14. n13 = NAND(q4=1, q0=1) = 0
+15. n14 = NAND(q4=1, q1=0) = 1
+16. n15 = NAND(n5=1, n5=1) = 0
+17. n16 = NAND(n7=1, in2=0) = 1
+18. n17 = NAND(n13=0, n8=0) = 1
+19. n18 = NAND(n15=0, n4=1) = 1
+20. n19 = NAND(n18=1, n14=1) = 0
+21. n20 = NAND(in2=0, n5=1) = 1
+22. n21 = NAND(q3=1, n6=0) = 1
+23. n22 = NAND(n6=0, q4=1) = 1
+24. n23 = NAND(n19=0, n10=0) = 1
+25. n24 = NAND(n5=1, n3=1) = 0
+26. n25 = NAND(n4=1, n14=1) = 0
+27. n26 = NAND(n8=0, n7=1) = 1
+28. n27 = NAND(q2=0, in2=0) = 1
+29. n28 = NAND(n19=0, n24=0) = 1
+30. n29 = NAND(n8=0, n1=1) = 1
+31. n30 = NAND(n26=1, n6=0) = 1
+32. n31 = NAND(n8=0, q2=0) = 1
+33. n32 = NAND(n30=1, n19=0) = 1
+34. n33 = NAND(n16=1, n13=0) = 1
+35. n34 = NAND(n16=1, n6=0) = 1
+36. n35 = NAND(n16=1, n26=1) = 0
+37. n36 = NAND(n7=1, n16=1) = 0
+38. n37 = NAND(q7=0, n19=0) = 1
+39. n38 = NAND(n28=1, n0=1) = 0
+40. n39 = NAND(n17=1, q1=0) = 1
+
+Records: n20=1, q0=1
+DFFs update:
+q0 = n17=1 -> 1
+q1 = n30=1 -> 1
+q2 = n23=1 -> 1
+q3 = n11=0 -> 0
+q4 = n16=1 -> 1
+q5 = n20=1 -> 1
+q6 = n9=0 -> 0
+q7 = n37=1 -> 1
+
+**Cycle 10:**
+Inputs: in0=1, in1=0, in2=0
+DFFs: q0=1, q1=1, q2=1, q3=0, q4=1, q5=1, q6=0, q7=1
+
+Gates:
+1. n0 = NAND(q7=1, q5=1) = 0
+2. n1 = NAND(q5=1, q2=1) = 0
+3. n2 = NAND(in2=0, q2=1) = 1
+4. n3 = NAND(q7=1, q0=1) = 0
+5. n4 = NAND(q3=0, q1=1) = 1
+6. n5 = NAND(q6=0, n0=0) = 1
+7. n6 = NAND(n5=1, q0=1) = 0
+8. n7 = NAND(q1=1, n4=1) = 0
+9. n8 = NAND(n4=1, n2=1) = 0
+10. n9 = NAND(n2=1, n2=1) = 0
+11. n10 = NAND(n3=0, n4=1) = 1
+12. n11 = NAND(q4=1, q0=1) = 0
+13. n12 = NAND(n7=0, q6=0) = 1
+14. n13 = NAND(q4=1, q0=1) = 0
+15. n14 = NAND(q4=1, q1=1) = 0
+16. n15 = NAND(n5=1, n5=1) = 0
+17. n16 = NAND(n7=0, in2=0) = 1
+18. n17 = NAND(n13=0, n8=0) = 1
+19. n18 = NAND(n15=0, n4=1) = 1
+20. n19 = NAND(n18=1, n14=0) = 1
+21. n20 = NAND(in2=0, n5=1) = 1
+22. n21 = NAND(q3=0, n6=0) = 1
+23. n22 = NAND(n6=0, q4=1) = 1
+24. n23 = NAND(n19=1, n10=1) = 0
+25. n24 = NAND(n5=1, n3=0) = 1
+26. n25 = NAND(n4=1, n14=0) = 1
+27. n26 = NAND(n8=0, n7=0) = 1
+28. n27 = NAND(q2=1, in2=0) = 1
+29. n28 = NAND(n19=1, n24=1) = 0
+30. n29 = NAND(n8=0, n1=0) = 1
+31. n30 = NAND(n26=1, n6=0) = 1
+32. n31 = NAND(n8=0, q2=1) = 1
+33. n32 = NAND(n30=1, n19=1) = 0
+34. n33 = NAND(n16=1, n13=0) = 1
+35. n34 = NAND(n16=1, n6=0) = 1
+36. n35 = NAND(n16=1, n26=1) = 0
+37. n36 = NAND(n7=0, n16=1) = 1
+38. n37 = NAND(q7=1, n19=1) = 0
+39. n38 = NAND(n28=0, n0=0) = 1
+40. n39 = NAND(n17=1, q1=1) = 0
+
+Records: n20=1, q0=1
+DFFs update:
+q0 = n17=1 -> 1
+q1 = n30=1 -> 1
+q2 = n23=0 -> 0
+q3 = n11=0 -> 0
+q4 = n16=1 -> 1
+q5 = n20=1 -> 1
+q6 = n9=0 -> 0
+q7 = n37=0 -> 0
+
+**Cycle 11:**
+Inputs: in0=0, in1=1, in2=0
+DFFs: q0=1, q1=1, q2=0, q3=0, q4=1, q5=1, q6=0, q7=0
+
+Gates:
+1. n0 = NAND(q7=0, q5=1) = 1
+2. n1 = NAND(q5=1, q2=0) = 1
+3. n2 = NAND(in2=0, q2=0) = 1
+4. n3 = NAND(q7=0, q0=1) = 1
+5. n4 = NAND(q3=0, q1=1) = 1
+6. n5 = NAND(q6=0, n0=1) = 1
+7. n6 = NAND(n5=1, q0=1) = 0
+8. n7 = NAND(q1=1, n4=1) = 0
+9. n8 = NAND(n4=1, n2=1) = 0
+10. n9 = NAND(n2=1, n2=1) = 0
+11. n10 = NAND(n3=1, n4=1) = 0
+12. n11 = NAND(q4=1, q0=1) = 0
+13. n12 = NAND(n7=0, q6=0) = 1
+14. n13 = NAND(q4=1, q0=1) = 0
+15. n14 = NAND(q4=1, q1=1) = 0
+16. n15 = NAND(n5=1, n5=1) = 0
+17. n16 = NAND(n7=0, in2=0) = 1
+18. n17 = NAND(n13=0, n8=0) = 1
+19. n18 = NAND(n15=0, n4=1) = 1
+20. n19 = NAND(n18=1, n14=0) = 1
+21. n20 = NAND(in2=0, n5=1) = 1
+22. n21 = NAND(q3=0, n6=0) = 1
+23. n22 = NAND(n6=0, q4=1) = 1
+24. n23 = NAND(n19=1, n10=0) = 1
+25. n24 = NAND(n5=1, n3=1) = 0
+26. n25 = NAND(n4=1, n14=0) = 1
+27. n26 = NAND(n8=0, n7=0) = 1
+28. n27 = NAND(q2=0, in2=0) = 1
+29. n28 = NAND(n19=1, n24=0) = 1
+30. n29 = NAND(n8=0, n1=1) = 1
+31. n30 = NAND(n26=1, n6=0) = 1
+32. n31 = NAND(n8=0, q2=0) = 1
+33. n32 = NAND(n30=1, n19=1) = 0
+34. n33 = NAND(n16=1, n13=0) = 1
+35. n34 = NAND(n16=1, n6=0) = 1
+36. n35 = NAND(n16=1, n26=1) = 0
+37. n36 = NAND(n7=0, n16=1) = 1
+38. n37 = NAND(q7=0, n19=1) = 1
+39. n38 = NAND(n28=1, n0=1) = 0
+40. n39 = NAND(n17=1, q1=1) = 0
+
+Records: n20=1, q0=1
+DFFs update:
+q0 = n17=1 -> 1
+q1 = n30=1 -> 1
+q2 = n23=1 -> 1
+q3 = n11=0 -> 0
+q4 = n16=1 -> 1
+q5 = n20=1 -> 1
+q6 = n9=0 -> 0
+q7 = n37=1 -> 1
+
+**Cycle 12:**
+Inputs: in0=0, in1=1, in2=1
+DFFs: q0=1, q1=1, q2=1, q3=0, q4=1, q5=1, q6=0, q7=1
+
+Gates:
+1. n0 = NAND(q7=1, q5=1) = 0
+2. n1 = NAND(q5=1, q2=1) = 0
+3. n2 = NAND(in2=1, q2=1) = 0
+4. n3 = NAND(q7=1, q0=1) = 0
+5. n4 = NAND(q3=0, q1=1) = 1
+6. n5 = NAND(q6=0, n0=0) = 1
+7. n6 = NAND(n5=1, q0=1) = 0
+8. n7 = NAND(q1=1, n4=1) = 0
+9. n8 = NAND(n4=1, n2=0) = 1
+10. n9 = NAND(n2=0, n2=0) = 1
+11. n10 = NAND(n3=0, n4=1) = 1
+12. n11 = NAND(q4=1, q0=1) = 0
+13. n12 = NAND(n7=0, q6=0) = 1
+14. n13 = NAND(q4=1, q0=1) = 0
+15. n14 = NAND(q4=1, q1=1) = 0
+16. n15 = NAND(n5=1, n5=1) = 0
+17. n16 = NAND(n7=0, in2=1) = 1
+18. n17 = NAND(n13=0, n8=1) = 1
+19. n18 = NAND(n15=0, n4=1) = 1
+20. n19 = NAND(n18=1, n14=0) = 1
+21. n20 = NAND(in2=1, n5=1) = 0
+22. n21 = NAND(q3=0, n6=0) = 1
+23. n22 = NAND(n6=0, q4=1) = 1
+24. n23 = NAND(n19=1, n10=1) = 0
+25. n24 = NAND(n5=1, n3=0) = 1
+26. n25 = NAND(n4=1, n14=0) = 1
+27. n26 = NAND(n8=1, n7=0) = 1
+28. n27 = NAND(q2=1, in2=1) = 0
+29. n28 = NAND(n19=1, n24=1) = 0
+30. n29 = NAND(n8=1, n1=0) = 1
+31. n30 = NAND(n26=1, n6=0) = 1
+32. n31 = NAND(n8=1, q2=1) = 0
+33. n32 = NAND(n30=1, n19=1) = 0
+34. n33 = NAND(n16=1, n13=0) = 1
+35. n34 = NAND(n16=1, n6=0) = 1
+36. n35 = NAND(n16=1, n26=1) = 0
+37. n36 = NAND(n7=0, n16=1) = 1
+38. n37 = NAND(q7=1, n19=1) = 0
+39. n38 = NAND(n28=0, n0=0) = 1
+40. n39 = NAND(n17=1, q1=1) = 0
+
+Records: n20=0, q0=1
+DFFs update:
+q0 = n17=1 -> 1
+q1 = n30=1 -> 1
+q2 = n23=0 -> 0
+q3 = n11=0 -> 0
+q4 = n16=1 -> 1
+q5 = n20=0 -> 0
+q6 = n9=1 -> 1
+q7 = n37=0 -> 0
+
+**Cycle 13:**
+Inputs: in0=0, in1=1, in2=1
+DFFs: q0=1, q1=1, q2=0, q3=0, q4=1, q5=0, q6=1, q7=0
+
+Gates:
+1. n0 = NAND(q7=0, q5=0) = 1
+2. n1 = NAND(q5=0, q2=0) = 1
+3. n2 = NAND(in2=1, q2=0) = 1
+4. n3 = NAND(q7=0, q0=1) = 1
+5. n4 = NAND(q3=0, q1=1) = 1
+6. n5 = NAND(q6=1, n0=1) = 0
+7. n6 = NAND(n5=0, q0=1) = 1
+8. n7 = NAND(q1=1, n4=1) = 0
+9. n8 = NAND(n4=1, n2=1) = 0
+10. n9 = NAND(n2=1, n2=1) = 0
+11. n10 = NAND(n3=1, n4=1) = 0
+12. n11 = NAND(q4=1, q0=1) = 0
+13. n12 = NAND(n7=0, q6=1) = 1
+14. n13 = NAND(q4=1, q0=1) = 0
+15. n14 = NAND(q4=1, q1=1) = 0
+16. n15 = NAND(n5=0, n5=0) = 1
+17. n16 = NAND(n7=0, in2=1) = 1
+18. n17 = NAND(n13=0, n8=0) = 1
+19. n18 = NAND(n15=1, n4=1) = 0
+20. n19 = NAND(n18=0, n14=0) = 1
+21. n20 = NAND(in2=1, n5=0) = 1
+22. n21 = NAND(q3=0, n6=1) = 1
+23. n22 = NAND(n6=1, q4=1) = 0
+24. n23 = NAND(n19=1, n10=0) = 1
+25. n24 = NAND(n5=0, n3=1) = 1
+26. n25 = NAND(n4=1, n14=0) = 1
+27. n26 = NAND(n8=0, n7=0) = 1
+28. n27 = NAND(q2=0, in2=1) = 1
+29. n28 = NAND(n19=1, n24=1) = 0
+30. n29 = NAND(n8=0, n1=1) = 1
+31. n30 = NAND(n26=1, n6=1) = 0
+32. n31 = NAND(n8=0, q2=0) = 1
+33. n32 = NAND(n30=0, n19=1) = 1
+34. n33 = NAND(n16=1, n13=0) = 1
+35. n34 = NAND(n16=1, n6=1) = 0
+36. n35 = NAND(n16=1, n26=1) = 0
+37. n36 = NAND(n7=0, n16=1) = 1
+38. n37 = NAND(q7=0, n19=1) = 1
+39. n38 = NAND(n28=0, n0=1) = 1
+40. n39 = NAND(n17=1, q1=1) = 0
+
+Records: n20=1, q0=1
+DFFs update:
+q0 = n17=1 -> 1
+q1 = n30=0 -> 0
+q2 = n23=1 -> 1
+q3 = n11=0 -> 0
+q4 = n16=1 -> 1
+q5 = n20=1 -> 1
+q6 = n9=0 -> 0
+q7 = n37=1 -> 1
+
+**Cycle 14:**
+Inputs: in0=0, in1=1, in2=1
+DFFs: q0=1, q1=0, q2=1, q3=0, q4=1, q5=1, q6=0, q7=1
+
+Gates:
+1. n0 = NAND(q7=1, q5=1) = 0
+2. n1 = NAND(q5=1, q2=1) = 0
+3. n2 = NAND(in2=1, q2=1) = 0
+4. n3 = NAND(q7=1, q0=1) = 0
+5. n4 = NAND(q3=0, q1=0) = 1
+6. n5 = NAND(q6=0, n0=0) = 1
+7. n6 = NAND(n5=1, q0=1) = 0
+8. n7 = NAND(q1=0, n4=1) = 1
+9. n8 = NAND(n4=1, n2=0) = 1
+10. n9 = NAND(n2=0, n2=0) = 1
+11. n10 = NAND(n3=0, n4=1) = 1
+12. n11 = NAND(q4=1, q0=1) = 0
+13. n12 = NAND(n7=1, q6=0) = 1
+14. n13 = NAND(q4=1, q0=1) = 0
+15. n14 = NAND(q4=1, q1=0) = 1
+16. n15 = NAND(n5=1, n5=1) = 0
+17. n16 = NAND(n7=1, in2=1) = 0
+18. n17 = NAND(n13=0, n8=1) = 1
+19. n18 = NAND(n15=0, n4=1) = 1
+20. n19 = NAND(n18=1, n14=1) = 0
+21. n20 = NAND(in2=1, n5=1) = 0
+22. n21 = NAND(q3=0, n6=0) = 1
+23. n22 = NAND(n6=0, q4=1) = 1
+24. n23 = NAND(n19=0, n10=1) = 1
+25. n24 = NAND(n5=1, n3=0) = 1
+26. n25 = NAND(n4=1, n14=1) = 0
+27. n26 = NAND(n8=1, n7=1) = 0
+28. n27 = NAND(q2=1, in2=1) = 0
+29. n28 = NAND(n19=0, n24=1) = 1
+30. n29 = NAND(n8=1, n1=0) = 1
+31. n30 = NAND(n26=0, n6=0) = 1
+32. n31 = NAND(n8=1, q2=1) = 0
+33. n32 = NAND(n30=1, n19=0) = 1
+34. n33 = NAND(n16=0, n13=0) = 1
+35. n34 = NAND(n16=0, n6=0) = 1
+36. n35 = NAND(n16=0, n26=0) = 1
+37. n36 = NAND(n7=1, n16=0) = 1
+38. n37 = NAND(q7=1, n19=0) = 1
+39. n38 = NAND(n28=1, n0=0) = 1
+40. n39 = NAND(n17=1, q1=0) = 1
+
+Records: n20=0, q0=1
+DFFs update:
+q0 = n17=1 -> 1
+q1 = n30=1 -> 1
+q2 = n23=1 -> 1
+q3 = n11=0 -> 0
+q4 = n16=0 -> 0
+q5 = n20=0 -> 0
+q6 = n9=1 -> 1
+q7 = n37=1 -> 1
+
+**Cycle 15:**
+Inputs: in0=1, in1=1, in2=0
+DFFs: q0=1, q1=1, q2=1, q3=0, q4=0, q5=0, q6=1, q7=1
+
+Gates:
+1. n0 = NAND(q7=1, q5=0) = 1
+2. n1 = NAND(q5=0, q2=1) = 1
+3. n2 = NAND(in2=0, q2=1) = 1
+4. n3 = NAND(q7=1, q0=1) = 0
+5. n4 = NAND(q3=0, q1=1) = 1
+6. n5 = NAND(q6=1, n0=1) = 0
+7. n6 = NAND(n5=0, q0=1) = 1
+8. n7 = NAND(q1=1, n4=1) = 0
+9. n8 = NAND(n4=1, n2=1) = 0
+10. n9 = NAND(n2=1, n2=1) = 0
+11. n10 = NAND(n3=0, n4=1) = 1
+12. n11 = NAND(q4=0, q0=1) = 1
+13. n12 = NAND(n7=0, q6=1) = 1
+14. n13 = NAND(q4=0, q0=1) = 1
+15. n14 = NAND(q4=0, q1=1) = 1
+16. n15 = NAND(n5=0, n5=0) = 1
+17. n16 = NAND(n7=0, in2=0) = 1
+18. n17 = NAND(n13=1, n8=0) = 1
+19. n18 = NAND(n15=1, n4=1) = 0
+20. n19 = NAND(n18=0, n14=1) = 1
+21. n20 = NAND(in2=0, n5=0) = 1
+22. n21 = NAND(q3=0, n6=1) = 1
+23. n22 = NAND(n6=1, q4=0) = 1
+24. n23 = NAND(n19=1, n10=1) = 0
+25. n24 = NAND(n5=0, n3=0) = 1
+26. n25 = NAND(n4=1, n14=1) = 0
+27. n26 = NAND(n8=0, n7=0) = 1
+28. n27 = NAND(q2=1, in2=0) = 1
+29. n28 = NAND(n19=1, n24=1) = 0
+30. n29 = NAND(n8=0, n1=1) = 1
+31. n30 = NAND(n26=1, n6=1) = 0
+32. n31 = NAND(n8=0, q2=1) = 1
+33. n32 = NAND(n30=0, n19=1) = 1
+34. n33 = NAND(n16=1, n13=1) = 0
+35. n34 = NAND(n16=1, n6=1) = 0
+36. n35 = NAND(n16=1, n26=1) = 0
+37. n36 = NAND(n7=0, n16=1) = 1
+38. n37 = NAND(q7=1, n19=1) = 0
+39. n38 = NAND(n28=0, n0=1) = 1
+40. n39 = NAND(n17=1, q1=1) = 0
+
+Records: n20=1, q0=1
+DFFs update:
+q0 = n17=1 -> 1
+q1 = n30=0 -> 0
+q2 = n23=0 -> 0
+q3 = n11=1 -> 1
+q4 = n16=1 -> 1
+q5 = n20=1 -> 1
+q6 = n9=0 -> 0
+q7 = n37=0 -> 0
+
+**Cycle 16:**
+Inputs: in0=1, in1=0, in2=1
+DFFs: q0=1, q1=0, q2=0, q3=1, q4=1, q5=1, q6=0, q7=0
+
+Gates:
+1. n0 = NAND(q7=0, q5=1) = 1
+2. n1 = NAND(q5=1, q2=0) = 1
+3. n2 = NAND(in2=1, q2=0) = 1
+4. n3 = NAND(q7=0, q0=1) = 1
+5. n4 = NAND(q3=1, q1=0) = 1
+6. n5 = NAND(q6=0, n0=1) = 1
+7. n6 = NAND(n5=1, q0=1) = 0
+8. n7 = NAND(q1=0, n4=1) = 1
+9. n8 = NAND(n4=1, n2=1) = 0
+10. n9 = NAND(n2=1, n2=1) = 0
+11. n10 = NAND(n3=1, n4=1) = 0
+12. n11 = NAND(q4=1, q0=1) = 0
+13. n12 = NAND(n7=1, q6=0) = 1
+14. n13 = NAND(q4=1, q0=1) = 0
+15. n14 = NAND(q4=1, q1=0) = 1
+16. n15 = NAND(n5=1, n5=1) = 0
+17. n16 = NAND(n7=1, in2=1) = 0
+18. n17 = NAND(n13=0, n8=0) = 1
+19. n18 = NAND(n15=0, n4=1) = 1
+20. n19 = NAND(n18=1, n14=1) = 0
+21. n20 = NAND(in2=1, n5=1) = 0
+22. n21 = NAND(q3=1, n6=0) = 1
+23. n22 = NAND(n6=0, q4=1) = 1
+24. n23 = NAND(n19=0, n10=0) = 1
+25. n24 = NAND(n5=1, n3=1) = 0
+26. n25 = NAND(n4=1, n14=1) = 0
+27. n26 = NAND(n8=0, n7=1) = 1
+28. n27 = NAND(q2=0, in2=1) = 1
+29. n28 = NAND(n19=0, n24=0) = 1
+30. n29 = NAND(n8=0, n1=1) = 1
+31. n30 = NAND(n26=1, n6=0) = 1
+32. n31 = NAND(n8=0, q2=0) = 1
+33. n32 = NAND(n30=1, n19=0) = 1
+34. n33 = NAND(n16=0, n13=0) = 1
+35. n34 = NAND(n16=0, n6=0) = 1
+36. n35 = NAND(n16=0, n26=1) = 1
+37. n36 = NAND(n7=1, n16=0) = 1
+38. n37 = NAND(q7=0, n19=0) = 1
+39. n38 = NAND(n28=1, n0=1) = 0
+40. n39 = NAND(n17=1, q1=0) = 1
+
+Records: n20=0, q0=1
+DFFs update:
+q0 = n17=1 -> 1
+q1 = n30=1 -> 1
+q2 = n23=1 -> 1
+q3 = n11=0 -> 0
+q4 = n16=0 -> 0
+q5 = n20=0 -> 0
+q6 = n9=0 -> 0
+q7 = n37=1 -> 1
+
+**Cycle 17:**
+Inputs: in0=0, in1=1, in2=1
+DFFs: q0=1, q1=1, q2=1, q3=0, q4=0, q5=0, q6=0, q7=1
+
+Gates:
+1. n0 = NAND(q7=1, q5=0) = 1
+2. n1 = NAND(q5=0, q2=1) = 1
+3. n2 = NAND(in2=1, q2=1) = 0
+4. n3 = NAND(q7=1, q0=1) = 0
+5. n4 = NAND(q3=0, q1=1) = 1
+6. n5 = NAND(q6=0, n0=1) = 1
+7. n6 = NAND(n5=1, q0=1) = 0
+8. n7 = NAND(q1=1, n4=1) = 0
+9. n8 = NAND(n4=1, n2=0) = 1
+10. n9 = NAND(n2=0, n2=0) = 1
+11. n10 = NAND(n3=0, n4=1) = 1
+12. n11 = NAND(q4=0, q0=1) = 1
+13. n12 = NAND(n7=0, q6=0) = 1
+14. n13 = NAND(q4=0, q0=1) = 1
+15. n14 = NAND(q4=0, q1=1) = 1
+16. n15 = NAND(n5=1, n5=1) = 0
+17. n16 = NAND(n7=0, in2=1) = 1
+18. n17 = NAND(n13=1, n8=1) = 0  (NAND(1,1)=0)
+19. n18 = NAND(n15=0, n4=1) = 1
+20. n19 = NAND(n18=1, n14=1) = 0
+21. n20 = NAND(in2=1, n5=1) = 0
+22. n21 = NAND(q3=0, n6=0) = 1
+23. n22 = NAND(n6=0, q4=0) = 1
+24. n23 = NAND(n19=0, n10=1) = 1
+25. n24 = NAND(n5=1, n3=0) = 1
+26. n25 = NAND(n4=1, n14=1) = 0
+27. n26 = NAND(n8=1, n7=0) = 1
+28. n27 = NAND(q2=1, in2=1) = 0
+29. n28 = NAND(n19=0, n24=1) = 1
+30. n29 = NAND(n8=1, n1=1) = 0
+31. n30 = NAND(n26=1, n6=0) = 1
+32. n31 = NAND(n8=1, q2=1) = 0
+33. n32 = NAND(n30=1, n19=0) = 1
+34. n33 = NAND(n16=1, n13=1) = 0
+35. n34 = NAND(n16=1, n6=0) = 1
+36. n35 = NAND(n16=1, n26=1) = 0
+37. n36 = NAND(n7=0, n16=1) = 1
+38. n37 = NAND(q7=1, n19=0) = 1
+39. n38 = NAND(n28=1, n0=1) = 0
+40. n39 = NAND(n17=0, q1=1) = 1
+
+Records: n20=0, q0=1
+DFFs update:
+q0 = n17=0 -> 0
+q1 = n30=1 -> 1
+q2 = n23=1 -> 1
+q3 = n11=1 -> 1
+q4 = n16=1 -> 1
+q5 = n20=0 -> 0
+q6 = n9=1 -> 1
+q7 = n37=1 -> 1
+
+**Cycle 18:**
+Inputs: in0=0, in1=0, in2=0
+DFFs: q0=0, q1=1, q2=1, q3=1, q4=1, q5=0, q6=1, q7=1
+
+Gates:
+1. n0 = NAND(q7=1, q5=0) = 1
+2. n1 = NAND(q5=0, q2=1) = 1
+3. n2 = NAND(in2=0, q2=1) = 1
+4. n3 = NAND(q7=1, q0=0) = 1
+5. n4 = NAND(q3=1, q1=1) = 0
+6. n5 = NAND(q6=1, n0=1) = 0
+7. n6 = NAND(n5=0, q0=0) = 1
+8. n7 = NAND(q1=1, n4=0) = 1
+9. n8 = NAND(n4=0, n2=1) = 1
+10. n9 = NAND(n2=1, n2=1) = 0
+11. n10 = NAND(n3=1, n4=0) = 1
+12. n11 = NAND(q4=1, q0=0) = 1
+13. n12 = NAND(n7=1, q6=1) = 0
+14. n13 = NAND(q4=1, q0=0) = 1
+15. n14 = NAND(q4=1, q1=1) = 0
+16. n15 = NAND(n5=0, n5=0) = 1
+17. n16 = NAND(n7=1, in2=0) = 1
+18. n17 = NAND(n13=1, n8=1) = 0
+19. n18 = NAND(n15=1, n4=0) = 1
+20. n19 = NAND(n18=1, n14=0) = 1
+21. n20 = NAND(in2=0, n5=0) = 1
+22. n21 = NAND(q3=1, n6=1) = 0
+23. n22 = NAND(n6=1, q4=1) = 0
+24. n23 = NAND(n19=1, n10=1) = 0
+25. n24 = NAND(n5=0, n3=1) = 1
+26. n25 = NAND(n4=0, n14=0) = 1
+27. n26 = NAND(n8=1, n7=1) = 0
+28. n27 = NAND(q2=1, in2=0) = 1
+29. n28 = NAND(n19=1, n24=1) = 0
+30. n29 = NAND(n8=1, n1=1) = 0
+31. n30 = NAND(n26=0, n6=1) = 1
+32. n31 = NAND(n8=1, q2=1) = 0
+33. n32 = NAND(n30=1, n19=1) = 0
+34. n33 = NAND(n16=1, n13=1) = 0
+35. n34 = NAND(n16=1, n6=1) = 0
+36. n35 = NAND(n16=1, n26=0) = 1
+37. n36 = NAND(n7=1, n16=1) = 0
+38. n37 = NAND(q7=1, n19=1) = 0
+39. n38 = NAND(n28=0, n0=1) = 1
+40. n39 = NAND(n17=0, q1=1) = 1
+
+Records: n20=1, q0=0
+DFFs update:
+q0 = n17=0 -> 0
+q1 = n30=1 -> 1
+q2 = n23=0 -> 0
+q3 = n11=1 -> 1
+q4 = n16=1 -> 1
+q5 = n20=1 -> 1
+q6 = n9=0 -> 0
+q7 = n37=0 -> 0
+
+**Cycle 19:**
+Inputs: in0=0, in1=0, in2=1
+DFFs: q0=0, q1=1, q2=0, q3=1, q4=1, q5=1, q6=0, q7=0
+
+Gates:
+1. n0 = NAND(q7=0, q5=1) = 1
+2. n1 = NAND(q5=1, q2=0) = 1
+3. n2 = NAND(in2=1, q2=0) = 1
+4. n3 = NAND(q7=0, q0=0) = 1
+5. n4 = NAND(q3=1, q1=1) = 0
+6. n5 = NAND(q6=0, n0=1) = 1
+7. n6 = NAND(n5=1, q0=0) = 1
+8. n7 = NAND(q1=1, n4=0) = 1
+9. n8 = NAND(n4=0, n2=1) = 1
+10. n9 = NAND(n2=1, n2=1) = 0
+11. n10 = NAND(n3=1, n4=0) = 1
+12. n11 = NAND(q4=1, q0=0) = 1
+13. n12 = NAND(n7=1, q6=0) = 1
+14. n13 = NAND(q4=1, q0=0) = 1
+15. n14 = NAND(q4=1, q1=1) = 0
+16. n15 = NAND(n5=1, n5=1) = 0
+17. n16 = NAND(n7=1, in2=1) = 0
+18. n17 = NAND(n13=1, n8=1) = 0
+19. n18 = NAND(n15=0, n4=0) = 1
+20. n19 = NAND(n18=1, n14=0) = 1
+21. n20 = NAND(in2=1, n5=1) = 0
+22. n21 = NAND(q3=1, n6=1) = 0
+23. n22 = NAND(n6=1, q4=1) = 0
+24. n23 = NAND(n19=1, n10=1) = 0
+25. n24 = NAND(n5=1, n3=1) = 0
+26. n25 = NAND(n4=0, n14=0) = 1
+27. n26 = NAND(n8=1, n7=1) = 0
+28. n27 = NAND(q2=0, in2=1) = 1
+29. n28 = NAND(n19=1, n24=0) = 1
+30. n29 = NAND(n8=1, n1=1) = 0
+31. n30 = NAND(n26=0, n6=1) = 1
+32. n31 = NAND(n8=1, q2=0) = 1
+33. n32 = NAND(n30=1, n19=1) = 0
+34. n33 = NAND(n16=0, n13=1) = 1
+35. n34 = NAND(n16=0, n6=1) = 1
+36. n35 = NAND(n16=0, n26=0) = 1
+37. n36 = NAND(n7=1, n16=0) = 1
+38. n37 = NAND(q7=0, n19=1) = 1
+39. n38 = NAND(n28=1, n0=1) = 0
+40. n39 = NAND(n17=0, q1=1) = 1
+
+Records: n20=0, q0=0
+DFFs update:
+q0 = n17=0 -> 0
+q1 = n30=1 -> 1
+q2 = n23=0 -> 0
+q3 = n11=1 -> 1
+q4 = n16=0 -> 0
+q5 = n20=0 -> 0
+q6 = n9=0 -> 0
+q7 = n37=1 -> 1
+
+**Cycle 20:**
+Inputs: in0=1, in1=1, in2=1
+DFFs: q0=0, q1=1, q2=0, q3=1, q4=0, q5=0, q6=0, q7=1
+
+Gates:
+1. n0 = NAND(q7=1, q5=0) = 1
+2. n1 = NAND(q5=0, q2=0) = 1
+3. n2 = NAND(in2=1, q2=0) = 1
+4. n3 = NAND(q7=1, q0=0) = 1
+5. n4 = NAND(q3=1, q1=1) = 0
+6. n5 = NAND(q6=0, n0=1) = 1
+7. n6 = NAND(n5=1, q0=0) = 1
+8. n7 = NAND(q1=1, n4=0) = 1
+9. n8 = NAND(n4=0, n2=1) = 1
+10. n9 = NAND(n2=1, n2=1) = 0
+11. n10 = NAND(n3=1, n4=0) = 1
+12. n11 = NAND(q4=0, q0=0) = 1
+13. n12 = NAND(n7=1, q6=0) = 1
+14. n13 = NAND(q4=0, q0=0) = 1
+15. n14 = NAND(q4=0, q1=1) = 1
+16. n15 = NAND(n5=1, n5=1) = 0
+17. n16 = NAND(n7=1, in2=1) = 0
+18. n17 = NAND(n13=1, n8=1) = 0
+19. n18 = NAND(n15=0, n4=0) = 1
+20. n19 = NAND(n18=1, n14=1) = 0
+21. n20 = NAND(in2=1, n5=1) = 0
+22. n21 = NAND(q3=1, n6=1) = 0
+23. n22 = NAND(n6=1, q4=0) = 1
+24. n23 = NAND(n19=0, n10=1) = 1
+25. n24 = NAND(n5=1, n3=1) = 0
+26. n25 = NAND(n4=0, n14=1) = 1
+27. n26 = NAND(n8=1, n7=1) = 0
+28. n27 = NAND(q2=0, in2=1) = 1
+29. n28 = NAND(n19=0, n24=0) = 1
+30. n29 = NAND(n8=1, n1=1) = 0
+31. n30 = NAND(n26=0, n6=1) = 1
+32. n31 = NAND(n8=1, q2=0) = 1
+33. n32 = NAND(n30=1, n19=0) = 1
+34. n33 = NAND(n16=0, n13=1) = 1
+35. n34 = NAND(n16=0, n6=1) = 1
+36. n35 = NAND(n16=0, n26=0) = 1
+37. n36 = NAND(n7=1, n16=0) = 1
+38. n37 = NAND(q7=1, n19=0) = 1
+39. n38 = NAND(n28=1, n0=1) = 0
+40. n39 = NAND(n17=0, q1=1) = 1
+
+Records: n20=0, q0=0
+DFFs update:
+q0 = n17=0 -> 0
+q1 = n30=1 -> 1
+q2 = n23=1 -> 1
+q3 = n11=1 -> 1
+q4 = n16=0 -> 0
+q5 = n20=0 -> 0
+q6 = n9=0 -> 0
+q7 = n37=1 -> 1
+
+**Cycle 21:**
+Inputs: in0=0, in1=0, in2=1
+DFFs: q0=0, q1=1, q2=1, q3=1, q4=0, q5=0, q6=0, q7=1
+
+Gates:
+1. n0 = NAND(q7=1, q5=0) = 1
+2. n1 = NAND(q5=0, q2=1) = 1
+3. n2 = NAND(in2=1, q2=1) = 0
+4. n3 = NAND(q7=1, q0=0) = 1
+5. n4 = NAND(q3=1, q1=1) = 0
+6. n5 = NAND(q6=0, n0=1) = 1
+7. n6 = NAND(n5=1, q0=0) = 1
+8. n7 = NAND(q1=1, n4=0) = 1
+9. n8 = NAND(n4=0, n2=0) = 1
+10. n9 = NAND(n2=0, n2=0) = 1
+11. n10 = NAND(n3=1, n4=0) = 1
+12. n11 = NAND(q4=0, q0=0) = 1
+13. n12 = NAND(n7=1, q6=0) = 1
+14. n13 = NAND(q4=0, q0=0) = 1
+15. n14 = NAND(q4=0, q1=1) = 1
+16. n15 = NAND(n5=1, n5=1) = 0
+17. n16 = NAND(n7=1, in2=1) = 0
+18. n17 = NAND(n13=1, n8=1) = 0
+19. n18 = NAND(n15=0, n4=0) = 1
+20. n19 = NAND(n18=1, n14=1) = 0
+21. n20 = NAND(in2=1, n5=1) = 0
+22. n21 = NAND(q3=1, n6=1) = 0
+23. n22 = NAND(n6=1, q4=0) = 1
+24. n23 = NAND(n19=0, n10=1) = 1
+25. n24 = NAND(n5=1, n3=1) = 0
+26. n25 = NAND(n4=0, n14=1) = 1
+27. n26 = NAND(n8=1, n7=1) = 0
+28. n27 = NAND(q2=1, in2=1) = 0
+29. n28 = NAND(n19=0, n24=0) = 1
+30. n29 = NAND(n8=1, n1=1) = 0
+31. n30 = NAND(n26=0, n6=1) = 1
+32. n31 = NAND(n8=1, q2=1) = 0
+33. n32 = NAND(n30=1, n19=0) = 1
+34. n33 = NAND(n16=0, n13=1) = 1
+35. n34 = NAND(n16=0, n6=1) = 1
+36. n35 = NAND(n16=0, n26=0) = 1
+37. n36 = NAND(n7=1, n16=0) = 1
+38. n37 = NAND(q7=1, n19=0) = 1
+39. n38 = NAND(n28=1, n0=1) = 0
+40. n39 = NAND(n17=0, q1=1) = 1
+
+Records: n20=0, q0=0
+DFFs update:
+q0 = n17=0 -> 0
+q1 = n30=1 -> 1
+q2 = n23=1 -> 1
+q3 = n11=1 -> 1
+q4 = n16=0 -> 0
+q5 = n20=0 -> 0
+q6 = n9=1 -> 1
+q7 = n37=1 -> 1
+
+**Cycle 22:**
+Inputs: in0=1, in1=1, in2=1
+DFFs: q0=0, q1=1, q2=1, q3=1, q4=0, q5=0, q6=1, q7=1
+
+Gates:
+1. n0 = NAND(q7=1, q5=0) = 1
+2. n1 = NAND(q5=0, q2=1) = 1
+3. n2 = NAND(in2=1, q2=1) = 0
+4. n3 = NAND(q7=1, q0=0) = 1
+5. n4 = NAND(q3=1, q1=1) = 0
+6. n5 = NAND(q6=1, n0=1) = 0
+7. n6 = NAND(n5=0, q0=0) = 1
+8. n7 = NAND(q1=1, n4=0) = 1
+9. n8 = NAND(n4=0, n2=0) = 1
+10. n9 = NAND(n2=0, n2=0) = 1
+11. n10 = NAND(n3=1, n4=0) = 1
+12. n11 = NAND(q4=0, q0=0) = 1
+13. n12 = NAND(n7=1, q6=1) = 0
+14. n13 = NAND(q4=0, q0=0) = 1
+15. n14 = NAND(q4=0, q1=1) = 1
+16. n15 = NAND(n5=0, n5=0) = 1
+17. n16 = NAND(n7=1, in2=1) = 0
+18. n17 = NAND(n13=1, n8=1) = 0
+19. n18 = NAND(n15=1, n4=0) = 1
+20. n19 = NAND(n18=1, n14=1) = 0
+21. n20 = NAND(in2=1, n5=0) = 1
+22. n21 = NAND(q3=1, n6=1) = 0
+23. n22 = NAND(n6=1, q4=0) = 1
+24. n23 = NAND(n19=0, n10=1) = 1
+25. n24 = NAND(n5=0, n3=1) = 1
+26. n25 = NAND(n4=0, n14=1) = 1
+27. n26 = NAND(n8=1, n7=1) = 0
+28. n27 = NAND(q2=1, in2=1) = 0
+29. n28 = NAND(n19=0, n24=1) = 1
+30. n29 = NAND(n8=1, n1=1) = 0
+31. n30 = NAND(n26=0, n6=1) = 1
+32. n31 = NAND(n8=1, q2=1) = 0
+33. n32 = NAND(n30=1, n19=0) = 1
+34. n33 = NAND(n16=0, n13=1) = 1
+35. n34 = NAND(n16=0, n6=1) = 1
+36. n35 = NAND(n16=0, n26=0) = 1
+37. n36 = NAND(n7=1, n16=0) = 1
+38. n37 = NAND(q7=1, n19=0) = 1
+39. n38 = NAND(n28=1, n0=1) = 0
+40. n39 = NAND(n17=0, q1=1) = 1
+
+Records: n20=1, q0=0
+DFFs update:
+q0 = n17=0 -> 0
+q1 = n30=1 -> 1
+q2 = n23=1 -> 1
+q3 = n11=1 -> 1
+q4 = n16=0 -> 0
+q5 = n20=1 -> 1
+q6 = n9=1 -> 1
+q7 = n37=1 -> 1
+
+**Cycle 23:**
+Inputs: in0=1, in1=1, in2=1
+DFFs: q0=0, q1=1, q2=1, q3=1, q4=0, q5=1, q6=1, q7=1
+
+Gates:
+1. n0 = NAND(q7=1, q5=1) = 0
+2. n1 = NAND(q5=1, q2=1) = 0
+3. n2 = NAND(in2=1, q2=1) = 0
+4. n3 = NAND(q7=1, q0=0) = 1
+5. n4 = NAND(q3=1, q1=1) = 0
+6. n5 = NAND(q6=1, n0=0) = 1
+7. n6 = NAND(n5=1, q0=0) = 1
+8. n7 = NAND(q1=1, n4=0) = 1
+9. n8 = NAND(n4=0, n2=0) = 1
+10. n9 = NAND(n2=0, n2=0) = 1
+11. n10 = NAND(n3=1, n4=0) = 1
+12. n11 = NAND(q4=0, q0=0) = 1
+13. n12 = NAND(n7=1, q6=1) = 0
+14. n13 = NAND(q4=0, q0=0) = 1
+15. n14 = NAND(q4=0, q1=1) = 1
+16. n15 = NAND(n5=1, n5=1) = 0
+17. n16 = NAND(n7=1, in2=1) = 0
+18. n17 = NAND(n13=1, n8=1) = 0
+19. n18 = NAND(n15=0, n4=0) = 1
+20. n19 = NAND(n18=1, n14=1) = 0
+21. n20 = NAND(in2=1, n5=1) = 0
+22. n21 = NAND(q3=1, n6=1) = 0
+23. n22 = NAND(n6=1, q4=0) = 1
+24. n23 = NAND(n19=0, n10=1) = 1
+25. n24 = NAND(n5=1, n3=1) = 0
+26. n25 = NAND(n4=0, n14=1) = 1
+27. n26 = NAND(n8=1, n7=1) = 0
+28. n27 = NAND(q2=1, in2=1) = 0
+29. n28 = NAND(n19=0, n24=0) = 1
+30. n29 = NAND(n8=1, n1=0) = 1
+31. n30 = NAND(n26=0, n6=1) = 1
+32. n31 = NAND(n8=1, q2=1) = 0
+33. n32 = NAND(n30=1, n19=0) = 1
+34. n33 = NAND(n16=0, n13=1) = 1
+35. n34 = NAND(n16=0, n6=1) = 1
+36. n35 = NAND(n16=0, n26=0) = 1
+37. n36 = NAND(n7=1, n16=0) = 1
+38. n37 = NAND(q7=1, n19=0) = 1
+39. n38 = NAND(n28=1, n0=0) = 1
+40. n39 = NAND(n17=0, q1=1) = 1
+
+Records: n20=0, q0=0
+DFFs update:
+q0 = n17=0 -> 0
+q1 = n30=1 -> 1
+q2 = n23=1 -> 1
+q3 = n11=1 -> 1
+q4 = n16=0 -> 0
+q5 = n20=0 -> 0
+q6 = n9=1 -> 1
+q7 = n37=1 -> 1
+
+**Cycle 24:**
+Inputs: in0=1, in1=1, in2=0
+DFFs: q0=0, q1=1, q2=1, q3=1, q4=0, q5=0, q6=1, q7=1
+
+Gates:
+1. n0 = NAND(q7=1, q5=0) = 1
+2. n1 = NAND(q5=0, q2=1) = 1
+3. n2 = NAND(in2=0, q2=1) = 1
+4. n3 = NAND(q7=1, q0=0) = 1
+5. n4 = NAND(q3=1, q1=1) = 0
+6. n5 = NAND(q6=1, n0=1) = 0
+7. n6 = NAND(n5=0, q0=0) = 1
+8. n7 = NAND(q1=1, n4=0) = 1
+9. n8 = NAND(n4=0, n2=1) = 1
+10. n9 = NAND(n2=1, n2=1) = 0
+11. n10 = NAND(n3=1, n4=0) = 1
+12. n11 = NAND(q4=0, q0=0) = 1
+13. n12 = NAND(n7=1, q6=1) = 0
+14. n13 = NAND(q4=0, q0=0) = 1
+15. n14 = NAND(q4=0, q1=1) = 1
+16. n15 = NAND(n5=0, n5=0) = 1
+17. n16 = NAND(n7=1, in2=0) = 1
+18. n17 = NAND(n13=1, n8=1) = 0
+19. n18 = NAND(n15=1, n4=0) = 1
+20. n19 = NAND(n18=1, n14=1) = 0
+21. n20 = NAND(in2=0, n5=0) = 1
+22. n21 = NAND(q3=1, n6=1) = 0
+23. n22 = NAND(n6=1, q4=0) = 1
+24. n23 = NAND(n19=0, n10=1) = 1
+25. n24 = NAND(n5=0, n3=1) = 1
+26. n25 = NAND(n4=0, n14=1) = 1
+27. n26 = NAND(n8=1, n7=1) = 0
+28. n27 = NAND(q2=1, in2=0) = 1
+29. n28 = NAND(n19=0, n24=1) = 1
+30. n29 = NAND(n8=1, n1=1) = 0
+31. n30 = NAND(n26=0, n6=1) = 1
+32. n31 = NAND(n8=1, q2=1) = 0
+33. n32 = NAND(n30=1, n19=0) = 1
+34. n33 = NAND(n16=1, n13=1) = 0
+35. n34 = NAND(n16=1, n6=1) = 0
+36. n35 = NAND(n16=1, n26=0) = 1
+37. n36 = NAND(n7=1, n16=1) = 0
+38. n37 = NAND(q7=1, n19=0) = 1
+39. n38 = NAND(n28=1, n0=1) = 0
+40. n39 = NAND(n17=0, q1=1) = 1
+
+Records: n20=1, q0=0
+DFFs update:
+q0 = n17=0 -> 0
+q1 = n30=1 -> 1
+q2 = n23=1 -> 1
+q3 = n11=1 -> 1
+q4 = n16=1 -> 1
+q5 = n20=1 -> 1
+q6 = n9=0 -> 0
+q7 = n37=1 -> 1
+
+**Cycle 25:**
+Inputs: in0=0, in1=0, in2=0
+DFFs: q0=0, q1=1, q2=1, q3=1, q4=1, q5=1, q6=0, q7=1
+
+Gates:
+1. n0 = NAND(q7=1, q5=1) = 0
+2. n1 = NAND(q5=1, q2=1) = 0
+3. n2 = NAND(in2=0, q2=1) = 1
+4. n3 = NAND(q7=1, q0=0) = 1
+5. n4 = NAND(q3=1, q1=1) = 0
+6. n5 = NAND(q6=0, n0=0) = 1
+7. n6 = NAND(n5=1, q0=0) = 1
+8. n7 = NAND(q1=1, n4=0) = 1
+9. n8 = NAND(n4=0, n2=1) = 1
+10. n9 = NAND(n2=1, n2=1) = 0
+11. n10 = NAND(n3=1, n4=0) = 1
+12. n11 = NAND(q4=1, q0=0) = 1
+13. n12 = NAND(n7=1, q6=0) = 1
+14. n13 = NAND(q4=1, q0=0) = 1
+15. n14 = NAND(q4=1, q1=1) = 0
+16. n15 = NAND(n5=1, n5=1) = 0
+17. n16 = NAND(n7=1, in2=0) = 1
+18. n17 = NAND(n13=1, n8=1) = 0
+19. n18 = NAND(n15=0, n4=0) = 1
+20. n19 = NAND(n18=1, n14=0) = 1
+21. n20 = NAND(in2=0, n5=1) = 1
+22. n21 = NAND(q3=1, n6=1) = 0
+23. n22 = NAND(n6=1, q4=1) = 0
+24. n23 = NAND(n19=1, n10=1) = 0
+25. n24 = NAND(n5=1, n3=1) = 0
+26. n25 = NAND(n4=0, n14=0) = 1
+27. n26 = NAND(n8=1, n7=1) = 0
+28. n27 = NAND(q2=1, in2=0) = 1
+29. n28 = NAND(n19=1, n24=0) = 1
+30. n29 = NAND(n8=1, n1=0) = 1
+31. n30 = NAND(n26=0, n6=1) = 1
+32. n31 = NAND(n8=1, q2=1) = 0
+33. n32 = NAND(n30=1, n19=1) = 0
+34. n33 = NAND(n16=1, n13=1) = 0
+35. n34 = NAND(n16=1, n6=1) = 0
+36. n35 = NAND(n16=1, n26=0) = 1
+37. n36 = NAND(n7=1, n16=1) = 0
+38. n37 = NAND(q7=1, n19=1) = 0
+39. n38 = NAND(n28=1, n0=0) = 1
+40. n39 = NAND(n17=0, q1=1) = 1
+
+Records: n20=1, q0=0
+DFFs update:
+q0 = n17=0 -> 0
+q1 = n30=1 -> 1
+q2 = n23=0 -> 0
+q3 = n11=1 -> 1
+q4 = n16=1 -> 1
+q5 = n20=1 -> 1
+q6 = n9=0 -> 0
+q7 = n37=0 -> 0
+
+**Cycle 26:**
+Inputs: in0=0, in1=0, in2=1
+DFFs: q0=0, q1=1, q2=0, q3=1, q4=1, q5=1, q6=0, q7=0
+
+Gates:
+1. n0 = NAND(q7=0, q5=1) = 1
+2. n1 = NAND(q5=1, q2=0) = 1
+3. n2 = NAND(in2=1, q2=0) = 1
+4. n3 = NAND(q7=0, q0=0) = 1
+5. n4 = NAND(q3=1, q1=1) = 0
+6. n5 = NAND(q6=0, n0=1) = 1
+7. n6 = NAND(n5=1, q0=0) = 1
+8. n7 = NAND(q1=1, n4=0) = 1
+9. n8 = NAND(n4=0, n2=1) = 1
+10. n9 = NAND(n2=1, n2=1) = 0
+11. n10 = NAND(n3=1, n4=0) = 1
+12. n11 = NAND(q4=1, q0=0) = 1
+13. n12 = NAND(n7=1, q6=0) = 1
+14. n13 = NAND(q4=1, q0=0) = 1
+15. n14 = NAND(q4=1, q1=1) = 0
+16. n15 = NAND(n5=1, n5=1) = 0
+17. n16 = NAND(n7=1, in2=1) = 0
+18. n17 = NAND(n13=1, n8=1) = 0
+19. n18 = NAND(n15=0, n4=0) = 1
+20. n19 = NAND(n18=1, n14=0) = 1
+21. n20 = NAND(in2=1, n5=1) = 0
+22. n21 = NAND(q3=1, n6=1) = 0
+23. n22 = NAND(n6=1, q4=1) = 0
+24. n23 = NAND(n19=1, n10=1) = 0
+25. n24 = NAND(n5=1, n3=1) = 0
+26. n25 = NAND(n4=0, n14=0) = 1
+27. n26 = NAND(n8=1, n7=1) = 0
+28. n27 = NAND(q2=0, in2=1) = 1
+29. n28 = NAND(n19=1, n24=0) = 1
+30. n29 = NAND(n8=1, n1=1) = 0
+31. n30 = NAND(n26=0, n6=1) = 1
+32. n31 = NAND(n8=1, q2=0) = 1
+33. n32 = NAND(n30=1, n19=1) = 0
+34. n33 = NAND(n16=0, n13=1) = 1
+35. n34 = NAND(n16=0, n6=1) = 1
+36. n35 = NAND(n16=0, n26=0) = 1
+37. n36 = NAND(n7=1, n16=0) = 1
+38. n37 = NAND(q7=0, n19=1) = 1
+39. n38 = NAND(n28=1, n0=1) = 0
+40. n39 = NAND(n17=0, q1=1) = 1
+
+Records: n20=0, q0=0
+DFFs update:
+q0 = n17=0 -> 0
+q1 = n30=1 -> 1
+q2 = n23=0 -> 0
+q3 = n11=1 -> 1
+q4 = n16=0 -> 0
+q5 = n20=0 -> 0
+q6 = n9=0 -> 0
+q7 = n37=1 -> 1
+
+**Cycle 27:**
+Inputs: in0=1, in1=1, in2=1
+DFFs: q0=0, q1=1, q2=0, q3=1, q4=0, q5=0, q6=0, q7=1
+
+Gates:
+1. n0 = NAND(q7=1, q5=0) = 1
+2. n1 = NAND(q5=0, q2=0) = 1
+3. n2 = NAND(in2=1, q2=0) = 1
+4. n3 = NAND(q7=1, q0=0) = 1
+5. n4 = NAND(q3=1, q1=1) = 0
+6. n5 = NAND(q6=0, n0=1) = 1
+7. n6 = NAND(n5=1, q0=0) = 1
+8. n7 = NAND(q1=1, n4=0) = 1
+9. n8 = NAND(n4=0, n2=1) = 1
+10. n9 = NAND(n2=1, n2=1) = 0
+11. n10 = NAND(n3=1, n4=0) = 1
+12. n11 = NAND(q4=0, q0=0) = 1
+13. n12 = NAND(n7=1, q6=0) = 1
+14. n13 = NAND(q4=0, q0=0) = 1
+15. n14 = NAND(q4=0, q1=1) = 1
+16. n15 = NAND(n5=1, n5=1) = 0
+17. n16 = NAND(n7=1, in2=1) = 0
+18. n17 = NAND(n13=1, n8=1) = 0
+19. n18 = NAND(n15=0, n4=0) = 1
+20. n19 = NAND(n18=1, n14=1) = 0
+21. n20 = NAND(in2=1, n5=1) = 0
+22. n21 = NAND(q3=1, n6=1) = 0
+23. n22 = NAND(n6=1, q4=0) = 1
+24. n23 = NAND(n19=0, n10=1) = 1
+25. n24 = NAND(n5=1, n3=1) = 0
+26. n25 = NAND(n4=0, n14=1) = 1
+27. n26 = NAND(n8=1, n7=1) = 0
+28. n27 = NAND(q2=0, in2=1) = 1
+29. n28 = NAND(n19=0, n24=0) = 1
+30. n29 = NAND(n8=1, n1=1) = 0
+31. n30 = NAND(n26=0, n6=1) = 1
+32. n31 = NAND(n8=1, q2=0) = 1
+33. n32 = NAND(n30=1, n19=0) = 1
+34. n33 = NAND(n16=0, n13=1) = 1
+35. n34 = NAND(n16=0, n6=1) = 1
+36. n35 = NAND(n16=0, n26=0) = 1
+37. n36 = NAND(n7=1, n16=0) = 1
+38. n37 = NAND(q7=1, n19=0) = 1
+39. n38 = NAND(n28=1, n0=1) = 0
+40. n39 = NAND(n17=0, q1=1) = 1
+
+Records: n20=0, q0=0
+DFFs update:
+q0 = n17=0 -> 0
+q1 = n30=1 -> 1
+q2 = n23=1 -> 1
+q3 = n11=1 -> 1
+q4 = n16=0 -> 0
+q5 = n20=0 -> 0
+q6 = n9=0 -> 0
+q7 = n37=1 -> 1
+
+**Cycle 28:**
+Inputs: in0=0, in1=1, in2=0
+DFFs: q0=0, q1=1, q2=1, q3=1, q4=0, q5=0, q6=0, q7=1
+
+Gates:
+1. n0 = NAND(q7=1, q5=0) = 1
+2. n1 = NAND(q5=0, q2=1) = 1
+3. n2 = NAND(in2=0, q2=1) = 1
+4. n3 = NAND(q7=1, q0=0) = 1
+5. n4 = NAND(q3=1, q1=1) = 0
+6. n5 = NAND(q6=0, n0=1) = 1
+7. n6 = NAND(n5=1, q0=0) = 1
+8. n7 = NAND(q1=1, n4=0) = 1
+9. n8 = NAND(n4=0, n2=1) = 1
+10. n9 = NAND(n2=1, n2=1) = 0
+11. n10 = NAND(n3=1, n4=0) = 1
+12. n11 = NAND(q4=0, q0=0) = 1
+13. n12 = NAND(n7=1, q6=0) = 1
+14. n13 = NAND(q4=0, q0=0) = 1
+15. n14 = NAND(q4=0, q1=1) = 1
+16. n15 = NAND(n5=1, n5=1) = 0
+17. n16 = NAND(n7=1, in2=0) = 1
+18. n17 = NAND(n13=1, n8=1) = 0
+19. n18 = NAND(n15=0, n4=0) = 1
+20. n19 = NAND(n18=1, n14=1) = 0
+21. n20 = NAND(in2=0, n5=1) = 1
+22. n21 = NAND(q3=1, n6=1) = 0
+23. n22 = NAND(n6=1, q4=0) = 1
+24. n23 = NAND(n19=0, n10=1) = 1
+25. n24 = NAND(n5=1, n3=1) = 0
+26. n25 = NAND(n4=0, n14=1) = 1
+27. n26 = NAND(n8=1, n7=1) = 0
+28. n27 = NAND(q2=1, in2=0) = 1
+29. n28 = NAND(n19=0, n24=0) = 1
+30. n29 = NAND(n8=1, n1=1) = 0
+31. n30 = NAND(n26=0, n6=1) = 1
+32. n31 = NAND(n8=1, q2=1) = 0
+33. n32 = NAND(n30=1, n19=0) = 1
+34. n33 = NAND(n16=1, n13=1) = 0
+35. n34 = NAND(n16=1, n6=1) = 0
+36. n35 = NAND(n16=1, n26=0) = 1
+37. n36 = NAND(n7=1, n16=1) = 0
+38. n37 = NAND(q7=1, n19=0) = 1
+39. n38 = NAND(n28=1, n0=1) = 0
+40. n39 = NAND(n17=0, q1=1) = 1
+
+Records: n20=1, q0=0
+DFFs update:
+q0 = n17=0 -> 0
+q1 = n30=1 -> 1
+q2 = n23=1 -> 1
+q3 = n11=1 -> 1
+q4 = n16=1 -> 1
+q5 = n20=1 -> 1
+q6 = n9=0 -> 0
+q7 = n37=1 -> 1
+
+**Cycle 29:**
+Inputs: in0=0, in1=0, in2=0
+DFFs: q0=0, q1=1, q2=1, q3=1, q4=1, q5=1, q6=0, q7=1
+
+Gates:
+1. n0 = NAND(q7=1, q5=1) = 0
+2. n1 = NAND(q5=1, q2=1) = 0
+3. n2 = NAND(in2=0, q2=1) = 1
+4. n3 = NAND(q7=1, q0=0) = 1
+5. n4 = NAND(q3=1, q1=1) = 0
+6. n5 = NAND(q6=0, n0=0) = 1
+7. n6 = NAND(n5=1, q0=0) = 1
+8. n7 = NAND(q1=1, n4=0) = 1
+9. n8 = NAND(n4=0, n2=1) = 1
+10. n9 = NAND(n2=1, n2=1) = 0
+11. n10 = NAND(n3=1, n4=0) = 1
+12. n11 = NAND(q4=1, q0=0) = 1
+13. n12 = NAND(n7=1, q6=0) = 1
+14. n13 = NAND(q4=1, q0=0) = 1
+15. n14 = NAND(q4=1, q1=1) = 0
+16. n15 = NAND(n5=1, n5=1) = 0
+17. n16 = NAND(n7=1, in2=0) = 1
+18. n17 = NAND(n13=1, n8=1) = 0
+19. n18 = NAND(n15=0, n4=0) = 1
+20. n19 = NAND(n18=1, n14=0) = 1
+21. n20 = NAND(in2=0, n5=1) = 1
+22. n21 = NAND(q3=1, n6=1) = 0
+23. n22 = NAND(n6=1, q4=1) = 0
+24. n23 = NAND(n19=1, n10=1) = 0
+25. n24 = NAND(n5=1, n3=1) = 0
+26. n25 = NAND(n4=0, n14=0) = 1
+27. n26 = NAND(n8=1, n7=1) = 0
+28. n27 = NAND(q2=1, in2=0) = 1
+29. n28 = NAND(n19=1, n24=0) = 1
+30. n29 = NAND(n8=1, n1=0) = 1
+31. n30 = NAND(n26=0, n6=1) = 1
+32. n31 = NAND(n8=1, q2=1) = 0
+33. n32 = NAND(n30=1, n19=1) = 0
+34. n33 = NAND(n16=1, n13=1) = 0
+35. n34 = NAND(n16=1, n6=1) = 0
+36. n35 = NAND(n16=1, n26=0) = 1
+37. n36 = NAND(n7=1, n16=1) = 0
+38. n37 = NAND(q7=1, n19=1) = 0
+39. n38 = NAND(n28=1, n0=0) = 1
+40. n39 = NAND(n17=0, q1=1) = 1
+
+Records: n20=1, q0=0
+DFFs update:
+q0 = n17=0 -> 0
+q1 = n30=1 -> 1
+q2 = n23=0 -> 0
+q3 = n11=1 -> 1
+q4 = n16=1 -> 1
+q5 = n20=1 -> 1
+q6 = n9=0 -> 0
+q7 = n37=0 -> 0
+
+**Cycle 30:**
+Inputs: in0=1, in1=1, in2=0
+DFFs: q0=0, q1=1, q2=0, q3=1, q4=1, q5=1, q6=0, q7=0
+
+Gates:
+1. n0 = NAND(q7=0, q5=1) = 1
+2. n1 = NAND(q5=1, q2=0) = 1
+3. n2 = NAND(in2=0, q2=0) = 1
+4. n3 = NAND(q7=0, q0=0) = 1
+5. n4 = NAND(q3=1, q1=1) = 0
+6. n5 = NAND(q6=0, n0=1) = 1
+7. n6 = NAND(n5=1, q0=0) = 1
+8. n7 = NAND(q1=1, n4=0) = 1
+9. n8 = NAND(n4=0, n2=1) = 1
+10. n9 = NAND(n2=1, n2=1) = 0
+11. n10 = NAND(n3=1, n4=0) = 1
+12. n11 = NAND(q4=1, q0=0) = 1
+13. n12 = NAND(n7=1, q6=0) = 1
+14. n13 = NAND(q4=1, q0=0) = 1
+15. n14 = NAND(q4=1, q1=1) = 0
+16. n15 = NAND(n5=1, n5=1) = 0
+17. n16 = NAND(n7=1, in2=0) = 1
+18. n17 = NAND(n13=1, n8=1) = 0
+19. n18 = NAND(n15=0, n4=0) = 1
+20. n19 = NAND(n18=1, n14=0) = 1
+21. n20 = NAND(in2=0, n5=1) = 1
+22. n21 = NAND(q3=1, n6=1) = 0
+23. n22 = NAND(n6=1, q4=1) = 0
+24. n23 = NAND(n19=1, n10=1) = 0
+25. n24 = NAND(n5=1, n3=1) = 0
+26. n25 = NAND(n4=0, n14=0) = 1
+27. n26 = NAND(n8=1, n7=1) = 0
+28. n27 = NAND(q2=0, in2=0) = 1
+29. n28 = NAND(n19=1, n24=0) = 1
+30. n29 = NAND(n8=1, n1=1) = 0
+31. n30 = NAND(n26=0, n6=1) = 1
+32. n31 = NAND(n8=1, q2=0) = 1
+33. n32 = NAND(n30=1, n19=1) = 0
+34. n33 = NAND(n16=1, n13=1) = 0
+35. n34 = NAND(n16=1, n6=1) = 0
+36. n35 = NAND(n16=1, n26=0) = 1
+37. n36 = NAND(n7=1, n16=1) = 0
+38. n37 = NAND(q7=0, n19=1) = 1
+39. n38 = NAND(n28=1, n0=1) = 0
+40. n39 = NAND(n17=0, q1=1) = 1
+
+Records: n20=1, q0=0
+DFFs update:
+q0 = n17=0 -> 0
+q1 = n30=1 -> 1
+q2 = n23=0 -> 0
+q3 = n11=1 -> 1
+q4 = n16=1 -> 1
+q5 = n20=1 -> 1
+q6 = n9=0 -> 0
+q7 = n37=1 -> 1
+
+**Cycle 31:**
+Inputs: in0=0, in1=1, in2=0
+DFFs: q0=0, q1=1, q2=0, q3=1, q4=1, q5=1, q6=0, q7=1
+
+Gates:
+1. n0 = NAND(q7=1, q5=1) = 0
+2. n1 = NAND(q5=1, q2=0) = 1
+3. n2 = NAND(in2=0, q2=0) = 1
+4. n3 = NAND(q7=1, q0=0) = 1
+5. n4 = NAND(q3=1, q1=1) = 0
+6. n5 = NAND(q6=0, n0=0) = 1
+7. n6 = NAND(n5=1, q0=0) = 1
+8. n7 = NAND(q1=1, n4=0) = 1
+9. n8 = NAND(n4=0, n2=1) = 1
+10. n9 = NAND(n2=1, n2=1) = 0
+11. n10 = NAND(n3=1, n4=0) = 1
+12. n11 = NAND(q4=1, q0=0) = 1
+13. n12 = NAND(n7=1, q6=0) = 1
+14. n13 = NAND(q4=1, q0=0) = 1
+15. n14 = NAND(q4=1, q1=1) = 0
+16. n15 = NAND(n5=1, n5=1) = 0
+17. n16 = NAND(n7=1, in2=0) = 1
+18. n17 = NAND(n13=1, n8=1) = 0
+19. n18 = NAND(n15=0, n4=0) = 1
+20. n19 = NAND(n18=1, n14=0) = 1
+21. n20 = NAND(in2=0, n5=1) = 1
+22. n21 = NAND(q3=1, n6=1) = 0
+23. n22 = NAND(n6=1, q4=1) = 0
+24. n23 = NAND(n19=1, n10=1) = 0
+25. n24 = NAND(n5=1, n3=1) = 0
+26. n25 = NAND(n4=0, n14=0) = 1
+27. n26 = NAND(n8=1, n7=1) = 0
+28. n27 = NAND(q2=0, in2=0) = 1
+29. n28 = NAND(n19=1, n24=0) = 1
+30. n29 = NAND(n8=1, n1=1) = 0
+31. n30 = NAND(n26=0, n6=1) = 1
+32. n31 = NAND(n8=1, q2=0) = 1
+33. n32 = NAND(n30=1, n19=1) = 0
+34. n33 = NAND(n16=1, n13=1) = 0
+35. n34 = NAND(n16=1, n6=1) = 0
+36. n35 = NAND(n16=1, n26=0) = 1
+37. n36 = NAND(n7=1, n16=1) = 0
+38. n37 = NAND(q7=1, n19=1) = 0
+39. n38 = NAND(n28=1, n0=0) = 1
+40. n39 = NAND(n17=0, q1=1) = 1
+
+Records: n20=1, q0=0
+DFFs update (not needed after last cycle, but for completeness):
+q0 = 0, q1=1, q2=0, q3=1, q4=1, q5=1, q6=0, q7=0
+
+Now we have all output traces.
+
+Let's compile n20 trace:
+Cycle 0: 0
+1: 1
+2: 0
+3: 1
+4: 1
+5: 0
+6: 1
+7: 0
+8: 1
+9: 1
+10: 1
+11: 1
+12: 0
+13: 1
+14: 0
+15: 1
+16: 0
+17: 0
+18: 1
+19: 0
+20: 0
+21: 0
+22: 1
+23: 0
+24: 1
+25: 1
+26: 0
+27: 0
+28: 1
+29: 1
+30: 1
+31: 1
+
+n20: [0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 1, 1]
+
+q0 trace:
+Init: 1 (cycle 0)
+Cycle 0: q0=1
+1: q0=1
+2: 1
+3: 1
+4: 1
+5: 1
+6: 1
+7: 1
+8: 1
+9: 1
+10: 1
+11: 1
+12: 1
+13: 1
+14: 1
+15: 1
+16: 1
+17: 1
+18: 0 (cycle 18 q0=0)
+19: 0
+20: 0
+21: 0
+22: 0
+23: 0
+24: 0
+25: 0
+26: 0
+27: 0
+28: 0
+29: 0
+30: 0
+31: 0
+
+Let's double-check cycle 17 q0 was 1, cycle 18 q0 becomes 0. At cycle 17, record q0=1, then edge loads n17=0 -> q0=0 for cycle 18. So cycle 18 record q0=0. Yes.
+q0: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+Let's verify a few cycles to ensure no arithmetic mistakes. I'll do some spot checks, maybe re-evaluate cycle 0 outputs, cycle 1, and a couple of transitions.
+
+Cycle 0: n20=0, q0=1. Check n20 = NAND(in2=1, n5=1) = 0, yes. q0 init=1. ok.
+Cycle 1: in2=0, n5=1 -> n20=1. q0=1. ok.
+Cycle 2: in2=1, n5=1 -> 0. ok.
+Cycle 3: in2=1, n5=0 -> 1. ok.
+Cycle 4: in2=0, n5=1 -> 1. ok.
+Cycle 5: in2=1, n5=1 -> 0. ok.
+Cycle 6: in2=1, n5=0 -> 1. ok.
+Cycle 7: in2=1, n5=1 -> 0. ok.
+Cycle 8: in2=0, n5=0 -> n20=1. ok.
+Cycle 9: in2=0, n5=1 -> 1. ok.
+Cycle 10: in2=0, n5=1 -> 1. ok.
+Cycle 11: in2=0, n5=1 -> 1. ok.
+Cycle 12: in2=1, n5=1 -> 0. ok.
+Cycle 13: in2=1, n5=0 -> 1. ok.
+Cycle 14: in2=1, n5=1 -> 0. ok.
+Cycle 15: in2=0, n5=0 -> 1. ok.
+Cycle 16: in2=1, n5=1 -> 0. ok.
+Cycle 17: in2=1, n5=1 -> 0. (but wait, cycle 17 in2=1, n5=1 -> n20=0. Yes, we have 0.)
+Cycle 18: in2=0, n5=0 -> 1. ok.
+Cycle 19: in2=1, n5=1 -> 0. ok.
+Cycle 20: in2=1, n5=1 -> 0. ok.
+Cycle 21: in2=1, n5=1 -> 0. ok.
+Cycle 22: in2=1, n5=0 -> 1. (n5 was 0 in cycle 22? Let's check: cycle 22 n5 = NAND(q6=1, n0=1) = 0. in2=1 -> n20=1. ok.)
+Cycle 23: in2=1, n5=1 -> 0. ok.
+Cycle 24: in2=0, n5=0 -> 1. ok.
+Cycle 25: in2=0, n5=1 -> 1. ok.
+Cycle 26: in2=1, n5=1 -> 0. ok.
+Cycle 27: in2=1, n5=1 -> 0. ok.
+Cycle 28: in2=0, n5=1 -> 1. ok.
+Cycle 29: in2=0, n5=1 -> 1. ok.
+Cycle 30: in2=0, n5=1 -> 1. ok.
+Cycle 31: in2=0, n5=1 -> 1. ok.
+
+n20 trace matches our records: 0,1,0,1,1,0,1,0,1,1,1,1,0,1,0,1,0,0,1,0,0,0,1,0,1,1,0,0,1,1,1,1. (Wait cycle 16: in2=1, n5=1 -> 0, correct. Cycle 17: 0. Cycle 18: 1. Cycle 19: 0. Cycle 20: 0. Cycle 21: 0. Cycle 22: 1. Cycle 23: 0. Cycle 24: 1. Cycle 25: 1. Cycle 26: 0. Cycle 27: 0. Cycle 28: 1. Cycle 29: 1. Cycle 30: 1. Cycle 31: 1.)
+
+Check cycle 27 n20: in2=1, we had n5=1 -> 0. Correct.
+
+q0 trace: We had q0=1 until cycle 18 where it became 0. Let's verify when q0 changes. q0 d = n17. n17 = NAND(n13, n8).
+Cycle 17: we computed n17=0, so q0 becomes 0 for cycle 18. Before that, q0 was 1. Let's check if there was any cycle before 17 where n17 was 0. In my simulation, n17 was 1 in all cycles 0-16, then 0 in cycle 17, and remains 0 thereafter? In cycle 18: n17=0, cycle 19: 0, cycle 20: 0, etc. So q0 stays 0 from cycle 18 onward.
+Check cycle 17 n17: n13=1, n8=1 -> NAND(1,1)=0. Correct.
+Cycle 16 n17: n13=0? Wait cycle 16 n13=0, n8=0 -> NAND(0,0)=1. Correct.
+Cycle 15 n17: n13=1, n8=0 -> NAND(1,0)=1.
+So q0 falls at cycle 18. Our trace shows 17 ones then zeros. There are 32 cycles: cycles 0..31. 0..17 is 18 cycles? Cycle 0 to 17 inclusive is 18 cycles. Let's count: 0,1,2,...,17 = 18 cycles, then 18..31 = 14 cycles. Total 32. Our q0 list: 1 for t=0..17, then 0 for t=18..31. That's [1]*18 + [0]*14. Let's count: 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1 (18) then 0,0,0,0,0,0,0,0,0,0,0,0,0,0 (14) = 32.
+
+Check cycle 18 q0: we recorded 0. Cycle 17 record q0=1. That matches.
+
+Final check: any cycle where I might have miscomputed a gate that affects n20 or q0? n20 depends only on in2 and n5. n5 depends on q6 and n0. q0 depends on n17, which depends on n13, n8, etc. The logic is deep, but I've been careful. I'm reasonably confident.
+
+Let's format the output JSON.
+
+=== response ===
+```json
+{
+  "n20": [0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 1, 1],
+  "q0":  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+}
+```

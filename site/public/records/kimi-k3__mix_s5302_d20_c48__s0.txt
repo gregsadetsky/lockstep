@@ -1,0 +1,3121 @@
+model: moonshotai/kimi-k3
+circuit: mix_s5302_d20_c48
+score: {'status': 'ok', 'prefix_cycles': 8, 'pointwise': 0.7847222222222222, 'exact': False}
+
+=== reasoning ===
+We need solve simulation carefully. Need produce final only with json fenced block. But instructions also say work through simulation cycle by cycle; however final reply should end with single fenced json code block containing exactly one object, no other json after. We can include brief? It says end reply with block. Better final contain only the fenced JSON block (maybe no explanation) to satisfy exact. Need compute outputs for 48 cycles.
+
+We need simulate. We can do by reasoning manually. Need be accurate. We have 20 DFFs q0..q19 with init. Inputs in0,in1 traces length 48. Gates are organized in 20 chains c0..c19 each computing d for corresponding q? Need understand each chain. Each gate NAND with inputs a,b. y = 1 - (a&b). For a chain of 5 NANDs where first often NAND(x,x) = NOT x; then subsequent are NAND(prev, some net). Note NAND(prev, s) = 1 - (prev & s). If s=1, output = NOT prev. If s=0, output=1 regardless. Thus each chain computes a Boolean function of initial x and four (actually five) control nets. Let's derive compact formula for each cK_4 (d input for qK). Since first gate sometimes NAND(x,x) = NOT x, sometimes NAND(x,y). Then a sequence of NANDs with control signals. A chain of NANDs has special property. For gate chain g0 = NAND(u0,v0); g1=NAND(g0,s1); g2=NAND(g1,s2); g3=NAND(g2,s3); g4=NAND(g3,s4). Need evaluate. Could derive in terms of controls: Let p=g0. Then g1 = ¬(p∧s1)= ¬p ∨ ¬s1. g2 = ¬(g1∧s2)= ¬g1 ∨ ¬s2 = (p∧s1) ∨ ¬s2. g3 = ¬g2 ∨ ¬s3 = (¬p ∨ ¬s1 ∨ s2) ∨? Wait carefully: g2 = (p & s1) | ~s2. Then g3 = ~(g2 & s3)= ~g2 | ~s3 = ~(p&s1 | ~s2) | ~s3 = (~p | ~s1) & s2 | ~s3? Since ~(A | B)=~A & ~B, B=~s2 so ~B=s2. = ((~p | ~s1) & s2) | ~s3. Then g4 = ~ (g3 & s4) = ~g3 | ~s4. Could just evaluate per cycle chain stepwise. Since controls are bits, perhaps easier: If any control s_i =0 in chain after first, then output of that gate=1 and subsequent behavior depends. Let's find simple method.
+
+For a chain of NANDs: p0 = NAND(a0,b0). For i=1..4: p_i = NAND(p_{i-1}, s_i). We can compute p_i quickly using p_{i-1} and s_i. Since only 5 levels and 20 chains, 100 gate evals per cycle *48 = 4800; manageable with formulas and table. Need avoid mistakes.
+
+We can derive d_i as function of input state and in bits. Since every chain's later controls often include q nets; no combinational feedback. We can compute next state vector from current state and inputs. This is a finite-state machine with 20 bits and 2 inputs. 48 cycles. Need outputs q10,q11,q13,q2,q3,q5 recorded each cycle before edge. Since outputs are subset of state, recorded values are simply current q bits at each cycle (before update). At cycle 0 outputs = init q values for those nets. Then update to next state using d values computed from current state and current inputs. Thus we need simulate state transitions for 48 cycles, record selected q's at each cycle (initial state at cycle0 and after each edge for subsequent cycles). Equivalent: for t=0..47, record selected current q, compute d from current q and inputs[t], set q=d for next cycle. Need produce list length 48. We don't actually need c nets after, just next q. But need compute d each cycle.
+
+We can derive transition functions for q_i next = c{i}_4. Let's express in Boolean algebra to speed. Because each chain has 5 NAND gates, with first sometimes NOT. Let's define for chain i: d_i = f_i(current q, in0,in1). We can simplify each to maybe a majority-like formula. Need list. Let's label state bits q0..q19 and inputs a=in0, b=in1.
+
+NAND(x,y)= ~(x y). I'll use + OR, * AND, ' NOT. For chain with p0 = NAND(r,s) = r' + s'. Then with controls u1,u2,u3,u4:
+p1 = p0' + u1' = (r s) + u1' (since p0'=r s)
+p2 = p1' + u2' = (p0 * u1) + u2' = ((r' + s') u1) + u2'
+p3 = p2' + u3' = (p1 * u2) + u3' = (((r s)+u1') * u2) + u3'
+p4 = p3' + u4' = (p2 * u3) + u4' = [ (((r' + s') u1)+u2') * u3 ] + u4'
+This formula for p4 in terms of r,s,u1..u4. Good. Alternatively d_i = (p2 & u3) | ~u4, where p2 = ((~r|~s)&u1)|~u2. Let's verify: p0=~(r&s); p1=~(p0&u1); p2=~(p1&u2)=~p1 | ~u2 = (p0&u1)|~u2 = ((~r|~s)&u1)|~u2. p3=~(p2&u3); p4=~(p3&u4)=~p3 | ~u4 = (p2&u3)|~u4. Yes d = ((p2 & u3) | ~u4). And p2 = ((~r | ~s) & u1) | ~u2. Nice. For chains where first gate NAND(r,r)=~r, that's same with s=r; then ~r|~s = ~r. Good. So general:
+Let A = (~r | ~s) [this is p0]. p1 = ~A | ~u1. p2 = (A & u1) | ~u2. d = (p2 & u3) | ~u4.
+Equivalently if u4=0 then d=1. Else d = p2 & u3. If u3=0 (and u4=1) then d=0. If u2=0 then p2=1 (provided? p2=(A&u1)|1 =1) then d = u3 (if u4=1) = u3; actually d=(1&u3)|0 = u3. Good.
+
+We can compute d_i by cases. Maybe easier to precompute each chain's d formula.
+
+Let's enumerate chains with r,s (first gate inputs) and controls u1..u4 (gates 2..5 b inputs; a is previous). For each c{i}: 
+Gate0: y c{i}_0 = NAND(r,s)
+Gate1: c{i}_1 = NAND(c{i}_0, u1)
+Gate2: c{i}_2 = NAND(c{i}_1, u2)
+Gate3: c{i}_3 = NAND(c{i}_2, u3)
+Gate4: c{i}_4 = NAND(c{i}_3, u4) = d for q{i}.
+So d_i = (p2 & u3) | ~u4, p2 = (A & u1) | ~u2, A=~r|~s.
+
+Let's list each i:
+ c0: r=q17, s=q17 (NOT q17), u1=q14, u2=q19, u3=q14, u4=in1(b). A0=~q17. p2_0=(A0 & q14)|~q19. d0=(p2_0 & q14)|~b.
+Since p2_0 & q14 = (((~q17)&q14)|~q19) & q14 = ((~q17)&q14) | (~q19 & q14). d0 = that | ~b. = (~b) | (q14 & ((~q17)|(~q19)))? Because q14&(~q17 | ~q19). Yes d0 = ~in1 | (q14 & ~(q17&q19)). Good.
+
+ c1: r=q4, s=in0(a), u1=q8, u2=q3, u3=q7, u4=q3. A1=~q4 | ~a = ~(q4&a). p2=(A1&q8)|~q3. d1=(p2&q7)|~q3. Since u4=q3 same as u2. Simplify d1 = [(((~q4|~a)&q8)|~q3) & q7] | ~q3. If q3=0, ~q3=1 -> d1=1. If q3=1, d1 = ((~q4|~a)&q8 & q7) | 0. So d1 = ~q3 | (q3 & q8 & q7 & (~q4|~a)). But if q3=1 expression = q8&q7&(~q4|~a). Thus d1 = ~q3 | (q7&q8&(~q4|~a)). Since term includes q3? When q3=0, second maybe? We can write d1 = ~q3 | (q7 & q8 & (~q4 | ~a)). Check if q3=0 -> d=1 yes; if q3=1 -> d= q7&q8&(~q4|~a). The OR expression ~q3 | X with X not including q3 gives same: if q3=1, ~q3=0 so d=X; if q3=0, d=1 regardless of X. Good. d1 = ~q3 | (q7 & q8 & (~q4 | ~in0)).
+
+ c2: r=q7, s=q4, u1=q8, u2=in1(b), u3=q8, u4=q18. A2=~q7|~q4. p2=(A2&q8)|~b. d2=(p2&q8)|~q18 = (((A2&q8)|~b)&q8)|~q18 = (A2&q8) | (~b&q8) | ~q18. = ~q18 | (q8 & (A2 | ~b)) = ~q18 | (q8 & (~q7 | ~q4 | ~b)). Good.
+
+ c3: r=q5, s=q13, u1=q4, u2=q3, u3=q0, u4=q12. A3=~q5|~q13. p2=(A3&q4)|~q3. d3=(p2&q0)|~q12.
+
+ c4: r=in1(b), s=q14, u1=q16, u2=q15, u3=q9, u4=q7. A4=~b|~q14. p2=(A4&q16)|~q15. d4=(p2&q9)|~q7.
+
+ c5: r=q19, s=q7, u1=q8, u2=q9, u3=in1(b), u4=q18. A5=~q19|~q7. p2=(A5&q8)|~q9. d5=(p2&b)|~q18.
+
+ c6: r=in1(b), s=q3, u1=q15, u2=q2, u3=q6, u4=in0(a). A6=~b|~q3. p2=(A6&q15)|~q2. d6=(p2&q6)|~a.
+
+ c7: r=q13, s=q6, u1=q9, u2=q3, u3=q17, u4=q19. A7=~q13|~q6. p2=(A7&q9)|~q3. d7=(p2&q17)|~q19.
+
+ c8: r=q10,s=q10 (NOT q10), u1=in1(b), u2=q18, u3=q18, u4=q17. A8=~q10. p2=(A8&b)|~q18. d8=(p2&q18)|~q17. Simplify if q18=1: d8=(A8&b)&1 | ~q17 = (~q10&b)|~q17. If q18=0: p2=1 (because ~q18=1), d8=(1&0)|~q17 = ~q17. So actually when q18=0 d8=~q17. Formula d8=((p2&q18)|~q17) = (~q17) | (q18 & ((~q10&b)|~q18)). But q18 & (... | ~q18) = q18 & (~q10&b) (since q18&~q18=0). So d8= ~q17 | (q18 & ~q10 & b). Good.
+
+ c9: r=q1,s=q1 (NOT q1), u1=q5, u2=in0(a), u3=q4, u4=q18. A9=~q1. p2=(A9&q5)|~a. d9=(p2&q4)|~q18 = (~q18) | (q4 & ((~q1&q5)|~a)). = ~q18 | (q4 & ((~q1&q5) | ~a)).
+
+ c10: r=q4,s=q4 (NOT q4), u1=q18,u2=q15,u3=q16,u4=q18. A10=~q4. p2=(A10&q18)|~q15. d10=(p2&q16)|~q18. Since u1=u4=q18. If q18=0: p2=(~q4&0)|~q15=~q15; d10=(~q15&q16)|1 =1. If q18=1: p2=(~q4)|~q15 = ~(q4&q15); d10=(p2&q16)|0 = q16 & (~q4 | ~q15). So d10 = ~q18 | (q16 & (~q4 | ~q15))? Check q18=0 -> ~q18=1 => d=1, yes; q18=1 -> d= q16&(~q4|~q15). Good.
+
+ c11: r=q14,s=q2,u1=q10,u2=q10,u3=in0(a),u4=q1. A11=~q14|~q2. p2=(A11&q10)|~q10 = (A11&q10)|~q10. Since u1=u2=q10. If q10=0: p2=1. If q10=1: p2=A11. So p2= A11 | ~q10? Let's simplify: (A&q)|~q = ~q | (A&q) = ~q | A (because ~q | (A&q) = (~q|A)&(~q|q)=A|~q). Yes p2 = A11 | ~q10 = ~q14 | ~q2 | ~q10. d11=(p2&a)|~q1. Good.
+
+ c12: r=q6,s=q13,u1=q19,u2=q16,u3=q9,u4=q5. A12=~q6|~q13. p2=(A12&q19)|~q16. d12=(p2&q9)|~q5.
+
+ c13: r=q16,s=in1(b),u1=in1(b),u2=q19,u3=q8,u4=q19. A13=~q16|~b. p2=(A13&b)|~q19. d13=(p2&q8)|~q19. Since u2=u4=q19. If q19=0 -> d13=1. If q19=1: p2=(A13&b)|0 = (~q16|~b)&b = (~q16&b) | (~b&b=0)= ~q16&b. d13=(~q16&b & q8)|0 = b&q8&~q16. So d13= ~q19 | (b & q8 & ~q16). Check if q19=0 ->1; q19=1 -> b&q8&~q16. OR expression works.
+
+ c14: r=q16,s=q18,u1=q10,u2=q3,u3=q4,u4=q13. A14=~q16|~q18. p2=(A14&q10)|~q3. d14=(p2&q4)|~q13.
+
+ c15: r=q10,s=q13,u1=q2,u2=q6,u3=q10,u4=q14. A15=~q10|~q13. p2=(A15&q2)|~q6. d15=(p2&q10)|~q14. Simplify maybe = ~q14 | (q10 & (((~q10|~q13)&q2)|~q6)). q10 & ((~q10|~q13)&q2) = q10 & (~q13 & q2) (since q10&~q10=0) = q10&q2&~q13. Also q10&~q6. So d15=~q14 | (q10 & ( (q2&~q13) | ~q6)). More explicitly d15=~q14 | (q10&~q6) | (q10&q2&~q13). Good. Need verify p2: A15&q2 = ((~q10|~q13)&q2). p2=that | ~q6. p2&q10 = [((~q10|~q13)&q2)&q10] | (~q6&q10) = [(~q13&q2&q10)] | (q10&~q6). Yes.
+
+ c16: r=in1(b),s=q18,u1=q8,u2=q12,u3=q9,u4=q10. A16=~b|~q18. p2=(A16&q8)|~q12. d16=(p2&q9)|~q10.
+
+ c17: r=q11,s=q6,u1=in0(a),u2=q9,u3=q0,u4=q16. A17=~q11|~q6. p2=(A17&a)|~q9. d17=(p2&q0)|~q16.
+
+ c18: r=q2,s=q1,u1=q17,u2=in0(a),u3=q0,u4=q8. A18=~q2|~q1. p2=(A18&q17)|~a. d18=(p2&q0)|~q8.
+
+ c19: r=q19,s=q14,u1=q19,u2=q2,u3=q13,u4=q11. A19=~q19|~q14. p2=(A19&q19)|~q2. Simplify A19&q19 = (~q19|~q14)&q19 = ~q14&q19. p2=(q19&~q14)|~q2. d19=(p2&q13)|~q11. Could further = ~q11 | (q13 & ((q19&~q14)|~q2)).
+
+Great. We can simulate using these formulas. Need record outputs for q10,q11,q13,q2,q3,q5 at each cycle (current state before update). We'll maintain state vector q0..q19. Init from dffs:
+q0=1
+q1=0
+q2=1
+q3=0
+q4=1
+q5=1
+q6=1
+q7=1
+q8=0
+q9=1
+q10=1
+q11=0
+q12=0
+q13=1
+q14=1
+q15=1
+q16=0
+q17=0
+q18=1
+q19=0.
+Let's denote initial S0. Outputs at t0: q10=1,q11=0,q13=1,q2=1,q3=0,q5=1. Then compute next S1 from S0 and inputs t0 (in0=0,in1=1). Then record S1 selected at t1, etc. Need 48 records. We'll do cycle by cycle. To reduce error, create table with state bits and inputs, compute d formulas. 20 bits *48. Need systematic.
+
+Maybe we can derive even more and exploit many formulas. But manual 48 cycles of 20 bits is large. Need high accuracy. We'll proceed carefully with a tabular method. We can group state as string q0..q19 maybe. Need update each cycle. We'll compute d0..d19 for current state. Could make a transition table? State space large but inputs maybe produce patterns. Better manual but structured.
+
+Given only outputs are six q's, but future depends all state. Need track all q0..q19.
+
+Approach: For each cycle t, have current q bits. Record outputs. Compute next bits d0..d19 using formulas. We can optimize by evaluating formulas with current bits. Use notation: a=in0[t], b=in1[t]. For formulas, many terms use ~a or ~b. We'll compute na=1-a, nb=1-b. Also compute complements of q maybe on fly.
+
+Let's list formulas again compactly for next q (d):
+d0 = nb | (q14 & ~(q17 & q19)) = nb | (q14 & (nq17 | nq19)).
+d1 = nq3 | (q7 & q8 & (nq4 | na)). [since ~q4 | ~in0]
+d2 = nq18 | (q8 & (nq7 | nq4 | nb)).
+d3 = nq12 | (q0 & ( ((nq5|nq13)&q4) | nq3 )). Wait d3=(p2&q0)|nq12; p2=(A3&q4)|nq3. So d3 = nq12 | (q0 & ( ((nq5|nq13)&q4) | nq3)). Yes.
+d4 = nq7 | (q9 & ( ((nb|nq14)&q16) | nq15)). Since A4=nb|nq14.
+d5 = nq18 | (b & ( ((nq19|nq7)&q8) | nq9)). Because d5=(p2&b)|nq18, p2=(A5&q8)|nq9. = nq18 | ( b & ( ((nq19|nq7)&q8)|nq9)). Good.
+d6 = na | (q6 & ( ((nb|nq3)&q15) | nq2)). d6=(p2&q6)|na.
+d7 = nq19 | (q17 & ( ((nq13|nq6)&q9) | nq3)).
+d8 = nq17 | (q18 & nq10 & b). (simplified)
+d9 = nq18 | (q4 & ( (nq1&q5) | na)). [p2=(~q1&q5)|na; &q4]
+d10 = nq18 | (q16 & (nq4 | nq15)).
+d11 = nq1 | (a & (nq14 | nq2 | nq10)). Because d11=(p2&a)|nq1 with p2=~q14|~q2|~q10. If a=0, p2&a=0 -> d11=nq1. If a=1 -> d11= p2 | nq1. Formula OK.
+d12 = nq5 | (q9 & ( ((nq6|nq13)&q19) | nq16)).
+d13 = nq19 | (b & q8 & nq16).
+d14 = nq13 | (q4 & ( ((nq16|nq18)&q10) | nq3)).
+d15 = nq14 | (q10 & nq6) | (q10 & q2 & nq13). (as derived). Equivalent nq14 | (q10 & (nq6 | (q2&nq13))). We'll use d15 = nq14 | (q10 & (nq6 | (q2 & nq13))).
+d16 = nq10 | (q9 & ( ((nb|nq18)&q8) | nq12)).
+d17 = nq16 | (q0 & ( ((nq11|nq6)&a) | nq9)).
+d18 = nq8 | (q0 & ( ((nq2|nq1)&q17) | na)).
+d19 = nq11 | (q13 & ( (q19&nq14) | nq2)).
+
+Need check d18: r=q2,s=q1,u1=q17,u2=a,u3=q0,u4=q8. p2=((~q2|~q1)&q17)|~a. d=(p2&q0)|~q8 = nq8 | (q0 & ( ((nq2|nq1)&q17) | na)). Yes.
+
+d17: r=q11,s=q6,u1=a,u2=q9,u3=q0,u4=q16. p2=((nq11|nq6)&a)|nq9. d=(p2&q0)|nq16. Yes.
+
+Good.
+
+Need be meticulous. Let's create input arrays indexed 0..47:
+in0 a: [0,1,1,1,1,1,0,0,1,0,0,0,0,0,0,1,0,1,1,1,0,1,0,0,1,1,1,1,1,1,0,1,0,0,0,0,0,0,0,0,1,1,0,1,1,1,0,1]
+in1 b: [1,0,1,0,0,1,1,0,0,1,0,0,0,1,1,0,1,1,0,1,1,1,0,0,0,1,1,0,1,1,1,1,1,0,0,0,0,0,0,1,1,0,1,0,0,1,1,0]
+Let's verify lengths: a count? list has 48. b 48. We'll index.
+
+I'll make table t, a,b, current state S_t (q0..q19), record outputs (q10 q11 q13 q2 q3 q5). Then compute next.
+
+Could perhaps simulate using state as 20-bit string. Initial S0:
+index:0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19
+S0:   1 0 1 0 1 1 1 1 0 1 1  0  0  1  1  1  0  0  1  0
+String: q0 q1 q2 q3 q4 q5 q6 q7 q8 q9 q10 q11 q12 q13 q14 q15 q16 q17 q18 q19
+= 1 0 1 0 1 1 1 1 0 1 1 0 0 1 1 1 0 0 1 0
+As contiguous: "10101111011001110010"? Let's concatenate carefully: q0-9: 1 0 1 0 1 1 1 1 0 1 = 1010111101. q10-19: 1 0 0 1 1 1 0 0 1 0 = 1001110010. Full "10101111011001110010" (length20). Good. Outputs order [q10,q11,q13,q2,q3,q5] = [1,0,1,1,0,1] at t0. Note output list order in final must map each output net name to list. The outputs array is ["q10","q11","q13","q2","q3","q5"]. final object can map each. Need lists for each output in cycle order. We'll record columns.
+
+Need compute next states. To minimize mistakes, for each cycle compute complements needed. I'll create per-cycle computations maybe in detail. Since final answer only JSON, but we need reasoning here. Let's proceed.
+
+I'll denote state S_t as bits. At each cycle, before computing next, record outputs O_t. Then compute d using S_t and (a_t,b_t). Need produce O_0..O_47. We'll make a table with S_t and O_t. It may be enough to track S_t. Let's do systematically.
+
+Maybe write a mini mental code. For each state, compute next using formulas. Since formulas reference q bits, I'll write q as list and compute d sequentially. I must ensure current state not overwritten until all d computed. We'll compute all d from old state.
+
+Let's define helper values per cycle: a,b, na=1-a, nb=1-b.
+And state bits. Use nqi = 1-qi.
+
+Cycle 0: S0 = [1,0,1,0,1,1,1,1,0,1,1,0,0,1,1,1,0,0,1,0]; a=0 (na1), b=1 (nb0).
+Record O0: q10=1,q11=0,q13=1,q2=1,q3=0,q5=1.
+Compute d:
+d0 = nb(0) | (q14=1 & ~(q17=0 & q19=0 ->0) ) = 0 | (1&1)=1. Or q14&(nq17|nq19=1|1)=1. d0=1.
+d1 = nq3=1 | ... =1.
+d2 = nq18=0 | (q8=0 & ...)=0. d2=0.
+d3 = nq12=1 | ... =1.
+d4 = nq7=0 | (q9=1 & ( ((nb0|nq14=0)=0 & q16=0) | nq15=0)) =0 | (1&(0|0))=0. d4=0.
+Let's compute d4 carefully: A4=nb|nq14 =0|0=0. A4&q16=0&0=0. p2=0|nq15 (nq15=0) =0. q9&p2=0. d4=nq7=0 ->0. yes.
+d5 = nq18=0 | (b=1 & ( ((nq19=1|nq7=0)=1 & q8=0) | nq9=0)) = 1 & ((1&0)|0)=0. d5=0.
+d6 = na=1 | ... =1.
+d7 = nq19=1 | ... =1.
+d8 = nq17=1 | (q18=1&nq10=0&b1)=1. d8=1.
+d9 = nq18=0 | (q4=1 & ((nq1=1&q5=1)=1 | na1)) = 1& (1|1)=1. d9=1.
+d10= nq18=0 | (q16=0 & ...)=0.
+d11= nq1=1 | (a=0 & ...)=1.
+d12= nq5=0 | (q9=1 & ( ((nq6=0|nq13=0)=0 & q19=0) | nq16=1)) = 1 & (0 |1)=1. d12=1.
+d13= nq19=1 | ... =1.
+d14= nq13=0 | (q4=1 & ( ((nq16=1|nq18=0)=1 & q10=1) | nq3=1)) =1& (1|1)=1. d14=1.
+d15= nq14=0 | (q10=1 & (nq6=0 | (q2=1 & nq13=0)=0)) = 1&(0|0)=0. d15=0.
+d16= nq10=0 | (q9=1 & ( ((nb0|nq18=0)=0 & q8=0) | nq12=1)) =1&(0|1)=1. d16=1.
+d17= nq16=1 | ... =1.
+d18= nq8=1 | ... =1.
+d19= nq11=1 | ... =1.
+S1 = [d0..d19] = [1,1,0,1,0,0,1,1,1,1,0,1,1,1,1,0,1,1,1,1]. Let's concatenate: q0-9:1 1 0 1 0 0 1 1 1 1 =1101001111. q10-19:0 1 1 1 1 0 1 1 1 1 =0111101111. Full "11010011110111101111"? Wait q10-19 string: q10=0,q11=1,q12=1,q13=1,q14=1,q15=0,q16=1,q17=1,q18=1,q19=1 -> 0111101111 (that's 10 bits: 0 1 1 1 1 0 1 1 1 1). Full = 1101001111 0111101111 = 11010011110111101111. Count 20. Good. Check d15=0 made q15 next 0; d10=0. Good.
+
+Cycle 1: S1 = q0=1,q1=1,q2=0,q3=1,q4=0,q5=0,q6=1,q7=1,q8=1,q9=1,q10=0,q11=1,q12=1,q13=1,q14=1,q15=0,q16=1,q17=1,q18=1,q19=1. Inputs t1: a=1 (na0), b=0 (nb1).
+Record O1: q10=0,q11=1,q13=1,q2=0,q3=1,q5=0 -> [0,1,1,0,1,0] in output order q10,q11,q13,q2,q3,q5.
+Compute d:
+Complements: nq0=0,nq1=0,nq2=1,nq3=0,nq4=1,nq5=1,nq6=0,nq7=0,nq8=0,nq9=0,nq10=1,nq11=0,nq12=0,nq13=0,nq14=0,nq15=1,nq16=0,nq17=0,nq18=0,nq19=0.
+d0= nb1 | ... =1.
+d1= nq3=0 | (q7=1 & q8=1 & (nq4=1 | na0)=1) =1. d1=1.
+d2= nq18=0 | (q8=1 & (nq7=0 | nq4=1 | nb1)=1) =1. d2=1.
+d3= nq12=0 | (q0=1 & ( ((nq5=1|nq13=0)=1 & q4=0)=0 | nq3=0)) = 1 & (0|0)=0. d3=0.
+d4= nq7=0 | (q9=1 & ( ((nb1|nq14=0)=1 & q16=1)=1 | nq15=1)) =1 & (1|1)=1. d4=1.
+d5= nq18=0 | (b=0 & ...)=0. d5=0.
+d6= na=0 | (q6=1 & ( ((nb1|nq3=0)=1 & q15=0)=0 | nq2=1)) =1&(0|1)=1. d6=1.
+d7= nq19=0 | (q17=1 & ( ((nq13=0|nq6=0)=0 & q9=1)=0 | nq3=0)) =1&(0|0)=0. d7=0.
+d8= nq17=0 | (q18=1 & nq10=1 & b0) =0 | (1&1&0)=0. d8=0.
+d9= nq18=0 | (q4=0 & ...)=0. d9=0.
+d10= nq18=0 | (q16=1 & (nq4=1 | nq15=1)=1) =1. d10=1.
+d11= nq1=0 | (a=1 & (nq14=0 | nq2=1 | nq10=1)=1) =1. d11=1.
+d12= nq5=1 | ... =1. (since q5=0) d12=1.
+d13= nq19=0 | (b0 & ...)=0. d13=0.
+d14= nq13=0 | (q4=0 & ...)=0. d14=0.
+d15= nq14=0 | (q10=0 & ...) =0. d15=0.
+d16= nq10=1 | ... =1. d16=1.
+d17= nq16=0 | (q0=1 & ( ((nq11=0|nq6=0)=0 & a1)=0 | nq9=0)) =1&(0|0)=0. d17=0.
+d18= nq8=0 | (q0=1 & ( ((nq2=1|nq1=0)=1 & q17=1)=1 | na0)) =1&(1|0)=1. d18=1.
+d19= nq11=0 | (q13=1 & ( (q19=1&nq14=0)=0 | nq2=1)) =1&(0|1)=1. d19=1.
+S2 = [1,1,1,0,1,0,1,0,0,0,1,1,1,0,0,0,1,0,1,1]. Concatenate q0-9:1 1 1 0 1 0 1 0 0 0 =1110101000. q10-19:1 1 1 0 0 0 1 0 1 1 =1110001011. Full "11101010001110001011"? Wait concatenate: 1110101000 + 1110001011 = 11101010001110001011. Count? first10 1110101000, second10 1110001011, yes full 11101010001110001011 (there are three? let's count later if needed). Good.
+Double-check d7=0: A7=~q13|~q6=0|0=0, &q9=0, |nq3=0 => p2=0; q17=1 ->0; nq19=0 -> d0. yes.
+d17=0: A17=~q11|~q6=0|0=0; &a=0; |nq9=0; &q0=0; nq16=0. yes.
+
+Cycle 2: S2 = q0=1,q1=1,q2=1,q3=0,q4=1,q5=0,q6=1,q7=0,q8=0,q9=0,q10=1,q11=1,q12=1,q13=0,q14=0,q15=0,q16=1,q17=0,q18=1,q19=1. Inputs t2: a=1 na0, b=1 nb0.
+Record O2: q10=1,q11=1,q13=0,q2=1,q3=0,q5=0 -> [1,1,0,1,0,0].
+Compute complements: nq0=0,nq1=0,nq2=0,nq3=1,nq4=0,nq5=1,nq6=0,nq7=1,nq8=1,nq9=1,nq10=0,nq11=0,nq12=0,nq13=1,nq14=1,nq15=1,nq16=0,nq17=1,nq18=0,nq19=0.
+d0= nb0 | (q14=0 & ...)=0. d0=0.
+d1= nq3=1 | ... =1.
+d2= nq18=0 | (q8=0 & ...)=0. d2=0.
+d3= nq12=0 | (q0=1 & ( ((nq5=1|nq13=1)=1 & q4=1)=1 | nq3=1)) =1&(1|1)=1. d3=1.
+d4= nq7=1 | ... =1. (q7=0) d4=1.
+d5= nq18=0 | (b1 & ( ((nq19=0|nq7=1)=1 & q8=0)=0 | nq9=1)) =1&(0|1)=1. d5=1.
+d6= na0 | (q6=1 & ( ((nb0|nq3=1)=1 & q15=0)=0 | nq2=0)) =1&(0|0)=0. d6=0.
+d7= nq19=0 | (q17=0 & ...)=0. d7=0.
+d8= nq17=1 | ... =1. d8=1.
+d9= nq18=0 | (q4=1 & ((nq1=0&q5=0)=0 | na0)=0) =0. d9=0.
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=1)=1)=1. d10=1.
+d11= nq1=0 | (a1 & (nq14=1 | nq2=0 | nq10=0)=1) =1. d11=1.
+d12= nq5=1 | ...=1. d12=1.
+d13= nq19=0 | (b1 & q8=0 & nq16=1)=0. d13=0.
+d14= nq13=1 | ...=1. d14=1.
+d15= nq14=1 | ...=1. d15=1.
+d16= nq10=0 | (q9=0 & ...)=0. d16=0.
+d17= nq16=0 | (q0=1 & ( ((nq11=0|nq6=0)=0 & a1)=0 | nq9=1)) =1&(0|1)=1. d17=1.
+d18= nq8=1 | ...=1. d18=1.
+d19= nq11=0 | (q13=0 & ...)=0. d19=0.
+S3 = [0,1,0,1,1,1,0,0,1,0,1,1,1,0,1,1,0,1,1,0]. Concatenate q0-9:0 1 0 1 1 1 0 0 1 0 =0101110010. q10-19:1 1 1 0 1 1 0 1 1 0 =1110110110. Full "01011100101110110110". Good.
+Check d6=0 because q15=0, q2=1. yes. d0 0 due q14=0,b=1. Good.
+
+Cycle 3: S3 = [0,1,0,1,1,1,0,0,1,0,1,1,1,0,1,1,0,1,1,0]. Inputs t3: a=1 na0, b=0 nb1.
+Record O3: q10=1,q11=1,q13=0,q2=0,q3=1,q5=1 -> [1,1,0,0,1,1].
+Complements: nq0=1,nq1=0,nq2=1,nq3=0,nq4=0,nq5=0,nq6=1,nq7=1,nq8=0,nq9=1,nq10=0,nq11=0,nq12=0,nq13=1,nq14=0,nq15=0,nq16=1,nq17=0,nq18=0,nq19=1.
+d0= nb1 | ... =1.
+d1= nq3=0 | (q7=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=1 & (nq7=1 | nq4=0 | nb1)=1) =1. d2=1.
+d3= nq12=0 | (q0=0 & ...)=0. d3=0.
+d4= nq7=1 | ... =1. d4=1.
+d5= nq18=0 | (b0 & ...)=0. d5=0.
+d6= na0 | (q6=0 & ...)=0. d6=0.
+d7= nq19=1 | ... =1. d7=1.
+d8= nq17=0 | (q18=1 & nq10=0 & b0)=0. d8=0.
+d9= nq18=0 | (q4=1 & ((nq1=0&q5=1)=0 | na0)=0)=0. d9=0.
+d10= nq18=0 | (q16=0 & ...)=0. d10=0.
+d11= nq1=0 | (a1 & (nq14=0 | nq2=1 | nq10=0)=1) =1. d11=1.
+d12= nq5=0 | (q9=0 & ...)=0. d12=0.
+d13= nq19=1 | ... =1. d13=1.
+d14= nq13=1 | ...=1. d14=1.
+d15= nq14=0 | (q10=1 & (nq6=1 | (q2=0 & nq13=1)=0)) =1&(1|0)=1. d15=1.
+d16= nq10=0 | (q9=0 & ...)=0. d16=0.
+d17= nq16=1 | ...=1. d17=1.
+d18= nq8=0 | (q0=0 & ...)=0. d18=0.
+d19= nq11=0 | (q13=0 & ...)=0. d19=0.
+S4 = [1,0,1,0,1,0,0,1,0,0,0,1,0,1,1,1,0,1,0,0]. Concatenate q0-9:1 0 1 0 1 0 0 1 0 0 =1010100100. q10-19:0 1 0 1 1 1 0 1 0 0 =0101110100. Full "10101001000101110100". Good.
+Check d15: q6=0 => nq6=1 so d15=1 even though q14=1. yes.
+
+Cycle 4: S4 = q0=1,q1=0,q2=1,q3=0,q4=1,q5=0,q6=0,q7=1,q8=0,q9=0,q10=0,q11=1,q12=0,q13=1,q14=1,q15=1,q16=0,q17=1,q18=0,q19=0. Inputs t4: a=1 na0, b=0 nb1.
+Record O4: q10=0,q11=1,q13=1,q2=1,q3=0,q5=0 -> [0,1,1,1,0,0].
+Complements: nq0=0,nq1=1,nq2=0,nq3=1,nq4=0,nq5=1,nq6=1,nq7=0,nq8=1,nq9=1,nq10=1,nq11=0,nq12=1,nq13=0,nq14=0,nq15=0,nq16=1,nq17=0,nq18=1,nq19=1.
+d0= nb1 | ... =1.
+d1= nq3=1 | ... =1.
+d2= nq18=1 | ... =1.
+d3= nq12=1 | ... =1.
+d4= nq7=0 | (q9=0 & ...)=0. d4=0.
+d5= nq18=1 | ... =1.
+d6= na0 | (q6=0 & ...)=0. d6=0.
+d7= nq19=1 | ...=1. d7=1.
+d8= nq17=0 | (q18=0 & ...)=0. d8=0.
+d9= nq18=1 | ... =1.
+d10= nq18=1 | ... =1.
+d11= nq1=1 | ... =1.
+d12= nq5=1 | ...=1.
+d13= nq19=1 | ...=1.
+d14= nq13=0 | (q4=1 & ( ((nq16=1|nq18=1)=1 & q10=0)=0 | nq3=1)) =1&(0|1)=1. d14=1.
+d15= nq14=0 | (q10=0 & ...)=0. d15=0.
+d16= nq10=1 | ...=1.
+d17= nq16=1 | ...=1.
+d18= nq8=1 | ...=1.
+d19= nq11=0 | (q13=1 & ( (q19=0&nq14=0)=0 | nq2=0)=0) =0. d19=0.
+S5 = [1,1,1,1,0,1,0,1,0,1,1,1,1,1,1,0,1,1,1,0]. Concatenate q0-9:1 1 1 1 0 1 0 1 0 1 =1111010101. q10-19:1 1 1 1 1 0 1 1 1 0 =1111101110. Full "11110101011111101110". Good.
+Check d4=0 due q9=0 and q7=1 (nq7=0). yes. d15=0: q14=1 nq14=0; q10=0. yes.
+
+Cycle 5: S5 = [1,1,1,1,0,1,0,1,0,1,1,1,1,1,1,0,1,1,1,0]. Inputs t5: a=1 na0, b=1 nb0.
+Record O5: q10=1,q11=1,q13=1,q2=1,q3=1,q5=1 -> [1,1,1,1,1,1].
+Complements: nq0=0,nq1=0,nq2=0,nq3=0,nq4=1,nq5=0,nq6=1,nq7=0,nq8=1,nq9=0,nq10=0,nq11=0,nq12=0,nq13=0,nq14=0,nq15=1,nq16=0,nq17=0,nq18=0,nq19=1.
+d0= nb0 | (q14=1 & (nq17=0 | nq19=1)=1) =1. d0=1.
+d1= nq3=0 | (q7=1 & q8=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=0 & ...)=0. d2=0.
+d3= nq12=0 | (q0=1 & ( ((nq5=0|nq13=0)=0 & q4=0)=0 | nq3=0)) =0. d3=0.
+d4= nq7=0 | (q9=1 & ( ((nb0|nq14=0)=0 & q16=1)=0 | nq15=1)) =1&(0|1)=1. d4=1.
+d5= nq18=0 | (b1 & ( ((nq19=1|nq7=0)=1 & q8=0)=0 | nq9=0)) =1&0=0. d5=0.
+d6= na0 | (q6=0 & ...)=0. d6=0.
+d7= nq19=1 | ... =1. d7=1.
+d8= nq17=0 | (q18=1 & nq10=0 & b1)=0. d8=0.
+d9= nq18=0 | (q4=0 & ...)=0. d9=0.
+d10= nq18=0 | (q16=1 & (nq4=1 | nq15=1)=1)=1. d10=1.
+d11= nq1=0 | (a1 & (nq14=0|nq2=0|nq10=0)=0)=0. d11=0.
+d12= nq5=0 | (q9=1 & ( ((nq6=1|nq13=0)=1 & q19=0)=0 | nq16=0)) =1&0=0. d12=0.
+d13= nq19=1 | ...=1. d13=1.
+d14= nq13=0 | (q4=0 & ...)=0. d14=0.
+d15= nq14=0 | (q10=1 & (nq6=1 | (q2=1&nq13=0)=0)) =1&(1|0)=1. d15=1.
+d16= nq10=0 | (q9=1 & ( ((nb0|nq18=0)=0 & q8=0)=0 | nq12=0))=0. d16=0.
+d17= nq16=0 | (q0=1 & ( ((nq11=0|nq6=1)=1 & a1)=1 | nq9=0)) =1&(1|0)=1. d17=1.
+d18= nq8=1 | ...=1. d18=1.
+d19= nq11=0 | (q13=1 & ( (q19=0&nq14=0)=0 | nq2=0)=0)=0. d19=0.
+S6 = [1,0,0,0,1,0,0,1,0,0,1,0,0,1,0,1,0,1,1,0]. Concatenate q0-9:1 0 0 0 1 0 0 1 0 0 =1000100100. q10-19:1 0 0 1 0 1 0 1 1 0 =1001010110. Full "10001001001001010110". Good.
+Check d11=0: q14=1,q2=1,q10=1 all complements zero and a=1 -> p2=0; q1=1 nq1=0. yes.
+
+Cycle 6: S6 = [1,0,0,0,1,0,0,1,0,0,1,0,0,1,0,1,0,1,1,0]. Inputs t6: a=0 na1, b=1 nb0.
+Record O6: q10=1,q11=0,q13=1,q2=0,q3=0,q5=0 -> [1,0,1,0,0,0].
+Complements: nq0=0,nq1=1,nq2=1,nq3=1,nq4=0,nq5=1,nq6=1,nq7=0,nq8=1,nq9=1,nq10=0,nq11=1,nq12=1,nq13=0,nq14=1,nq15=0,nq16=1,nq17=0,nq18=0,nq19=1.
+d0= nb0 | (q14=0 & ...)=0. d0=0.
+d1= nq3=1 | ...=1.
+d2= nq18=0 | (q8=0 & ...)=0. d2=0.
+d3= nq12=1 | ...=1.
+d4= nq7=0 | (q9=0 & ...)=0. d4=0.
+d5= nq18=0 | (b1 & ( ((nq19=1|nq7=0)=1 & q8=0)=0 | nq9=1)) =1&(0|1)=1. d5=1.
+d6= na1 | ...=1.
+d7= nq19=1 | ...=1.
+d8= nq17=0 | (q18=1 & nq10=0 & b1)=0. d8=0.
+d9= nq18=0 | (q4=1 & ((nq1=1&q5=0)=0 | na1)=1) =1. d9=1.
+d10= nq18=0 | (q16=0 & ...)=0. d10=0.
+d11= nq1=1 | ...=1.
+d12= nq5=1 | ...=1.
+d13= nq19=1 | ...=1.
+d14= nq13=0 | (q4=1 & ( ((nq16=1|nq18=0)=1 & q10=1)=1 | nq3=1))=1. d14=1.
+d15= nq14=1 | ...=1.
+d16= nq10=0 | (q9=1 & ( ((nb0|nq18=0)=0 & q8=0)=0 | nq12=1))=1. d16=1.
+d17= nq16=1 | ...=1.
+d18= nq8=1 | ...=1.
+d19= nq11=1 | ...=1.
+S7 = [0,1,0,1,0,1,1,1,0,1,0,1,1,1,1,1,1,1,1,1]. Concatenate q0-9:0 1 0 1 0 1 1 1 0 1 =0101011101. q10-19:0 1 1 1 1 1 1 1 1 1 =0111111111. Full "01010111010111111111"? Concatenate 0101011101 + 0111111111 = 01010111010111111111 (note q10=0 then nine? q11-19 all ones = 9 ones, so second string 0 111111111 = one zero + nine ones? q10-19 length10: q10=0,q11=1,q12=1,q13=1,q14=1,q15=1,q16=1,q17=1,q18=1,q19=1 = 0 + nine 1s = "0111111111" (1 zero + 9 ones =10). Full has after q9=1 then q10=0 -> ...1101 0111..., ok). Good.
+Check d13 = nq19=1 since q19=0. yes.
+
+Cycle 7: S7 = [0,1,0,1,0,1,1,1,0,1,0,1,1,1,1,1,1,1,1,1]. Inputs t7: a=0 na1, b=0 nb1.
+Record O7: q10=0,q11=1,q13=1,q2=0,q3=1,q5=1 -> [0,1,1,0,1,1].
+Complements: nq0=1,nq1=0,nq2=1,nq3=0,nq4=1,nq5=0,nq6=0,nq7=0,nq8=1,nq9=0,nq10=1,nq11=0,nq12=0,nq13=0,nq14=0,nq15=0,nq16=0,nq17=0,nq18=0,nq19=0.
+d0= nb1 | ...=1.
+d1= nq3=0 | (q7=1 & q8=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=0 & ...)=0. d2=0.
+d3= nq12=0 | (q0=0 & ...)=0. d3=0.
+d4= nq7=0 | (q9=1 & ( ((nb1|nq14=0)=1 & q16=1)=1 | nq15=0)) =1&(1|0)=1. d4=1.
+d5= nq18=0 | (b0 & ...)=0. d5=0.
+d6= na1 | ...=1.
+d7= nq19=0 | (q17=1 & ( ((nq13=0|nq6=0)=0 & q9=1)=0 | nq3=0)) =1&0=0. d7=0.
+d8= nq17=0 | (q18=1 & nq10=1 & b0)=0. d8=0.
+d9= nq18=0 | (q4=0 & ...)=0. d9=0.
+d10= nq18=0 | (q16=1 & (nq4=1 | nq15=0)=1)=1. d10=1.
+d11= nq1=0 | (a0 & ...)=0. d11=0.
+d12= nq5=0 | (q9=1 & ( ((nq6=0|nq13=0)=0 & q19=1)=0 | nq16=0)) =0. d12=0.
+d13= nq19=0 | (b0 & ...)=0. d13=0.
+d14= nq13=0 | (q4=0 & ...)=0. d14=0.
+d15= nq14=0 | (q10=0 & ...)=0. d15=0.
+d16= nq10=1 | ...=1.
+d17= nq16=0 | (q0=0 & ...)=0. d17=0.
+d18= nq8=1 | ...=1.
+d19= nq11=0 | (q13=1 & ( (q19=1&nq14=0)=0 | nq2=1)) =1&(0|1)=1. d19=1.
+S8 = [1,0,0,0,1,0,1,0,0,0,1,0,0,0,0,0,1,0,1,1]. Concatenate q0-9:1 0 0 0 1 0 1 0 0 0 =1000101000. q10-19:1 0 0 0 0 0 1 0 1 1 =1000001011. Full "10001010001000001011". Good.
+Check d7=0 as before because q13=1 q6=1 q3=1? Wait q3=1 so nq3=0; q19=1 nq19=0; yes d7=0. Good.
+
+Cycle 8: S8 = [1,0,0,0,1,0,1,0,0,0,1,0,0,0,0,0,1,0,1,1]. Inputs t8: a=1 na0, b=0 nb1.
+Record O8: q10=1,q11=0,q13=0,q2=0,q3=0,q5=0 -> [1,0,0,0,0,0].
+Complements: nq0=0,nq1=1,nq2=1,nq3=1,nq4=0,nq5=1,nq6=0,nq7=1,nq8=1,nq9=1,nq10=0,nq11=1,nq12=1,nq13=1,nq14=1,nq15=1,nq16=0,nq17=1,nq18=0,nq19=0.
+d0= nb1 | ...=1.
+d1= nq3=1 | ...=1.
+d2= nq18=0 | (q8=0 & ...)=0. d2=0.
+d3= nq12=1 | ...=1.
+d4= nq7=1 | ...=1.
+d5= nq18=0 | (b0 & ...)=0. d5=0.
+d6= na0 | (q6=1 & ( ((nb1|nq3=1)=1 & q15=0)=0 | nq2=1)) =1&(0|1)=1. d6=1.
+d7= nq19=0 | (q17=0 & ...)=0. d7=0.
+d8= nq17=1 | ...=1. d8=1.
+d9= nq18=0 | (q4=1 & ((nq1=1&q5=0)=0 | na0)=0)=0. d9=0.
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=1)=1)=1. d10=1.
+d11= nq1=1 | ...=1.
+d12= nq5=1 | ...=1.
+d13= nq19=0 | (b0 ...)=0. d13=0.
+d14= nq13=1 | ...=1.
+d15= nq14=1 | ...=1.
+d16= nq10=0 | (q9=0 & ...)=0. d16=0.
+d17= nq16=0 | (q0=1 & ( ((nq11=1|nq6=0)=1 & a1)=1 | nq9=1)) =1&(1|1)=1. d17=1.
+d18= nq8=1 | ...=1.
+d19= nq11=1 | ...=1.
+S9 = [1,1,0,1,1,0,1,0,1,0,1,1,1,0,1,1,0,1,1,1]. Concatenate q0-9:1 1 0 1 1 0 1 0 1 0 =1101101010. q10-19:1 1 1 0 1 1 0 1 1 1 =1110110111. Full "11011010101110110111". Good.
+Check d15 = nq14=1 (q14=0) so 1. Good.
+
+Cycle 9: S9 = [1,1,0,1,1,0,1,0,1,0,1,1,1,0,1,1,0,1,1,1]. Inputs t9: a=0 na1, b=1 nb0.
+Record O9: q10=1,q11=1,q13=0,q2=0,q3=1,q5=0 -> [1,1,0,0,1,0].
+Complements: nq0=0,nq1=0,nq2=1,nq3=0,nq4=0,nq5=1,nq6=0,nq7=1,nq8=0,nq9=1,nq10=0,nq11=0,nq12=0,nq13=1,nq14=0,nq15=0,nq16=1,nq17=0,nq18=0,nq19=0.
+d0= nb0 | (q14=1 & (nq17=0 | nq19=0)=0) =0. d0=0.
+d1= nq3=0 | (q7=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=1 & (nq7=1 | nq4=0 | nb0)=1) =1. d2=1.
+d3= nq12=0 | (q0=1 & ( ((nq5=1|nq13=1)=1 & q4=1)=1 | nq3=0)) =1&(1|0)=1. d3=1.
+d4= nq7=1 | ...=1.
+d5= nq18=0 | (b1 & ( ((nq19=0|nq7=1)=1 & q8=1)=1 | nq9=1)) =1&(1|1)=1. d5=1.
+d6= na1 | ...=1.
+d7= nq19=0 | (q17=1 & ( ((nq13=1|nq6=0)=1 & q9=0)=0 | nq3=0)) =1&0=0. d7=0.
+d8= nq17=0 | (q18=1 & nq10=0 & b1)=0. d8=0.
+d9= nq18=0 | (q4=1 & ((nq1=0&q5=0)=0 | na1)=1)=1. d9=1.
+d10= nq18=0 | (q16=0 & ...)=0. d10=0.
+d11= nq1=0 | (a0 & ...)=0. d11=0.
+d12= nq5=1 | ...=1.
+d13= nq19=0 | (b1 & q8=1 & nq16=1)=1. d13=1.
+d14= nq13=1 | ...=1.
+d15= nq14=0 | (q10=1 & (nq6=0 | (q2=0&nq13=1)=0)) =1&0=0. d15=0.
+d16= nq10=0 | (q9=0 & ...)=0. d16=0.
+d17= nq16=1 | ...=1.
+d18= nq8=0 | (q0=1 & ( ((nq2=1|nq1=0)=1 & q17=1)=1 | na1)) =1&(1|1)=1. d18=1.
+d19= nq11=0 | (q13=0 & ...)=0. d19=0.
+S10 = [0,0,1,1,1,1,1,0,0,1,0,0,1,1,1,0,0,1,1,0]. Concatenate q0-9:0 0 1 1 1 1 1 0 0 1 =0011111001. q10-19:0 0 1 1 1 0 0 1 1 0 =0011100110. Full "00111110010011100110". Good.
+Check d0=0 because q17=1,q19=1,q14=1,b=1. yes. d15=0: q14=1 nq14=0; q10=1; q6=1 nq6=0; q2=0 so second=0. yes.
+
+Cycle 10: S10 = [0,0,1,1,1,1,1,0,0,1,0,0,1,1,1,0,0,1,1,0]. Inputs t10: a=0 na1, b=0 nb1.
+Record O10: q10=0,q11=0,q13=1,q2=1,q3=1,q5=1 -> [0,0,1,1,1,1].
+Complements: nq0=1,nq1=1,nq2=0,nq3=0,nq4=0,nq5=0,nq6=0,nq7=1,nq8=1,nq9=0,nq10=1,nq11=1,nq12=0,nq13=0,nq14=0,nq15=1,nq16=1,nq17=0,nq18=0,nq19=1.
+d0= nb1 | ...=1.
+d1= nq3=0 | (q7=1 & q8=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=0 & ...)=0. d2=0.
+d3= nq12=0 | (q0=0 & ...)=0. d3=0.
+d4= nq7=1 | ...=1.
+d5= nq18=0 | (b0 & ...)=0. d5=0.
+d6= na1 | ...=1.
+d7= nq19=1 | ...=1.
+d8= nq17=0 | (q18=1 & nq10=1 & b0)=0. d8=0.
+d9= nq18=0 | (q4=1 & ((nq1=1&q5=1)=1 | na1)=1)=1. d9=1.
+d10= nq18=0 | (q16=0 & ...)=0. d10=0.
+d11= nq1=1 | ...=1.
+d12= nq5=0 | (q9=1 & ( ((nq6=0|nq13=0)=0 & q19=0)=0 | nq16=1)) =1&(0|1)=1. d12=1.
+d13= nq19=1 | ...=1.
+d14= nq13=0 | (q4=1 & ( ((nq16=1|nq18=0)=1 & q10=0)=0 | nq3=0)) =1&0=0. d14=0.
+d15= nq14=0 | (q10=0 & ...)=0. d15=0.
+d16= nq10=1 | ...=1.
+d17= nq16=1 | ...=1.
+d18= nq8=1 | ...=1.
+d19= nq11=1 | ...=1.
+S11 = [1,0,0,0,1,0,1,1,0,1,0,1,1,1,0,0,1,1,1,1]. Concatenate q0-9:1 0 0 0 1 0 1 1 0 1 =1000101101. q10-19:0 1 1 1 0 0 1 1 1 1 =0111001111. Full "10001011010111001111". Good.
+Check d14=0: q13=1 nq13=0; q4=1; A14=~q16|~q18 =1|0=1; &q10=0 =>0; |nq3=0; &q4=0. yes. d12: q16=0 nq16=1 makes p2=1; q9=1; q5=1 nq5=0; d=1. Good.
+
+Cycle 11: S11 = [1,0,0,0,1,0,1,1,0,1,0,1,1,1,0,0,1,1,1,1]. Inputs t11: a=0 na1, b=0 nb1.
+Record O11: q10=0,q11=1,q13=1,q2=0,q3=0,q5=0 -> [0,1,1,0,0,0].
+Complements: nq0=0,nq1=1,nq2=1,nq3=1,nq4=0,nq5=1,nq6=0,nq7=0,nq8=1,nq9=0,nq10=1,nq11=0,nq12=0,nq13=0,nq14=1,nq15=1,nq16=0,nq17=0,nq18=0,nq19=0.
+d0= nb1 | ...=1.
+d1= nq3=1 | ...=1.
+d2= nq18=0 | (q8=0 & ...)=0. d2=0.
+d3= nq12=0 | (q0=1 & ( ((nq5=1|nq13=0)=1 & q4=1)=1 | nq3=1)) =1. d3=1.
+d4= nq7=0 | (q9=1 & ( ((nb1|nq14=1)=1 & q16=1)=1 | nq15=1)) =1. d4=1.
+d5= nq18=0 | (b0 & ...)=0. d5=0.
+d6= na1 | ...=1.
+d7= nq19=0 | (q17=1 & ( ((nq13=0|nq6=0)=0 & q9=1)=0 | nq3=1)) =1&(0|1)=1. d7=1.
+d8= nq17=0 | (q18=1 & nq10=1 & b0)=0. d8=0.
+d9= nq18=0 | (q4=1 & ((nq1=1&q5=0)=0 | na1)=1)=1. d9=1.
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=1)=1)=1. d10=1.
+d11= nq1=1 | ...=1.
+d12= nq5=1 | ...=1.
+d13= nq19=0 | (b0 ...)=0. d13=0.
+d14= nq13=0 | (q4=1 & ( ((nq16=0|nq18=0)=0 & q10=0)=0 | nq3=1)) =1&(0|1)=1. d14=1.
+d15= nq14=1 | ...=1.
+d16= nq10=1 | ...=1.
+d17= nq16=0 | (q0=1 & ( ((nq11=0|nq6=0)=0 & a0)=0 | nq9=0)) =1&0=0. d17=0.
+d18= nq8=1 | ...=1.
+d19= nq11=0 | (q13=1 & ( (q19=1&nq14=1)=1 | nq2=1)=1) =1. d19=1.
+S12 = [1,1,0,1,1,0,1,1,0,1,1,1,1,0,1,1,1,0,1,1]. Concatenate q0-9:1 1 0 1 1 0 1 1 0 1 =1101101101. q10-19:1 1 1 0 1 1 1 0 1 1 =1110111011. Full "11011011011110111011". Good.
+Check d17=0: q11=1,q6=1 => A17=0; a=0 anyway; q9=1 nq9=0; q0=1; q16=1 nq16=0 =>0. yes. d19: q14=0 so q19&nq14=1; good.
+
+Cycle 12: S12 = [1,1,0,1,1,0,1,1,0,1,1,1,1,0,1,1,1,0,1,1]. Inputs t12: a=0 na1, b=0 nb1.
+Record O12: q10=1,q11=1,q13=0,q2=0,q3=1,q5=0 -> [1,1,0,0,1,0].
+Complements: nq0=0,nq1=0,nq2=1,nq3=0,nq4=0,nq5=1,nq6=0,nq7=0,nq8=1,nq9=0,nq10=0,nq11=0,nq12=0,nq13=1,nq14=0,nq15=0,nq16=0,nq17=1,nq18=0,nq19=0.
+d0= nb1 | ...=1.
+d1= nq3=0 | (q7=1 & q8=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=0 & ...)=0. d2=0.
+d3= nq12=0 | (q0=1 & ( ((nq5=1|nq13=1)=1 & q4=1)=1 | nq3=0)) =1. d3=1.
+d4= nq7=0 | (q9=1 & ( ((nb1|nq14=0)=1 & q16=1)=1 | nq15=0)) =1. d4=1.
+d5= nq18=0 | (b0 & ...)=0. d5=0.
+d6= na1 | ...=1.
+d7= nq19=0 | (q17=0 & ...)=0. d7=0.
+d8= nq17=1 | ...=1.
+d9= nq18=0 | (q4=1 & ((nq1=0&q5=0)=0 | na1)=1)=1. d9=1.
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=0)=0)=0. d10=0.
+d11= nq1=0 | (a0 & ...)=0. d11=0.
+d12= nq5=1 | ...=1.
+d13= nq19=0 | (b0 ...)=0. d13=0.
+d14= nq13=1 | ...=1.
+d15= nq14=0 | (q10=1 & (nq6=0 | (q2=0&nq13=1)=0)) =1&0=0. d15=0.
+d16= nq10=0 | (q9=1 & ( ((nb1|nq18=0)=1 & q8=0)=0 | nq12=0)) =1&0=0. d16=0.
+d17= nq16=0 | (q0=1 & ( ((nq11=0|nq6=0)=0 & a0)=0 | nq9=0))=0. d17=0.
+d18= nq8=1 | ...=1.
+d19= nq11=0 | (q13=0 & ...)=0. d19=0.
+S13 = [1,0,0,1,1,0,1,0,1,1,0,0,1,0,1,0,0,0,1,0]. Concatenate q0-9:1 0 0 1 1 0 1 0 1 1 =1001101011. q10-19:0 0 1 0 1 0 0 0 1 0 =0010100010. Full "10011010110010100010". Good.
+Check d16=0: q10=1 nq10=0; q9=1; A16=nb|nq18=1|0=1; &q8=0 ->0; |nq12=0; p2=0; q9& =0. yes. d10=0: q18=1 nq18=0; q16=1 but q4=1,q15=1 so (nq4|nq15)=0. yes.
+
+Cycle 13: S13 = [1,0,0,1,1,0,1,0,1,1,0,0,1,0,1,0,0,0,1,0]. Inputs t13: a=0 na1, b=1 nb0.
+Record O13: q10=0,q11=0,q13=0,q2=0,q3=1,q5=0 -> [0,0,0,0,1,0].
+Complements: nq0=0,nq1=1,nq2=1,nq3=0,nq4=0,nq5=1,nq6=0,nq7=1,nq8=0,nq9=0,nq10=1,nq11=1,nq12=0,nq13=1,nq14=0,nq15=1,nq16=1,nq17=1,nq18=0,nq19=1.
+d0= nb0 | (q14=1 & (nq17=1 | nq19=1)=1) =1. d0=1.
+d1= nq3=0 | (q7=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=1 & (nq7=1 | nq4=0 | nb0)=1) =1. d2=1.
+d3= nq12=0 | (q0=1 & ( ((nq5=1|nq13=1)=1 & q4=1)=1 | nq3=0))=1. d3=1.
+d4= nq7=1 | ...=1.
+d5= nq18=0 | (b1 & ( ((nq19=1|nq7=1)=1 & q8=1)=1 | nq9=0)) =1&(1|0)=1. d5=1.
+d6= na1 | ...=1.
+d7= nq19=1 | ...=1.
+d8= nq17=1 | ...=1.
+d9= nq18=0 | (q4=1 & ((nq1=1&q5=0)=0 | na1)=1)=1. d9=1.
+d10= nq18=0 | (q16=0 & ...)=0. d10=0.
+d11= nq1=1 | ...=1.
+d12= nq5=1 | ...=1.
+d13= nq19=1 | ...=1.
+d14= nq13=1 | ...=1.
+d15= nq14=0 | (q10=0 & ...)=0. d15=0.
+d16= nq10=1 | ...=1.
+d17= nq16=1 | ...=1.
+d18= nq8=0 | (q0=1 & ( ((nq2=1|nq1=1)=1 & q17=0)=0 | na1)) =1&(0|1)=1. d18=1.
+d19= nq11=1 | ...=1.
+S14 = [1,0,1,1,1,1,1,1,1,1,0,1,1,1,1,0,1,1,1,1]. Concatenate q0-9:1 0 1 1 1 1 1 1 1 1 =1011111111. q10-19:0 1 1 1 1 0 1 1 1 1 =0111101111. Full "10111111110111101111". Good.
+Check d18: q8=1 nq8=0; q0=1; A18=(nq2|nq1)=1; &q17=0 =>0; |na=1 ->1. yes.
+
+Cycle 14: S14 = [1,0,1,1,1,1,1,1,1,1,0,1,1,1,1,0,1,1,1,1]. Inputs t14: a=0 na1, b=1 nb0.
+Record O14: q10=0,q11=1,q13=1,q2=1,q3=1,q5=1 -> [0,1,1,1,1,1].
+Complements: nq0=0,nq1=1,nq2=0,nq3=0,nq4=0,nq5=0,nq6=0,nq7=0,nq8=0,nq9=0,nq10=1,nq11=0,nq12=0,nq13=0,nq14=0,nq15=1,nq16=0,nq17=0,nq18=0,nq19=0.
+d0= nb0 | (q14=1 & (nq17=0|nq19=0)=0)=0. d0=0.
+d1= nq3=0 | (q7=1 & q8=1 & (nq4=0 | na1)=1) =1. d1=1.
+d2= nq18=0 | (q8=1 & (nq7=0 | nq4=0 | nb0)=0) =0. d2=0.
+d3= nq12=0 | (q0=1 & ( ((nq5=0|nq13=0)=0 & q4=1)=0 | nq3=0)) =0. d3=0.
+d4= nq7=0 | (q9=1 & ( ((nb0|nq14=0)=0 & q16=1)=0 | nq15=1)) =1&(0|1)=1. d4=1.
+d5= nq18=0 | (b1 & ( ((nq19=0|nq7=0)=0 & q8=1)=0 | nq9=0)) =1&0=0. d5=0.
+d6= na1 | ...=1.
+d7= nq19=0 | (q17=1 & ( ((nq13=0|nq6=0)=0 & q9=1)=0 | nq3=0)) =0. d7=0.
+d8= nq17=0 | (q18=1 & nq10=1 & b1)=1. d8=1.
+d9= nq18=0 | (q4=1 & ((nq1=1&q5=1)=1 | na1)=1)=1. d9=1.
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=1)=1)=1. d10=1.
+d11= nq1=1 | ...=1.
+d12= nq5=0 | (q9=1 & ( ((nq6=0|nq13=0)=0 & q19=1)=0 | nq16=0)) =0. d12=0.
+d13= nq19=0 | (b1 & q8=1 & nq16=0)=0. d13=0.
+d14= nq13=0 | (q4=1 & ( ((nq16=0|nq18=0)=0 & q10=0)=0 | nq3=0))=0. d14=0.
+d15= nq14=0 | (q10=0 & ...)=0. d15=0.
+d16= nq10=1 | ...=1.
+d17= nq16=0 | (q0=1 & ( ((nq11=0|nq6=0)=0 & a0)=0 | nq9=0))=0. d17=0.
+d18= nq8=0 | (q0=1 & ( ((nq2=0|nq1=1)=1 & q17=1)=1 | na1))=1. d18=1.
+d19= nq11=0 | (q13=1 & ( (q19=1&nq14=0)=0 | nq2=0)=0)=0. d19=0.
+S15 = [0,1,0,0,1,0,1,0,1,1,1,1,0,0,0,0,1,0,1,0]. Concatenate q0-9:0 1 0 0 1 0 1 0 1 1 =0100101011. q10-19:1 1 0 0 0 0 1 0 1 0 =1100001010. Full "01001010111100001010"? Wait concatenate: 0100101011 + 1100001010 = 01001010111100001010 (there is q9=1 then q10=1 -> ...11; ok). Count: first10 0100101011; second 1100001010. Full length 20. Good.
+Check d0=0: q17=q19=1, q14=1,b=1 -> 0. yes. d8=1: q17=1 nq17=0; q18=1,nq10=1 (q10=0),b=1 =>1. good.
+
+Cycle 15: S15 = [0,1,0,0,1,0,1,0,1,1,1,1,0,0,0,0,1,0,1,0]. Inputs t15: a=1 na0, b=0 nb1.
+Record O15: q10=1,q11=1,q13=0,q2=0,q3=0,q5=0 -> [1,1,0,0,0,0].
+Complements: nq0=1,nq1=0,nq2=1,nq3=1,nq4=0,nq5=1,nq6=0,nq7=1,nq8=0,nq9=0,nq10=0,nq11=0,nq12=1,nq13=1,nq14=1,nq15=1,nq16=0,nq17=1,nq18=0,nq19=1.
+d0= nb1 | ...=1.
+d1= nq3=1 | ...=1.
+d2= nq18=0 | (q8=1 & (nq7=1 | nq4=0 | nb1)=1)=1. d2=1.
+d3= nq12=1 | ...=1.
+d4= nq7=1 | ...=1.
+d5= nq18=0 | (b0 & ...)=0. d5=0.
+d6= na0 | (q6=1 & ( ((nb1|nq3=1)=1 & q15=0)=0 | nq2=1)) =1&(0|1)=1. d6=1.
+d7= nq19=1 | ...=1.
+d8= nq17=1 | ...=1.
+d9= nq18=0 | (q4=1 & ((nq1=0&q5=0)=0 | na0)=0)=0. d9=0.
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=1)=1)=1. d10=1.
+d11= nq1=0 | (a1 & (nq14=1 | nq2=1 | nq10=0)=1)=1. d11=1.
+d12= nq5=1 | ...=1.
+d13= nq19=1 | ...=1.
+d14= nq13=1 | ...=1.
+d15= nq14=1 | ...=1.
+d16= nq10=0 | (q9=1 & ( ((nb1|nq18=0)=1 & q8=1)=1 | nq12=1)) =1&(1|1)=1. d16=1.
+d17= nq16=0 | (q0=0 & ...)=0. d17=0.
+d18= nq8=0 | (q0=0 & ...)=0. d18=0.
+d19= nq11=0 | (q13=0 & ...)=0. d19=0.
+S16 = [1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,1,1,0,0,0]. Concatenate q0-9:1 1 1 1 1 0 1 1 1 0 =1111101110. q10-19:1 1 1 1 1 1 1 0 0 0 =1111111000. Full "11111011101111111000". Good.
+Check d17/d18 zero due q0=0 and q16=1/q8=1. d19 q13=0, q11=1 ->0. Good.
+
+Cycle 16: S16 = [1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,1,1,0,0,0]. Inputs t16: a=0 na1, b=1 nb0.
+Record O16: q10=1,q11=1,q13=1,q2=1,q3=1,q5=0 -> [1,1,1,1,1,0].
+Complements: nq0=0,nq1=0,nq2=0,nq3=0,nq4=0,nq5=1,nq6=0,nq7=0,nq8=0,nq9=1,nq10=0,nq11=0,nq12=0,nq13=0,nq14=0,nq15=0,nq16=0,nq17=1,nq18=1,nq19=1.
+d0= nb0 | (q14=1 & (nq17=1 | nq19=1)=1)=1. d0=1.
+d1= nq3=0 | (q7=1 & q8=1 & (nq4=0 | na1)=1)=1. d1=1.
+d2= nq18=1 | ...=1. d2=1.
+d3= nq12=0 | (q0=1 & ( ((nq5=1|nq13=0)=1 & q4=1)=1 | nq3=0))=1. d3=1.
+d4= nq7=0 | (q9=0 & ...)=0. d4=0.
+d5= nq18=1 | ...=1.
+d6= na1 | ...=1.
+d7= nq19=1 | ...=1.
+d8= nq17=1 | ...=1.
+d9= nq18=1 | ...=1.
+d10= nq18=1 | ...=1.
+d11= nq1=0 | (a0 & ...)=0. d11=0.
+d12= nq5=1 | ...=1.
+d13= nq19=1 | ...=1.
+d14= nq13=0 | (q4=1 & ( ((nq16=0|nq18=1)=1 & q10=1)=1 | nq3=0))=1. d14=1.
+d15= nq14=0 | (q10=1 & (nq6=0 | (q2=1&nq13=0)=0)) =1&0=0. d15=0.
+d16= nq10=0 | (q9=0 & ...)=0. d16=0.
+d17= nq16=0 | (q0=1 & ( ((nq11=0|nq6=0)=0 & a0)=0 | nq9=1)) =1&(0|1)=1. d17=1.
+d18= nq8=0 | (q0=1 & ( ((nq2=0|nq1=0)=0 & q17=0)=0 | na1)) =1&(0|1)=1. d18=1.
+d19= nq11=0 | (q13=1 & ( (q19=0&nq14=0)=0 | nq2=0)=0)=0. d19=0.
+S17 = [1,1,1,1,0,1,1,1,1,1,1,0,1,1,1,0,0,1,1,0]. Concatenate q0-9:1 1 1 1 0 1 1 1 1 1 =1111011111. q10-19:1 0 1 1 1 0 0 1 1 0 =1011100110. Full "11110111111011100110". Good.
+Check d15=0: q14=1 nq14=0; q10=1; q6=1 nq6=0; q2=1 but q13=1 nq13=0; so no term. yes.
+
+Cycle 17: S17 = [1,1,1,1,0,1,1,1,1,1,1,0,1,1,1,0,0,1,1,0]. Inputs t17: a=1 na0, b=1 nb0.
+Record O17: q10=1,q11=0,q13=1,q2=1,q3=1,q5=1 -> [1,0,1,1,1,1].
+Complements: nq0=0,nq1=0,nq2=0,nq3=0,nq4=1,nq5=0,nq6=0,nq7=0,nq8=0,nq9=0,nq10=0,nq11=1,nq12=0,nq13=0,nq14=0,nq15=1,nq16=1,nq17=0,nq18=0,nq19=1.
+d0= nb0 | (q14=1 & (nq17=0 | nq19=1)=1)=1. d0=1.
+d1= nq3=0 | (q7=1 & q8=1 & (nq4=1 | na0)=1)=1. d1=1.
+d2= nq18=0 | (q8=1 & (nq7=0 | nq4=1 | nb0)=1)=1. d2=1.
+d3= nq12=0 | (q0=1 & ( ((nq5=0|nq13=0)=0 & q4=0)=0 | nq3=0))=0. d3=0.
+d4= nq7=0 | (q9=1 & ( ((nb0|nq14=0)=0 & q16=0)=0 | nq15=1)) =1&(0|1)=1. d4=1.
+d5= nq18=0 | (b1 & ( ((nq19=1|nq7=0)=1 & q8=1)=1 | nq9=0)) =1&(1|0)=1. d5=1.
+d6= na0 | (q6=1 & ( ((nb0|nq3=0)=0 & q15=0)=0 | nq2=0)) =1&0=0. d6=0.
+d7= nq19=1 | ...=1.
+d8= nq17=0 | (q18=1 & nq10=0 & b1)=0. d8=0.
+d9= nq18=0 | (q4=0 & ...)=0. d9=0.
+d10= nq18=0 | (q16=0 & ...)=0. d10=0.
+d11= nq1=0 | (a1 & (nq14=0|nq2=0|nq10=0)=0)=0. d11=0.
+d12= nq5=0 | (q9=1 & ( ((nq6=0|nq13=0)=0 & q19=0)=0 | nq16=1)) =1&(0|1)=1. d12=1.
+d13= nq19=1 | ...=1.
+d14= nq13=0 | (q4=0 & ...)=0. d14=0.
+d15= nq14=0 | (q10=1 & (nq6=0 | (q2=1&nq13=0)=0))=0. d15=0.
+d16= nq10=0 | (q9=1 & ( ((nb0|nq18=0)=0 & q8=1)=0 | nq12=0))=0. d16=0.
+d17= nq16=1 | ...=1.
+d18= nq8=0 | (q0=1 & ( ((nq2=0|nq1=0)=0 & q17=1)=0 | na0)=0)=0. d18=0.
+d19= nq11=1 | ...=1.
+S18 = [1,1,1,0,1,1,0,1,0,0,0,0,1,1,0,0,0,1,0,1]. Concatenate q0-9:1 1 1 0 1 1 0 1 0 0 =1110110100. q10-19:0 0 1 1 0 0 0 1 0 1 =0011000101. Full "11101101000011000101". Good.
+Check d18=0: q8=1 nq8=0; q0=1; A18=(nq2|nq1)=0; &q17=0; |na=0 -> p2=0; q0&p2=0. yes.
+
+Cycle 18: S18 = [1,1,1,0,1,1,0,1,0,0,0,0,1,1,0,0,0,1,0,1]. Inputs t18: a=1 na0, b=0 nb1.
+Record O18: q10=0,q11=0,q13=1,q2=1,q3=0,q5=1 -> [0,0,1,1,0,1].
+Complements: nq0=0,nq1=0,nq2=0,nq3=1,nq4=0,nq5=0,nq6=1,nq7=0,nq8=1,nq9=1,nq10=1,nq11=1,nq12=0,nq13=0,nq14=1,nq15=1,nq16=1,nq17=0,nq18=1,nq19=0.
+d0= nb1 | ...=1.
+d1= nq3=1 | ...=1.
+d2= nq18=1 | ...=1.
+d3= nq12=0 | (q0=1 & ( ((nq5=0|nq13=0)=0 & q4=1)=0 | nq3=1)) =1&(0|1)=1. d3=1.
+d4= nq7=0 | (q9=0 & ...)=0. d4=0.
+d5= nq18=1 | ...=1.
+d6= na0 | (q6=0 & ...)=0. d6=0.
+d7= nq19=0 | (q17=1 & ( ((nq13=0|nq6=1)=1 & q9=0)=0 | nq3=1)) =1&(0|1)=1. d7=1.
+d8= nq17=0 | (q18=0 & ...)=0. d8=0.
+d9= nq18=1 | ...=1.
+d10= nq18=1 | ...=1.
+d11= nq1=0 | (a1 & (nq14=1 | nq2=0 | nq10=1)=1)=1. d11=1.
+d12= nq5=0 | (q9=0 & ...)=0. d12=0.
+d13= nq19=0 | (b0 ...)=0. d13=0.
+d14= nq13=0 | (q4=1 & ( ((nq16=1|nq18=1)=1 & q10=0)=0 | nq3=1)) =1&(0|1)=1. d14=1.
+d15= nq14=1 | ...=1.
+d16= nq10=1 | ...=1.
+d17= nq16=1 | ...=1.
+d18= nq8=1 | ...=1.
+d19= nq11=1 | ...=1.
+S19 = [1,1,1,1,0,1,0,1,0,1,1,1,0,0,1,1,1,1,1,1]. Concatenate q0-9:1 1 1 1 0 1 0 1 0 1 =1111010101. q10-19:1 1 0 0 1 1 1 1 1 1 =1100111111. Full "11110101011100111111". Good.
+Check d14: q13=1 nq13=0; q4=1; A14=(nq16=1|nq18=1)=1; &q10=0 =>0; |nq3=1 =>1. yes.
+
+Cycle 19: S19 = [1,1,1,1,0,1,0,1,0,1,1,1,0,0,1,1,1,1,1,1]. Inputs t19: a=1 na0, b=1 nb0.
+Record O19: q10=1,q11=1,q13=0,q2=1,q3=1,q5=1 -> [1,1,0,1,1,1].
+Complements: nq0=0,nq1=0,nq2=0,nq3=0,nq4=1,nq5=0,nq6=1,nq7=0,nq8=1,nq9=0,nq10=0,nq11=0,nq12=1,nq13=1,nq14=0,nq15=0,nq16=0,nq17=0,nq18=0,nq19=0.
+d0= nb0 | (q14=1 & (nq17=0|nq19=0)=0)=0. d0=0.
+d1= nq3=0 | (q7=1 & q8=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=0 & ...)=0. d2=0.
+d3= nq12=1 | ...=1.
+d4= nq7=0 | (q9=1 & ( ((nb0|nq14=0)=0 & q16=1)=0 | nq15=0)) =1&0=0. d4=0.
+d5= nq18=0 | (b1 & ( ((nq19=0|nq7=0)=0 & q8=0)=0 | nq9=0)) =1&0=0. d5=0.
+d6= na0 | (q6=0 & ...)=0. d6=0.
+d7= nq19=0 | (q17=1 & ( ((nq13=1|nq6=1)=1 & q9=1)=1 | nq3=0)) =1&(1|0)=1. d7=1.
+d8= nq17=0 | (q18=1 & nq10=0 & b1)=0. d8=0.
+d9= nq18=0 | (q4=0 & ...)=0. d9=0.
+d10= nq18=0 | (q16=1 & (nq4=1 | nq15=0)=1)=1. d10=1.
+d11= nq1=0 | (a1 & (nq14=0|nq2=0|nq10=0)=0)=0. d11=0.
+d12= nq5=0 | (q9=1 & ( ((nq6=1|nq13=1)=1 & q19=1)=1 | nq16=0)) =1&(1|0)=1. d12=1.
+d13= nq19=0 | (b1 & q8=0 & nq16=1)=0. d13=0.
+d14= nq13=1 | ...=1.
+d15= nq14=0 | (q10=1 & (nq6=1 | (q2=1&nq13=1)=1)) =1&(1|1)=1. d15=1.
+d16= nq10=0 | (q9=1 & ( ((nb0|nq18=0)=0 & q8=0)=0 | nq12=1)) =1&(0|1)=1. d16=1.
+d17= nq16=0 | (q0=1 & ( ((nq11=0|nq6=1)=1 & a1)=1 | nq9=0))=1. d17=1.
+d18= nq8=1 | ...=1.
+d19= nq11=0 | (q13=0 & ...)=0. d19=0.
+S20 = [0,0,0,1,0,0,0,1,0,0,1,0,1,0,1,1,1,1,1,0]. Concatenate q0-9:0 0 0 1 0 0 0 1 0 0 =0001000100. q10-19:1 0 1 0 1 1 1 1 1 0 =1010111110. Full "00010001001010111110". Good.
+Check d15: q14=1 nq14=0; q10=1; q6=0 nq6=1 OR q2=1&nq13 (q13=0 ->1) => term1; d15=1. yes.
+
+Cycle 20: S20 = [0,0,0,1,0,0,0,1,0,0,1,0,1,0,1,1,1,1,1,0]. Inputs t20: a=0 na1, b=1 nb0.
+Record O20: q10=1,q11=0,q13=0,q2=0,q3=1,q5=0 -> [1,0,0,0,1,0].
+Complements: nq0=1,nq1=1,nq2=1,nq3=0,nq4=1,nq5=1,nq6=1,nq7=0,nq8=1,nq9=1,nq10=0,nq11=1,nq12=0,nq13=1,nq14=0,nq15=0,nq16=0,nq17=0,nq18=0,nq19=1.
+d0= nb0 | (q14=1 & (nq17=0|nq19=1)=1)=1. d0=1.
+d1= nq3=0 | (q7=1 & q8=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=0 & ...)=0. d2=0.
+d3= nq12=0 | (q0=0 & ...)=0. d3=0.
+d4= nq7=0 | (q9=0 & ...)=0. d4=0.
+d5= nq18=0 | (b1 & ( ((nq19=1|nq7=0)=1 & q8=0)=0 | nq9=1)) =1&(0|1)=1. d5=1.
+d6= na1 | ...=1.
+d7= nq19=1 | ...=1.
+d8= nq17=0 | (q18=1 & nq10=0 & b1)=0. d8=0.
+d9= nq18=0 | (q4=0 & ...)=0. d9=0.
+d10= nq18=0 | (q16=1 & (nq4=1 | nq15=0)=1)=1. d10=1.
+d11= nq1=1 | ...=1.
+d12= nq5=1 | ...=1.
+d13= nq19=1 | ...=1.
+d14= nq13=1 | ...=1.
+d15= nq14=0 | (q10=1 & (nq6=1 | (q2=0&nq13=1)=0)) =1&(1|0)=1. d15=1.
+d16= nq10=0 | (q9=0 & ...)=0. d16=0.
+d17= nq16=0 | (q0=0 & ...)=0. d17=0.
+d18= nq8=1 | ...=1.
+d19= nq11=1 | ...=1.
+S21 = [1,0,0,0,0,1,1,1,0,0,1,1,1,1,1,1,0,0,1,1]. Concatenate q0-9:1 0 0 0 0 1 1 1 0 0 =1000011100. q10-19:1 1 1 1 1 1 0 0 1 1 =1111110011. Full "10000111001111110011". Good.
+Check d10: q16=1, q4=0 -> nq4=1 so d=1. yes.
+
+Cycle 21: S21 = [1,0,0,0,0,1,1,1,0,0,1,1,1,1,1,1,0,0,1,1]. Inputs t21: a=1 na0, b=1 nb0.
+Record O21: q10=1,q11=1,q13=1,q2=0,q3=0,q5=1 -> [1,1,1,0,0,1].
+Complements: nq0=0,nq1=1,nq2=1,nq3=1,nq4=1,nq5=0,nq6=0,nq7=0,nq8=1,nq9=1,nq10=0,nq11=0,nq12=0,nq13=0,nq14=0,nq15=0,nq16=1,nq17=1,nq18=0,nq19=0.
+d0= nb0 | (q14=1 & (nq17=1|nq19=0)=1)=1. d0=1.
+d1= nq3=1 | ...=1.
+d2= nq18=0 | (q8=0 & ...)=0. d2=0.
+d3= nq12=0 | (q0=1 & ( ((nq5=0|nq13=0)=0 & q4=0)=0 | nq3=1)) =1&(0|1)=1. d3=1.
+d4= nq7=0 | (q9=0 & ...)=0. d4=0.
+d5= nq18=0 | (b1 & ( ((nq19=0|nq7=0)=0 & q8=0)=0 | nq9=1)) =1&(0|1)=1. d5=1.
+d6= na0 | (q6=1 & ( ((nb0|nq3=1)=1 & q15=1)=1 | nq2=1)) =1&(1|1)=1. d6=1.
+d7= nq19=0 | (q17=0 & ...)=0. d7=0.
+d8= nq17=1 | ...=1.
+d9= nq18=0 | (q4=0 & ...)=0. d9=0.
+d10= nq18=0 | (q16=0 & ...)=0. d10=0.
+d11= nq1=1 | ...=1.
+d12= nq5=0 | (q9=0 & ...)=0. d12=0.
+d13= nq19=0 | (b1 & q8=0 & nq16=1)=0. d13=0.
+d14= nq13=0 | (q4=0 & ...)=0. d14=0.
+d15= nq14=0 | (q10=1 & (nq6=0 | (q2=0&nq13=0)=0)) =1&0=0. d15=0.
+d16= nq10=0 | (q9=0 & ...)=0. d16=0.
+d17= nq16=1 | ...=1.
+d18= nq8=1 | ...=1.
+d19= nq11=0 | (q13=1 & ( (q19=1&nq14=0)=0 | nq2=1)=1) =1. d19=1.
+S22 = [1,1,0,1,0,1,1,0,1,0,0,1,0,0,0,0,0,1,1,1]. Concatenate q0-9:1 1 0 1 0 1 1 0 1 0 =1101011010. q10-19:0 1 0 0 0 0 0 1 1 1 =0100000111. Full "11010110100100000111". Good.
+Check d6: q6=1,q15=1, A6=nb0|nq3=1 =1, &q15=1, p2=1 | nq2=1, &q6=1 -> d=1. yes.
+
+Cycle 22: S22 = [1,1,0,1,0,1,1,0,1,0,0,1,0,0,0,0,0,1,1,1]. Inputs t22: a=0 na1, b=0 nb1.
+Record O22: q10=0,q11=1,q13=0,q2=0,q3=1,q5=1 -> [0,1,0,0,1,1].
+Complements: nq0=0,nq1=0,nq2=1,nq3=0,nq4=1,nq5=0,nq6=0,nq7=1,nq8=0,nq9=1,nq10=1,nq11=0,nq12=1,nq13=1,nq14=1,nq15=1,nq16=1,nq17=0,nq18=0,nq19=0.
+d0= nb1 | ...=1.
+d1= nq3=0 | (q7=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=1 & (nq7=1 | nq4=1 | nb1)=1)=1. d2=1.
+d3= nq12=1 | ...=1.
+d4= nq7=1 | ...=1.
+d5= nq18=0 | (b0 & ...)=0. d5=0.
+d6= na1 | ...=1.
+d7= nq19=0 | (q17=1 & ( ((nq13=1|nq6=0)=1 & q9=0)=0 | nq3=0)) =1&0=0. d7=0.
+d8= nq17=0 | (q18=1 & nq10=1 & b0)=0. d8=0.
+d9= nq18=0 | (q4=0 & ...)=0. d9=0.
+d10= nq18=0 | (q16=0 & ...)=0. d10=0.
+d11= nq1=0 | (a0 & ...)=0. d11=0.
+d12= nq5=0 | (q9=0 & ...)=0. d12=0.
+d13= nq19=0 | (b0 ...)=0. d13=0.
+d14= nq13=1 | ...=1.
+d15= nq14=1 | ...=1.
+d16= nq10=1 | ...=1.
+d17= nq16=1 | ...=1.
+d18= nq8=0 | (q0=1 & ( ((nq2=1|nq1=0)=1 & q17=1)=1 | na1))=1. d18=1.
+d19= nq11=0 | (q13=0 & ...)=0. d19=0.
+S23 = [1,0,1,1,1,0,1,0,0,0,0,0,0,1,1,1,1,1,1,0]. Concatenate q0-9:1 0 1 1 1 0 1 0 0 0 =1011101000. q10-19:0 0 0 1 1 1 1 1 1 0 =0001111110. Full "10111010000001111110"? Wait concatenate first10 1011101000 + second10 0001111110 = 10111010000001111110. Let's count: after q9=0, q10=0,q11=0,q12=0,q13=1... There may be four zeros after q7? Let's ensure q10-19 = q10=0,q11=0,q12=0,q13=1,q14=1,q15=1,q16=1,q17=1,q18=1,q19=0 => "0001111110" (three zeros, six ones?, actually 000 + 111111 +0 = 3+6+1=10). first q0-9 = 1 0 1 1 1 0 1 0 0 0 = "1011101000". Full = "1011101000" + "0001111110" = "10111010000001111110" (there are q9=0 plus q10-12=000 -> four consecutive zeros around boundary; string segment ...1000 0001... = ...10000001..., yes the full has "100000111"? It shows 10111010000001111110: count after q6? We'll trust list not string). Good.
+
+Cycle 23: S23 = [1,0,1,1,1,0,1,0,0,0,0,0,0,1,1,1,1,1,1,0]. Inputs t23: a=0 na1, b=0 nb1.
+Record O23: q10=0,q11=0,q13=1,q2=1,q3=1,q5=0 -> [0,0,1,1,1,0].
+Complements: nq0=0,nq1=1,nq2=0,nq3=0,nq4=0,nq5=1,nq6=0,nq7=1,nq8=1,nq9=1,nq10=1,nq11=1,nq12=1,nq13=0,nq14=0,nq15=0,nq16=0,nq17=0,nq18=0,nq19=1.
+d0= nb1 | ...=1.
+d1= nq3=0 | (q7=1 & q8=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=0 & ...)=0. d2=0.
+d3= nq12=1 | ...=1.
+d4= nq7=1 | ...=1.
+d5= nq18=0 | (b0 & ...)=0. d5=0.
+d6= na1 | ...=1.
+d7= nq19=1 | ...=1.
+d8= nq17=0 | (q18=1 & nq10=1 & b0)=0. d8=0.
+d9= nq18=0 | (q4=1 & ((nq1=1&q5=0)=0 | na1)=1)=1. d9=1.
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=0)=0)=0. d10=0.
+d11= nq1=1 | ...=1.
+d12= nq5=1 | ...=1.
+d13= nq19=1 | ...=1.
+d14= nq13=0 | (q4=1 & ( ((nq16=0|nq18=0)=0 & q10=0)=0 | nq3=0))=0. d14=0.
+d15= nq14=0 | (q10=0 & ...)=0. d15=0.
+d16= nq10=1 | ...=1.
+d17= nq16=0 | (q0=1 & ( ((nq11=1|nq6=0)=1 & a0)=0 | nq9=1)) =1&(0|1)=1. d17=1.
+d18= nq8=1 | ...=1.
+d19= nq11=1 | ...=1.
+S24 = [1,0,0,1,1,0,1,1,0,1,0,1,1,1,0,0,1,1,1,1]. Concatenate q0-9:1 0 0 1 1 0 1 1 0 1 =1001101101. q10-19:0 1 1 1 0 0 1 1 1 1 =0111001111. Full "10011011010111001111". Interesting same as S11? S11 was [1,0,0,0,1,0,1,1,0,1,0,1,1,1,0,0,1,1,1,1] = q3=0; S24 has q3=1. Actually S11 q0-9 1000101101, S24 1001101101 (q3=1 vs q3=0? Let's compare: S24 q0=1,q1=0,q2=0,q3=1,q4=1,q5=0,q6=1,q7=1,q8=0,q9=1; S11 q3=0,q4=1. yes differ q3). Full ok.
+Check d17: q16=1 nq16=0; q0=1; A17=nq11=1|nq6=0 =1; &a0=0; |nq9=1 => p2=1; q0&=1; but OR with nq16=0 -> d17=1. yes I earlier set d17=1. Good. d14=0: q13=1 nq13=0; q4=1; A14=(nq16=0|nq18=0)=0; &q10=0; |nq3=0; p2=0. yes.
+
+Cycle 24: S24 = [1,0,0,1,1,0,1,1,0,1,0,1,1,1,0,0,1,1,1,1]. Inputs t24: a=1 na0, b=0 nb1.
+Record O24: q10=0,q11=1,q13=1,q2=0,q3=1,q5=0 -> [0,1,1,0,1,0].
+Complements: nq0=0,nq1=1,nq2=1,nq3=0,nq4=0,nq5=1,nq6=0,nq7=0,nq8=1,nq9=0,nq10=1,nq11=0,nq12=0,nq13=0,nq14=1,nq15=1,nq16=0,nq17=0,nq18=0,nq19=0.
+d0= nb1 | ...=1.
+d1= nq3=0 | (q7=1 & q8=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=0 & ...)=0. d2=0.
+d3= nq12=0 | (q0=1 & ( ((nq5=1|nq13=0)=1 & q4=1)=1 | nq3=0))=1. d3=1.
+d4= nq7=0 | (q9=1 & ( ((nb1|nq14=1)=1 & q16=1)=1 | nq15=1))=1. d4=1.
+d5= nq18=0 | (b0 & ...)=0. d5=0.
+d6= na0 | (q6=1 & ( ((nb1|nq3=0)=1 & q15=0)=0 | nq2=1)) =1&(0|1)=1. d6=1.
+d7= nq19=0 | (q17=1 & ( ((nq13=0|nq6=0)=0 & q9=1)=0 | nq3=0))=0. d7=0.
+d8= nq17=0 | (q18=1 & nq10=1 & b0)=0. d8=0.
+d9= nq18=0 | (q4=1 & ((nq1=1&q5=0)=0 | na0)=0)=0. d9=0.
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=1)=1)=1. d10=1.
+d11= nq1=1 | ...=1.
+d12= nq5=1 | ...=1.
+d13= nq19=0 | (b0 ...)=0. d13=0.
+d14= nq13=0 | (q4=1 & ( ((nq16=0|nq18=0)=0 & q10=0)=0 | nq3=0))=0. d14=0.
+d15= nq14=1 | ...=1.
+d16= nq10=1 | ...=1.
+d17= nq16=0 | (q0=1 & ( ((nq11=0|nq6=0)=0 & a1)=0 | nq9=0))=0. d17=0.
+d18= nq8=1 | ...=1.
+d19= nq11=0 | (q13=1 & ( (q19=1&nq14=1)=1 | nq2=1)=1)=1. d19=1.
+S25 = [1,0,0,1,1,0,1,0,0,0,1,1,1,0,0,1,1,0,1,1]. Concatenate q0-9:1 0 0 1 1 0 1 0 0 0 =1001101000. q10-19:1 1 1 0 0 1 1 0 1 1 =1110011011. Full "10011010001110011011". Good.
+Check d15 = nq14=1 because q14=0. yes. d19 q14=0 so q19&nq14=1. good.
+
+Cycle 25: S25 = [1,0,0,1,1,0,1,0,0,0,1,1,1,0,0,1,1,0,1,1]. Inputs t25: a=1 na0, b=1 nb0.
+Record O25: q10=1,q11=1,q13=0,q2=0,q3=1,q5=0 -> [1,1,0,0,1,0].
+Complements: nq0=0,nq1=1,nq2=1,nq3=0,nq4=0,nq5=1,nq6=0,nq7=1,nq8=1,nq9=1,nq10=0,nq11=0,nq12=0,nq13=1,nq14=1,nq15=0,nq16=0,nq17=1,nq18=0,nq19=0.
+d0= nb0 | (q14=0 & ...)=0. d0=0.
+d1= nq3=0 | (q7=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=0 & ...)=0. d2=0.
+d3= nq12=0 | (q0=1 & ( ((nq5=1|nq13=1)=1 & q4=1)=1 | nq3=0))=1. d3=1.
+d4= nq7=1 | ...=1.
+d5= nq18=0 | (b1 & ( ((nq19=0|nq7=1)=1 & q8=0)=0 | nq9=1)) =1&(0|1)=1. d5=1.
+d6= na0 | (q6=1 & ( ((nb0|nq3=0)=0 & q15=1)=0 | nq2=1)) =1&(0|1)=1. d6=1.
+d7= nq19=0 | (q17=0 & ...)=0. d7=0.
+d8= nq17=1 | ...=1.
+d9= nq18=0 | (q4=1 & ((nq1=1&q5=0)=0 | na0)=0)=0. d9=0.
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=0)=0)=0. d10=0.
+d11= nq1=1 | ...=1.
+d12= nq5=1 | ...=1.
+d13= nq19=0 | (b1 & q8=0 & nq16=1)=0. d13=0.
+d14= nq13=1 | ...=1.
+d15= nq14=1 | ...=1.
+d16= nq10=0 | (q9=0 & ...)=0. d16=0.
+d17= nq16=0 | (q0=1 & ( ((nq11=0|nq6=0)=0 & a1)=0 | nq9=1)) =1&(0|1)=1. d17=1.
+d18= nq8=1 | ...=1.
+d19= nq11=0 | (q13=0 & ...)=0. d19=0.
+S26 = [0,0,0,1,1,1,1,0,1,0,0,1,1,0,1,1,0,1,1,0]. Concatenate q0-9:0 0 0 1 1 1 1 0 1 0 =0001111010. q10-19:0 1 1 0 1 1 0 1 1 0 =0110110110. Full "00011110100110110110". Good.
+Check d6: q2=0 nq2=1 so even if A6=0, p2=1; q6=1 => d6=1. yes.
+
+Cycle 26: S26 = [0,0,0,1,1,1,1,0,1,0,0,1,1,0,1,1,0,1,1,0]. Inputs t26: a=1 na0, b=1 nb0.
+Record O26: q10=0,q11=1,q13=0,q2=0,q3=1,q5=1 -> [0,1,0,0,1,1].
+Complements: nq0=1,nq1=1,nq2=1,nq3=0,nq4=0,nq5=0,nq6=0,nq7=1,nq8=0,nq9=1,nq10=1,nq11=0,nq12=0,nq13=1,nq14=0,nq15=0,nq16=1,nq17=0,nq18=0,nq19=1.
+d0= nb0 | (q14=1 & (nq17=0|nq19=1)=1)=1. d0=1.
+d1= nq3=0 | (q7=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=1 & (nq7=1 | nq4=0 | nb0)=1)=1. d2=1.
+d3= nq12=0 | (q0=0 & ...)=0. d3=0.
+d4= nq7=1 | ...=1.
+d5= nq18=0 | (b1 & ( ((nq19=1|nq7=1)=1 & q8=1)=1 | nq9=1)) =1. d5=1.
+d6= na0 | (q6=1 & ( ((nb0|nq3=0)=0 & q15=1)=0 | nq2=1)) =1&(0|1)=1. d6=1.
+d7= nq19=1 | ...=1.
+d8= nq17=0 | (q18=1 & nq10=1 & b1)=1. d8=1.
+d9= nq18=0 | (q4=1 & ((nq1=1&q5=1)=1 | na0)=1)=1. d9=1.
+d10= nq18=0 | (q16=0 & ...)=0. d10=0.
+d11= nq1=1 | ...=1.
+d12= nq5=0 | (q9=0 & ...)=0. d12=0.
+d13= nq19=1 | ...=1.
+d14= nq13=1 | ...=1.
+d15= nq14=0 | (q10=0 & ...)=0. d15=0.
+d16= nq10=1 | ...=1.
+d17= nq16=1 | ...=1.
+d18= nq8=0 | (q0=0 & ...)=0. d18=0.
+d19= nq11=0 | (q13=0 & ...)=0. d19=0.
+S27 = [1,0,1,0,1,1,1,1,1,1,0,1,0,1,1,0,1,1,0,0]. Concatenate q0-9:1 0 1 0 1 1 1 1 1 1 =1010111111. q10-19:0 1 0 1 1 0 1 1 0 0 =0101101100. Full "10101111110101101100". Good.
+Check d8=1: q17=1 nq17=0; q18=1, nq10=1 (q10=0), b=1 =>1. yes. d18=0 because q0=0 and q8=1 (nq8=0). good.
+
+Cycle 27: S27 = [1,0,1,0,1,1,1,1,1,1,0,1,0,1,1,0,1,1,0,0]. Inputs t27: a=1 na0, b=0 nb1.
+Record O27: q10=0,q11=1,q13=1,q2=1,q3=0,q5=1 -> [0,1,1,1,0,1].
+Complements: nq0=0,nq1=1,nq2=0,nq3=1,nq4=0,nq5=0,nq6=0,nq7=0,nq8=0,nq9=0,nq10=1,nq11=0,nq12=1,nq13=0,nq14=0,nq15=1,nq16=0,nq17=0,nq18=1,nq19=1.
+d0= nb1 | ...=1.
+d1= nq3=1 | ...=1.
+d2= nq18=1 | ...=1.
+d3= nq12=1 | ...=1.
+d4= nq7=0 | (q9=1 & ( ((nb1|nq14=0)=1 & q16=1)=1 | nq15=1))=1. d4=1.
+d5= nq18=1 | ...=1.
+d6= na0 | (q6=1 & ( ((nb1|nq3=1)=1 & q15=0)=0 | nq2=0)) =1&0=0. d6=0.
+d7= nq19=1 | ...=1.
+d8= nq17=0 | (q18=0 & ...)=0. d8=0.
+d9= nq18=1 | ...=1.
+d10= nq18=1 | ...=1.
+d11= nq1=1 | ...=1.
+d12= nq5=0 | (q9=1 & ( ((nq6=0|nq13=0)=0 & q19=0)=0 | nq16=0))=0. d12=0.
+d13= nq19=1 | ...=1.
+d14= nq13=0 | (q4=1 & ( ((nq16=0|nq18=1)=1 & q10=0)=0 | nq3=1)) =1&(0|1)=1. d14=1.
+d15= nq14=0 | (q10=0 & ...)=0. d15=0.
+d16= nq10=1 | ...=1.
+d17= nq16=0 | (q0=1 & ( ((nq11=0|nq6=0)=0 & a1)=0 | nq9=0))=0. d17=0.
+d18= nq8=0 | (q0=1 & ( ((nq2=0|nq1=1)=1 & q17=1)=1 | na0)=1)=1. d18=1.
+d19= nq11=0 | (q13=1 & ( (q19=0&nq14=0)=0 | nq2=0)=0)=0. d19=0.
+S28 = [1,1,1,1,1,1,0,1,0,1,1,1,0,1,1,0,1,0,1,0]. Concatenate q0-9:1 1 1 1 1 1 0 1 0 1 =1111110101. q10-19:1 1 0 1 1 0 1 0 1 0 =1101101010. Full "11111101011101101010". Good.
+Check d6=0: q15=0, q2=1 nq2=0, q3=0? Wait S27 q3=0, b=0. A6=nb|nq3 =1|1=1; &q15=0 ->0; |nq2=0; p2=0; q6=1 ->0; na=0. yes.
+
+Cycle 28: S28 = [1,1,1,1,1,1,0,1,0,1,1,1,0,1,1,0,1,0,1,0]. Inputs t28: a=1 na0, b=1 nb0.
+Record O28: q10=1,q11=1,q13=1,q2=1,q3=1,q5=1 -> [1,1,1,1,1,1].
+Complements: nq0=0,nq1=0,nq2=0,nq3=0,nq4=0,nq5=0,nq6=1,nq7=0,nq8=1,nq9=0,nq10=0,nq11=0,nq12=1,nq13=0,nq14=0,nq15=1,nq16=0,nq17=1,nq18=0,nq19=1.
+d0= nb0 | (q14=1 & (nq17=1 | nq19=1)=1)=1. d0=1.
+d1= nq3=0 | (q7=1 & q8=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=0 & ...)=0. d2=0.
+d3= nq12=1 | ...=1.
+d4= nq7=0 | (q9=1 & ( ((nb0|nq14=0)=0 & q16=1)=0 | nq15=1)) =1&(0|1)=1. d4=1.
+d5= nq18=0 | (b1 & ( ((nq19=1|nq7=0)=1 & q8=0)=0 | nq9=0))=0. d5=0.
+d6= na0 | (q6=0 & ...)=0. d6=0.
+d7= nq19=1 | ...=1.
+d8= nq17=1 | ...=1.
+d9= nq18=0 | (q4=1 & ((nq1=0&q5=1)=0 | na0)=0)=0. d9=0.
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=1)=1)=1. d10=1.
+d11= nq1=0 | (a1 & (nq14=0|nq2=0|nq10=0)=0)=0. d11=0.
+d12= nq5=0 | (q9=1 & ( ((nq6=1|nq13=0)=1 & q19=0)=0 | nq16=0))=0. d12=0.
+d13= nq19=1 | ...=1.
+d14= nq13=0 | (q4=1 & ( ((nq16=0|nq18=0)=0 & q10=1)=0 | nq3=0))=0. d14=0.
+d15= nq14=0 | (q10=1 & (nq6=1 | (q2=1&nq13=0)=0)) =1&(1|0)=1. d15=1.
+d16= nq10=0 | (q9=1 & ( ((nb0|nq18=0)=0 & q8=0)=0 | nq12=1)) =1&(0|1)=1. d16=1.
+d17= nq16=0 | (q0=1 & ( ((nq11=0|nq6=1)=1 & a1)=1 | nq9=0))=1. d17=1.
+d18= nq8=1 | ...=1.
+d19= nq11=0 | (q13=1 & ( (q19=0&nq14=0)=0 | nq2=0)=0)=0. d19=0.
+S29 = [1,0,0,1,1,0,0,1,1,0,1,0,0,1,0,1,1,1,1,0]. Concatenate q0-9:1 0 0 1 1 0 0 1 1 0 =1001100110. q10-19:1 0 0 1 0 1 1 1 1 0 =1001011110. Full "10011001101001011110". Good.
+Check d0=1 due q17=0,q19=0. d15=1 due q6=0 nq6=1. good.
+
+Cycle 29: S29 = [1,0,0,1,1,0,0,1,1,0,1,0,0,1,0,1,1,1,1,0]. Inputs t29: a=1 na0, b=1 nb0.
+Record O29: q10=1,q11=0,q13=1,q2=0,q3=1,q5=0 -> [1,0,1,0,1,0].
+Complements: nq0=0,nq1=1,nq2=1,nq3=0,nq4=0,nq5=1,nq6=1,nq7=0,nq8=0,nq9=1,nq10=0,nq11=1,nq12=1,nq13=0,nq14=1,nq15=0,nq16=0,nq17=0,nq18=0,nq19=1.
+d0= nb0 | (q14=0 & ...)=0. d0=0.
+d1= nq3=0 | (q7=1 & q8=1 & (nq4=0 | na0)=0) =1&1&0=0. d1=0.
+d2= nq18=0 | (q8=1 & (nq7=0 | nq4=0 | nb0)=0)=0. d2=0.
+d3= nq12=1 | ...=1.
+d4= nq7=0 | (q9=0 & ...)=0. d4=0.
+d5= nq18=0 | (b1 & ( ((nq19=1|nq7=0)=1 & q8=1)=1 | nq9=1)) =1&(1|1)=1. d5=1.
+d6= na0 | (q6=0 & ...)=0. d6=0.
+d7= nq19=1 | ...=1.
+d8= nq17=0 | (q18=1 & nq10=0 & b1)=0. d8=0.
+d9= nq18=0 | (q4=1 & ((nq1=1&q5=0)=0 | na0)=0)=0. d9=0.
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=0)=0)=0. d10=0.
+d11= nq1=1 | ...=1.
+d12= nq5=1 | ...=1.
+d13= nq19=1 | ...=1.
+d14= nq13=0 | (q4=1 & ( ((nq16=0|nq18=0)=0 & q10=1)=0 | nq3=0))=0. d14=0.
+d15= nq14=1 | ...=1.
+d16= nq10=0 | (q9=0 & ...)=0. d16=0.
+d17= nq16=0 | (q0=1 & ( ((nq11=1|nq6=1)=1 & a1)=1 | nq9=1))=1. d17=1.
+d18= nq8=0 | (q0=1 & ( ((nq2=1|nq1=1)=1 & q17=1)=1 | na0)=1)=1. d18=1.
+d19= nq11=1 | ...=1.
+S30 = [0,0,0,1,0,1,0,1,0,0,0,1,1,1,0,1,0,1,1,1]. Concatenate q0-9:0 0 0 1 0 1 0 1 0 0 =0001010100. q10-19:0 1 1 1 0 1 0 1 1 1 =0111010111. Full "00010101000111010111". Good.
+Check d1: q4=1 and a=1 so (~q4|na)=0; q7,q8=1; q3=1 nq3=0; d1=0. yes. d14=0 because q16=1,q18=1,q10=1,q3=1,q13=1; all no. Good.
+
+Cycle 30: S30 = [0,0,0,1,0,1,0,1,0,0,0,1,1,1,0,1,0,1,1,1]. Inputs t30: a=0 na1, b=1 nb0.
+Record O30: q10=0,q11=1,q13=1,q2=0,q3=1,q5=1 -> [0,1,1,0,1,1].
+Complements: nq0=1,nq1=1,nq2=1,nq3=0,nq4=1,nq5=0,nq6=1,nq7=0,nq8=1,nq9=1,nq10=1,nq11=0,nq12=0,nq13=0,nq14=1,nq15=0,nq16=1,nq17=0,nq18=0,nq19=0.
+d0= nb0 | (q14=0 & ...)=0. d0=0.
+d1= nq3=0 | (q7=1 & q8=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=0 & ...)=0. d2=0.
+d3= nq12=0 | (q0=0 & ...)=0. d3=0.
+d4= nq7=0 | (q9=0 & ...)=0. d4=0.
+d5= nq18=0 | (b1 & ( ((nq19=0|nq7=0)=0 & q8=0)=0 | nq9=1)) =1&(0|1)=1. d5=1.
+d6= na1 | ...=1.
+d7= nq19=0 | (q17=1 & ( ((nq13=0|nq6=1)=1 & q9=0)=0 | nq3=0)) =1&0=0. d7=0.
+d8= nq17=0 | (q18=1 & nq10=1 & b1)=1. d8=1.
+d9= nq18=0 | (q4=0 & ...)=0. d9=0.
+d10= nq18=0 | (q16=0 & ...)=0. d10=0.
+d11= nq1=1 | ...=1.
+d12= nq5=0 | (q9=0 & ...)=0. d12=0.
+d13= nq19=0 | (b1 & q8=0 & nq16=1)=0. d13=0.
+d14= nq13=0 | (q4=0 & ...)=0. d14=0.
+d15= nq14=1 | ...=1.
+d16= nq10=1 | ...=1.
+d17= nq16=1 | ...=1.
+d18= nq8=1 | ...=1.
+d19= nq11=0 | (q13=1 & ( (q19=1&nq14=1)=1 | nq2=1)=1)=1. d19=1.
+S31 = [0,0,0,0,0,1,1,0,1,0,0,1,0,0,0,1,1,1,1,1]. Concatenate q0-9:0 0 0 0 0 1 1 0 1 0 =0000011010. q10-19:0 1 0 0 0 1 1 1 1 1 =0100011111. Full "00000110100100011111". Good.
+Check d8=1: q17=1 nq17=0; q18=1, q10=0 nq10=1, b=1 ->1. yes.
+
+Cycle 31: S31 = [0,0,0,0,0,1,1,0,1,0,0,1,0,0,0,1,1,1,1,1]. Inputs t31: a=1 na0, b=1 nb0.
+Record O31: q10=0,q11=1,q13=0,q2=0,q3=0,q5=1 -> [0,1,0,0,0,1].
+Complements: nq0=1,nq1=1,nq2=1,nq3=1,nq4=1,nq5=0,nq6=0,nq7=1,nq8=0,nq9=1,nq10=1,nq11=0,nq12=1,nq13=1,nq14=1,nq15=0,nq16=0,nq17=0,nq18=0,nq19=0.
+d0= nb0 | (q14=0 & ...)=0. d0=0.
+d1= nq3=1 | ...=1.
+d2= nq18=0 | (q8=1 & (nq7=1 | nq4=1 | nb0)=1)=1. d2=1.
+d3= nq12=1 | ...=1.
+d4= nq7=1 | ...=1.
+d5= nq18=0 | (b1 & ( ((nq19=0|nq7=1)=1 & q8=1)=1 | nq9=1))=1. d5=1.
+d6= na0 | (q6=1 & ( ((nb0|nq3=1)=1 & q15=1)=1 | nq2=1))=1. d6=1.
+d7= nq19=0 | (q17=1 & ( ((nq13=1|nq6=0)=1 & q9=0)=0 | nq3=1)) =1&(0|1)=1. d7=1.
+d8= nq17=0 | (q18=1 & nq10=1 & b1)=1. d8=1.
+d9= nq18=0 | (q4=0 & ...)=0. d9=0.
+d10= nq18=0 | (q16=1 & (nq4=1 | nq15=0)=1)=1. d10=1.
+d11= nq1=1 | ...=1.
+d12= nq5=0 | (q9=0 & ...)=0. d12=0.
+d13= nq19=0 | (b1 & q8=1 & nq16=0)=0. d13=0.
+d14= nq13=1 | ...=1.
+d15= nq14=1 | ...=1.
+d16= nq10=1 | ...=1.
+d17= nq16=0 | (q0=0 & ...)=0. d17=0.
+d18= nq8=0 | (q0=0 & ...)=0. d18=0.
+d19= nq11=0 | (q13=0 & ...)=0. d19=0.
+S32 = [0,1,1,1,1,1,1,1,1,0,1,1,0,1,1,1,1,0,0,0]. Concatenate q0-9:0 1 1 1 1 1 1 1 1 0 =0111111110. q10-19:1 1 0 1 1 1 1 0 0 0 =1101111000. Full "01111111101101111000". Good.
+Check d13=0: q19=1 nq19=0; b=1,q8=1,nq16=1 (q16=0) would be 1! Wait hold on: S31 q16=1? Let's check S31 list: [q0=0,q1=0,q2=0,q3=0,q4=0,q5=1,q6=1,q7=0,q8=1,q9=0,q10=0,q11=1,q12=0,q13=0,q14=0,q15=1,q16=1,q17=1,q18=1,q19=1]. Oops I set q16=1, not 0. In complements above I mistakenly wrote nq16=0? Let's recalc S31: It came from S30 d's: S31 = [0,0,0,0,0,1,1,0,1,0,0,1,0,0,0,1,1,1,1,1]. Yes q15=1 (d15), q16=1 (d16), q17=1, q18=1,q19=1. I erroneously in cycle31 complements set nq15=0 (ok q15=1 -> nq15=0), nq16=0? If q16=1, nq16=0, that's correct. Wait I listed q16=1? In complement list for cycle31 I wrote nq16=0, nq17=0,nq18=0,nq19=0. Good. Then d13 = nq19=0 | (b1 & q8=1 & nq16=0) =0. correct. I momentarily misread. Good. d10 = nq18=0 | (q16=1 & (nq4=1 | nq15=0)=1) =1. yes. d17 = nq16=0 | (q0=0 & ...)=0. good.
+
+But check d14 for S31: q13=0 -> nq13=1, so d14=1 regardless. yes.
+
+Cycle 32: S32 = [0,1,1,1,1,1,1,1,1,0,1,1,0,1,1,1,1,0,0,0]. Inputs t32: a=0 na1, b=0 nb1.
+Record O32: q10=1,q11=1,q13=1,q2=1,q3=1,q5=1 -> [1,1,1,1,1,1].
+Complements: nq0=1,nq1=0,nq2=0,nq3=0,nq4=0,nq5=0,nq6=0,nq7=0,nq8=0,nq9=1,nq10=0,nq11=0,nq12=1,nq13=0,nq14=0,nq15=0,nq16=0,nq17=1,nq18=1,nq19=1.
+d0= nb1 | ...=1.
+d1= nq3=0 | (q7=1 & q8=1 & (nq4=0 | na1)=1)=1. d1=1.
+d2= nq18=1 | ...=1.
+d3= nq12=1 | ...=1.
+d4= nq7=0 | (q9=0 & ...)=0. d4=0.
+d5= nq18=1 | ...=1.
+d6= na1 | ...=1.
+d7= nq19=1 | ...=1.
+d8= nq17=1 | ...=1.
+d9= nq18=1 | ...=1.
+d10= nq18=1 | ...=1.
+d11= nq1=0 | (a0 & ...)=0. d11=0.
+d12= nq5=0 | (q9=0 & ...)=0. d12=0.
+d13= nq19=1 | ...=1.
+d14= nq13=0 | (q4=1 & ( ((nq16=0|nq18=1)=1 & q10=1)=1 | nq3=0))=1. d14=1.
+d15= nq14=0 | (q10=1 & (nq6=0 | (q2=1&nq13=0)=0)) =1&0=0. d15=0.
+d16= nq10=0 | (q9=0 & ...)=0. d16=0.
+d17= nq16=0 | (q0=0 & ...)=0. d17=0.
+d18= nq8=0 | (q0=0 & ...)=0. d18=0.
+d19= nq11=0 | (q13=1 & ( (q19=0&nq14=0)=0 | nq2=0)=0)=0. d19=0.
+S33 = [1,1,1,1,0,1,1,1,1,1,1,0,0,1,1,0,0,0,0,0]. Concatenate q0-9:1 1 1 1 0 1 1 1 1 1 =1111011111. q10-19:1 0 0 1 1 0 0 0 0 0 =1001100000. Full "11110111111001100000". Good.
+Check d15=0: q14=1 nq14=0; q10=1; q6=1 nq6=0; q2=1 but q13=1 nq13=0. yes. d17 q0=0. d18 q0=0. d16 q9=0. good.
+
+Cycle 33: S33 = [1,1,1,1,0,1,1,1,1,1,1,0,0,1,1,0,0,0,0,0]. Inputs t33: a=0 na1, b=0 nb1.
+Record O33: q10=1,q11=0,q13=1,q2=1,q3=1,q5=1 -> [1,0,1,1,1,1].
+Complements: nq0=0,nq1=0,nq2=0,nq3=0,nq4=1,nq5=0,nq6=0,nq7=0,nq8=0,nq9=0,nq10=0,nq11=1,nq12=1,nq13=0,nq14=0,nq15=1,nq16=1,nq17=1,nq18=1,nq19=1.
+d0= nb1 | ...=1.
+d1= nq3=0 | (q7=1 & q8=1 & (nq4=1 | na1)=1)=1. d1=1.
+d2= nq18=1 | ...=1.
+d3= nq12=1 | ...=1.
+d4= nq7=0 | (q9=1 & ( ((nb1|nq14=0)=1 & q16=0)=0 | nq15=1)) =1&(0|1)=1. d4=1.
+d5= nq18=1 | ...=1.
+d6= na1 | ...=1.
+d7= nq19=1 | ...=1.
+d8= nq17=1 | ...=1.
+d9= nq18=1 | ...=1.
+d10= nq18=1 | ...=1.
+d11= nq1=0 | (a0 & ...)=0. d11=0.
+d12= nq5=0 | (q9=1 & ( ((nq6=0|nq13=0)=0 & q19=0)=0 | nq16=1)) =1&(0|1)=1. d12=1.
+d13= nq19=1 | ...=1.
+d14= nq13=0 | (q4=0 & ...)=0. d14=0.
+d15= nq14=0 | (q10=1 & (nq6=0 | (q2=1&nq13=0)=0))=0. d15=0.
+d16= nq10=0 | (q9=1 & ( ((nb1|nq18=1)=1 & q8=1)=1 | nq12=1))=1. d16=1.
+d17= nq16=1 | ...=1.
+d18= nq8=0 | (q0=1 & ( ((nq2=0|nq1=0)=0 & q17=0)=0 | na1)) =1&(0|1)=1. d18=1.
+d19= nq11=1 | ...=1.
+S34 = [1,1,1,1,1,1,1,1,1,1,1,0,1,1,0,0,1,1,1,1]. Concatenate q0-9:1 1 1 1 1 1 1 1 1 1 =1111111111. q10-19:1 0 1 1 0 0 1 1 1 1 =1011001111. Full "11111111111011001111". Good.
+Check d16: q10=1 nq10=0; q9=1; A16=nb1|nq18=1 =1; &q8=1 =>1; |nq12=1; p2=1; d=1. yes. d15=0 as before. d14=0 due q4=0 and q13=1. Good.
+
+Cycle 34: S34 = [1,1,1,1,1,1,1,1,1,1,1,0,1,1,0,0,1,1,1,1]. Inputs t34: a=0 na1, b=0 nb1.
+Record O34: q10=1,q11=0,q13=1,q2=1,q3=1,q5=1 -> [1,0,1,1,1,1]. (same as O33? q11=0 yes; O33 [1,0,1,1,1,1]. yes)
+Complements: nq0=0,nq1=0,nq2=0,nq3=0,nq4=0,nq5=0,nq6=0,nq7=0,nq8=0,nq9=0,nq10=0,nq11=1,nq12=0,nq13=0,nq14=1,nq15=1,nq16=0,nq17=0,nq18=0,nq19=0.
+d0= nb1 | ...=1.
+d1= nq3=0 | (q7=1 & q8=1 & (nq4=0 | na1)=1)=1. d1=1.
+d2= nq18=0 | (q8=1 & (nq7=0 | nq4=0 | nb1)=1)=1. d2=1.
+d3= nq12=0 | (q0=1 & ( ((nq5=0|nq13=0)=0 & q4=1)=0 | nq3=0))=0. d3=0.
+d4= nq7=0 | (q9=1 & ( ((nb1|nq14=1)=1 & q16=1)=1 | nq15=1))=1. d4=1.
+d5= nq18=0 | (b0 & ...)=0. d5=0.
+d6= na1 | ...=1.
+d7= nq19=0 | (q17=1 & ( ((nq13=0|nq6=0)=0 & q9=1)=0 | nq3=0))=0. d7=0.
+d8= nq17=0 | (q18=1 & nq10=0 & b0)=0. d8=0.
+d9= nq18=0 | (q4=1 & ((nq1=0&q5=1)=0 | na1)=1)=1. d9=1.
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=1)=1)=1. d10=1.
+d11= nq1=0 | (a0 & ...)=0. d11=0.
+d12= nq5=0 | (q9=1 & ( ((nq6=0|nq13=0)=0 & q19=1)=0 | nq16=0))=0. d12=0.
+d13= nq19=0 | (b0 ...)=0. d13=0.
+d14= nq13=0 | (q4=1 & ( ((nq16=0|nq18=0)=0 & q10=1)=0 | nq3=0))=0. d14=0.
+d15= nq14=1 | ...=1.
+d16= nq10=0 | (q9=1 & ( ((nb1|nq18=0)=1 & q8=1)=1 | nq12=0))=1. d16=1.
+d17= nq16=0 | (q0=1 & ( ((nq11=1|nq6=0)=1 & a0)=0 | nq9=0))=0. d17=0.
+d18= nq8=0 | (q0=1 & ( ((nq2=0|nq1=0)=0 & q17=1)=0 | na1)) =1&(0|1)=1. d18=1.
+d19= nq11=1 | ...=1.
+S35 = [1,1,1,0,1,0,1,0,0,1,1,0,0,0,0,1,1,0,1,1]. Concatenate q0-9:1 1 1 0 1 0 1 0 0 1 =1110101001. q10-19:1 0 0 0 0 1 1 0 1 1 =1000011011. Full "11101010011000011011". Good.
+Check d15: q14=0 -> nq14=1, so d15=1. yes. d16=1 due b? A16=nb|nq18=1|0=1 & q8=1 =>1. good.
+
+Cycle 35: S35 = [1,1,1,0,1,0,1,0,0,1,1,0,0,0,0,1,1,0,1,1]. Inputs t35: a=0 na1, b=0 nb1.
+Record O35: q10=1,q11=0,q13=0,q2=1,q3=0,q5=0 -> [1,0,0,1,0,0].
+Complements: nq0=0,nq1=0,nq2=0,nq3=1,nq4=0,nq5=1,nq6=0,nq7=1,nq8=1,nq9=0,nq10=0,nq11=1,nq12=1,nq13=1,nq14=1,nq15=0,nq16=0,nq17=1,nq18=0,nq19=0.
+d0= nb1 | ...=1.
+d1= nq3=1 | ...=1.
+d2= nq18=0 | (q8=0 & ...)=0. d2=0.
+d3= nq12=1 | ...=1.
+d4= nq7=1 | ...=1.
+d5= nq18=0 | (b0 & ...)=0. d5=0.
+d6= na1 | ...=1.
+d7= nq19=0 | (q17=0 & ...)=0. d7=0.
+d8= nq17=1 | ...=1.
+d9= nq18=0 | (q4=1 & ((nq1=0&q5=0)=0 | na1)=1)=1. d9=1.
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=0)=0)=0. d10=0.
+d11= nq1=0 | (a0 & ...)=0. d11=0.
+d12= nq5=1 | ...=1.
+d13= nq19=0 | (b0 ...)=0. d13=0.
+d14= nq13=1 | ...=1.
+d15= nq14=1 | ...=1.
+d16= nq10=0 | (q9=1 & ( ((nb1|nq18=0)=1 & q8=0)=0 | nq12=1)) =1&(0|1)=1. d16=1.
+d17= nq16=0 | (q0=1 & ( ((nq11=1|nq6=0)=1 & a0)=0 | nq9=0)) =1&0=0. d17=0.
+d18= nq8=1 | ...=1.
+d19= nq11=1 | ...=1.
+S36 = [1,1,0,1,1,0,1,0,1,1,0,0,1,0,1,1,1,0,1,1]. Concatenate q0-9:1 1 0 1 1 0 1 0 1 1 =1101101011. q10-19:0 0 1 0 1 1 1 0 1 1 =0010111011. Full "11011010110010111011". Good.
+Check d17=0: a=0 so A17&a=0; q9=1 nq9=0; q0=1; q16=1 nq16=0. yes. d7: q17=0 so term 0, q19=1 nq19=0. yes.
+
+Cycle 36: S36 = [1,1,0,1,1,0,1,0,1,1,0,0,1,0,1,1,1,0,1,1]. Inputs t36: a=0 na1, b=0 nb1.
+Record O36: q10=0,q11=0,q13=0,q2=0,q3=1,q5=0 -> [0,0,0,0,1,0].
+Complements: nq0=0,nq1=0,nq2=1,nq3=0,nq4=0,nq5=1,nq6=0,nq7=1,nq8=0,nq9=0,nq10=1,nq11=1,nq12=0,nq13=1,nq14=0,nq15=0,nq16=0,nq17=1,nq18=0,nq19=0.
+d0= nb1 | ...=1.
+d1= nq3=0 | (q7=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=1 & (nq7=1 | nq4=0 | nb1)=1)=1. d2=1.
+d3= nq12=0 | (q0=1 & ( ((nq5=1|nq13=1)=1 & q4=1)=1 | nq3=0))=1. d3=1.
+d4= nq7=1 | ...=1.
+d5= nq18=0 | (b0 & ...)=0. d5=0.
+d6= na1 | ...=1.
+d7= nq19=0 | (q17=0 & ...)=0. d7=0.
+d8= nq17=1 | ...=1.
+d9= nq18=0 | (q4=1 & ((nq1=0&q5=0)=0 | na1)=1)=1. d9=1.
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=0)=0)=0. d10=0.
+d11= nq1=0 | (a0 & ...)=0. d11=0.
+d12= nq5=1 | ...=1.
+d13= nq19=0 | (b0 ...)=0. d13=0.
+d14= nq13=1 | ...=1.
+d15= nq14=0 | (q10=0 & ...)=0. d15=0.
+d16= nq10=1 | ...=1.
+d17= nq16=0 | (q0=1 & ( ((nq11=1|nq6=0)=1 & a0)=0 | nq9=0))=0. d17=0.
+d18= nq8=0 | (q0=1 & ( ((nq2=1|nq1=0)=1 & q17=0)=0 | na1)) =1&(0|1)=1. d18=1.
+d19= nq11=1 | ...=1.
+S37 = [1,0,1,1,1,0,1,0,1,1,0,0,1,0,1,0,1,0,1,1]. Concatenate q0-9:1 0 1 1 1 0 1 0 1 1 =1011101011. q10-19:0 0 1 0 1 0 1 0 1 1 =0010101011. Full "10111010110010101011". Good.
+Check d14 = nq13=1 because q13=0, yes. d16=1 because q10=0 nq10=1. good.
+
+Cycle 37: S37 = [1,0,1,1,1,0,1,0,1,1,0,0,1,0,1,0,1,0,1,1]. Inputs t37: a=0 na1, b=0 nb1.
+Record O37: q10=0,q11=0,q13=0,q2=1,q3=1,q5=0 -> [0,0,0,1,1,0].
+Complements: nq0=0,nq1=1,nq2=0,nq3=0,nq4=0,nq5=1,nq6=0,nq7=1,nq8=0,nq9=0,nq10=1,nq11=1,nq12=0,nq13=1,nq14=0,nq15=1,nq16=0,nq17=1,nq18=0,nq19=0.
+d0= nb1 | ...=1.
+d1= nq3=0 | (q7=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=1 & (nq7=1 | nq4=0 | nb1)=1)=1. d2=1.
+d3= nq12=0 | (q0=1 & ( ((nq5=1|nq13=1)=1 & q4=1)=1 | nq3=0))=1. d3=1.
+d4= nq7=1 | ...=1.
+d5= nq18=0 | (b0 & ...)=0. d5=0.
+d6= na1 | ...=1.
+d7= nq19=0 | (q17=0 & ...)=0. d7=0.
+d8= nq17=1 | ...=1.
+d9= nq18=0 | (q4=1 & ((nq1=1&q5=0)=0 | na1)=1)=1. d9=1.
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=1)=1)=1. d10=1.
+d11= nq1=1 | ...=1.
+d12= nq5=1 | ...=1.
+d13= nq19=0 | (b0 ...)=0. d13=0.
+d14= nq13=1 | ...=1.
+d15= nq14=0 | (q10=0 & ...)=0. d15=0.
+d16= nq10=1 | ...=1.
+d17= nq16=0 | (q0=1 & ( ((nq11=1|nq6=0)=1 & a0)=0 | nq9=0))=0. d17=0.
+d18= nq8=0 | (q0=1 & ( ((nq2=0|nq1=1)=1 & q17=0)=0 | na1)=1)=1. d18=1.
+d19= nq11=1 | ...=1.
+S38 = [1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,0,1,1]. Concatenate q0-9 same? q0-9:1 0 1 1 1 0 1 0 1 1 =1011101011. q10-19:1 1 1 0 1 0 1 0 1 1 =1110101011. Full "10111010111110101011". S38 differs S37 q10=1,q11=1,q12=1,q14? q14=1 same, q16=1. Let's list carefully: d0=1,d1=0,d2=1,d3=1,d4=1,d5=0,d6=1,d7=0,d8=1,d9=1,d10=1,d11=1,d12=1,d13=0,d14=1,d15=0,d16=1,d17=0,d18=1,d19=1. Yes S38 = [1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,0,1,1]. Good.
+Check d10=1 due q15=0 nq15=1. d16=1 due q10=0 in S37? Wait d16 formula uses current S37 q10=0 -> nq10=1, so d16=1. yes.
+
+Cycle 38: S38 = [1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,0,1,1]. Inputs t38: a=0 na1, b=0 nb1.
+Record O38: q10=1,q11=1,q13=0,q2=1,q3=1,q5=0 -> [1,1,0,1,1,0].
+Complements: nq0=0,nq1=1,nq2=0,nq3=0,nq4=0,nq5=1,nq6=0,nq7=1,nq8=0,nq9=0,nq10=0,nq11=0,nq12=0,nq13=1,nq14=0,nq15=1,nq16=0,nq17=1,nq18=0,nq19=0.
+d0= nb1 | ...=1.
+d1= nq3=0 | (q7=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=1 & (nq7=1 | nq4=0 | nb1)=1)=1. d2=1.
+d3= nq12=0 | (q0=1 & ( ((nq5=1|nq13=1)=1 & q4=1)=1 | nq3=0))=1. d3=1.
+d4= nq7=1 | ...=1.
+d5= nq18=0 | (b0 & ...)=0. d5=0.
+d6= na1 | ...=1.
+d7= nq19=0 | (q17=0 & ...)=0. d7=0.
+d8= nq17=1 | ...=1.
+d9= nq18=0 | (q4=1 & ((nq1=1&q5=0)=0 | na1)=1)=1. d9=1.
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=1)=1)=1. d10=1.
+d11= nq1=1 | ...=1.
+d12= nq5=1 | ...=1.
+d13= nq19=0 | (b0 ...)=0. d13=0.
+d14= nq13=1 | ...=1.
+d15= nq14=0 | (q10=1 & (nq6=0 | (q2=1&nq13=1)=1)) =1&(0|1)=1. d15=1.
+d16= nq10=0 | (q9=1 & ( ((nb1|nq18=0)=1 & q8=1)=1 | nq12=0))=1. d16=1.
+d17= nq16=0 | (q0=1 & ( ((nq11=0|nq6=0)=0 & a0)=0 | nq9=0))=0. d17=0.
+d18= nq8=0 | (q0=1 & ( ((nq2=0|nq1=1)=1 & q17=0)=0 | na1)=1)=1. d18=1.
+d19= nq11=0 | (q13=0 & ...)=0. d19=0.
+S39 = [1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,1,1,0,1,0]. Concatenate q0-9:1 0 1 1 1 0 1 0 1 1 =1011101011. q10-19:1 1 1 0 1 1 1 0 1 0 =1110111010. Full "10111010111110111010". Good. Only changes from S38: d15=1 (q15 next=1), d19=0. Check d15 now q10=1,q13=0 so q2&nq13 =1 -> d15=1; earlier S38 d15=0 because current S37 q10=0. Good.
+
+Cycle 39: S39 = [1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,1,1,0,1,0]. Inputs t39: a=0 na1, b=1 nb0.
+Record O39: q10=1,q11=1,q13=0,q2=1,q3=1,q5=0 -> [1,1,0,1,1,0].
+Complements: nq0=0,nq1=1,nq2=0,nq3=0,nq4=0,nq5=1,nq6=0,nq7=1,nq8=0,nq9=0,nq10=0,nq11=0,nq12=0,nq13=1,nq14=0,nq15=0,nq16=0,nq17=1,nq18=0,nq19=1.
+d0= nb0 | (q14=1 & (nq17=1 | nq19=1)=1)=1. d0=1.
+d1= nq3=0 | (q7=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=1 & (nq7=1 | nq4=0 | nb0)=1)=1. d2=1.
+d3= nq12=0 | (q0=1 & ( ((nq5=1|nq13=1)=1 & q4=1)=1 | nq3=0))=1. d3=1.
+d4= nq7=1 | ...=1.
+d5= nq18=0 | (b1 & ( ((nq19=1|nq7=1)=1 & q8=1)=1 | nq9=0)) =1&(1|0)=1. d5=1.
+d6= na1 | ...=1.
+d7= nq19=1 | ...=1.
+d8= nq17=1 | ...=1.
+d9= nq18=0 | (q4=1 & ((nq1=1&q5=0)=0 | na1)=1)=1. d9=1.
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=0)=0)=0. d10=0.
+d11= nq1=1 | ...=1.
+d12= nq5=1 | ...=1.
+d13= nq19=1 | ...=1.
+d14= nq13=1 | ...=1.
+d15= nq14=0 | (q10=1 & (nq6=0 | (q2=1&nq13=1)=1)) =1. d15=1.
+d16= nq10=0 | (q9=1 & ( ((nb0|nq18=0)=0 & q8=1)=0 | nq12=0)) =1&0=0. d16=0.
+d17= nq16=0 | (q0=1 & ( ((nq11=0|nq6=0)=0 & a0)=0 | nq9=0))=0. d17=0.
+d18= nq8=0 | (q0=1 & ( ((nq2=0|nq1=1)=1 & q17=0)=0 | na1)=1)=1. d18=1.
+d19= nq11=0 | (q13=0 & ...)=0. d19=0.
+S40 = [1,0,1,1,1,1,1,1,1,1,0,1,1,1,1,1,0,0,1,0]. Concatenate q0-9:1 0 1 1 1 1 1 1 1 1 =1011111111. q10-19:0 1 1 1 1 1 0 0 1 0 =0111110010. Full "10111111110111110010". Good.
+Check d10=0: q18=1 nq18=0; q16=1; q4=1 (nq4=0), q15=1 (nq15=0), so 0. yes. d16=0: q10=1 nq10=0; q9=1; A16=nb0|nq18=0 =0; &q8=1=0; |nq12=0; p2=0. yes.
+
+Cycle 40: S40 = [1,0,1,1,1,1,1,1,1,1,0,1,1,1,1,1,0,0,1,0]. Inputs t40: a=1 na0, b=1 nb0.
+Record O40: q10=0,q11=1,q13=1,q2=1,q3=1,q5=1 -> [0,1,1,1,1,1].
+Complements: nq0=0,nq1=1,nq2=0,nq3=0,nq4=0,nq5=0,nq6=0,nq7=0,nq8=0,nq9=0,nq10=1,nq11=0,nq12=0,nq13=0,nq14=0,nq15=0,nq16=1,nq17=1,nq18=0,nq19=1.
+d0= nb0 | (q14=1 & (nq17=1 | nq19=1)=1)=1. d0=1.
+d1= nq3=0 | (q7=1 & q8=1 & (nq4=0 | na0)=0) =0. d1=0.
+d2= nq18=0 | (q8=1 & (nq7=0 | nq4=0 | nb0)=0)=0. d2=0.
+d3= nq12=0 | (q0=1 & ( ((nq5=0|nq13=0)=0 & q4=1)=0 | nq3=0))=0. d3=0.
+d4= nq7=0 | (q9=1 & ( ((nb0|nq14=0)=0 & q16=0)=0 | nq15=0))=0. d4=0.
+d5= nq18=0 | (b1 & ( ((nq19=1|nq7=0)=1 & q8=1)=1 | nq9=0)) =1. d5=1.
+d6= na0 | (q6=1 & ( ((nb0|nq3=0)=0 & q15=1)=0 | nq2=0))=0. d6=0.
+d7= nq19=1 | ...=1.
+d8= nq17=1 | ...=1.
+d9= nq18=0 | (q4=1 & ((nq1=1&q5=1)=1 | na0)=1)=1. d9=1.
+d10= nq18=0 | (q16=0 & ...)=0. d10=0.
+d11= nq1=1 | ...=1.
+d12= nq5=0 | (q9=1 & ( ((nq6=0|nq13=0)=0 & q19=0)=0 | nq16=1)) =1&(0|1)=1. d12=1.
+d13= nq19=1 | ...=1.
+d14= nq13=0 | (q4=1 & ( ((nq16=1|nq18=0)=1 & q10=0)=0 | nq3=0)) =1&0=0. d14=0.
+d15= nq14=0 | (q10=0 & ...)=0. d15=0.
+d16= nq10=1 | ...=1.
+d17= nq16=1 | ...=1.
+d18= nq8=0 | (q0=1 & ( ((nq2=0|nq1=1)=1 & q17=0)=0 | na0)=0) =0. d18=0.
+d19= nq11=0 | (q13=1 & ( (q19=0&nq14=0)=0 | nq2=0)=0)=0. d19=0.
+S41 = [1,0,0,0,0,1,0,1,1,1,0,1,1,1,0,0,1,1,0,0]. Concatenate q0-9:1 0 0 0 0 1 0 1 1 1 =1000010111. q10-19:0 1 1 1 0 0 1 1 0 0 =0111001100. Full "10000101110111001100". Good.
+Check d1=0: q4=1,a=1 => term zero; q3=1. yes. d18=0: q8=1 nq8=0; q0=1; A18=(nq2=0|nq1=1)=1; &q17=0 =0; |na=0; p2=0. yes. d14=0 because q10=0, q3=1,q13=1. good.
+
+Cycle 41: S41 = [1,0,0,0,0,1,0,1,1,1,0,1,1,1,0,0,1,1,0,0]. Inputs t41: a=1 na0, b=0 nb1.
+Record O41: q10=0,q11=1,q13=1,q2=0,q3=0,q5=1 -> [0,1,1,0,0,1].
+Complements: nq0=0,nq1=1,nq2=1,nq3=1,nq4=1,nq5=0,nq6=1,nq7=0,nq8=0,nq9=0,nq10=1,nq11=0,nq12=0,nq13=0,nq14=1,nq15=1,nq16=0,nq17=0,nq18=1,nq19=1.
+d0= nb1 | ...=1.
+d1= nq3=1 | ...=1.
+d2= nq18=1 | ...=1.
+d3= nq12=0 | (q0=1 & ( ((nq5=0|nq13=0)=0 & q4=0)=0 | nq3=1)) =1&(0|1)=1. d3=1.
+d4= nq7=0 | (q9=1 & ( ((nb1|nq14=1)=1 & q16=1)=1 | nq15=1))=1. d4=1.
+d5= nq18=1 | ...=1.
+d6= na0 | (q6=0 & ...)=0. d6=0.
+d7= nq19=1 | ...=1.
+d8= nq17=0 | (q18=0 & ...)=0. d8=0.
+d9= nq18=1 | ...=1.
+d10= nq18=1 | ...=1.
+d11= nq1=1 | ...=1.
+d12= nq5=0 | (q9=1 & ( ((nq6=1|nq13=0)=1 & q19=0)=0 | nq16=0)) =1&0=0. d12=0.
+d13= nq19=1 | ...=1.
+d14= nq13=0 | (q4=0 & ...)=0. d14=0.
+d15= nq14=1 | ...=1.
+d16= nq10=1 | ...=1.
+d17= nq16=0 | (q0=1 & ( ((nq11=0|nq6=1)=1 & a1)=1 | nq9=0))=1. d17=1.
+d18= nq8=0 | (q0=1 & ( ((nq2=1|nq1=1)=1 & q17=1)=1 | na0)=1)=1. d18=1.
+d19= nq11=0 | (q13=1 & ( (q19=0&nq14=1)=0 | nq2=1)=1)=1. d19=1.
+S42 = [1,1,1,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,1,1]. Concatenate q0-9:1 1 1 1 1 1 0 1 0 1 =1111110101. q10-19:1 1 0 1 0 1 1 1 1 1 =1101011111. Full "11111101011101011111". Good.
+Check d12=0: q5=1 nq5=0; q9=1; A12=(nq6=1|nq13=0)=1; &q19=0 =>0; |nq16=0; p2=0; d=0. yes. d14=0 because q4=0, q13=1. good.
+
+Cycle 42: S42 = [1,1,1,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,1,1]. Inputs t42: a=0 na1, b=1 nb0.
+Record O42: q10=1,q11=1,q13=1,q2=1,q3=1,q5=1 -> [1,1,1,1,1,1].
+Complements: nq0=0,nq1=0,nq2=0,nq3=0,nq4=0,nq5=0,nq6=1,nq7=0,nq8=1,nq9=0,nq10=0,nq11=0,nq12=1,nq13=0,nq14=1,nq15=0,nq16=0,nq17=0,nq18=0,nq19=0.
+d0= nb0 | (q14=0 & ...)=0. d0=0.
+d1= nq3=0 | (q7=1 & q8=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=0 & ...)=0. d2=0.
+d3= nq12=1 | ...=1.
+d4= nq7=0 | (q9=1 & ( ((nb0|nq14=1)=1 & q16=1)=1 | nq15=0)) =1&(1|0)=1. d4=1.
+d5= nq18=0 | (b1 & ( ((nq19=0|nq7=0)=0 & q8=0)=0 | nq9=0))=0. d5=0.
+d6= na1 | ...=1.
+d7= nq19=0 | (q17=1 & ( ((nq13=0|nq6=1)=1 & q9=1)=1 | nq3=0)) =1&(1|0)=1. d7=1.
+d8= nq17=0 | (q18=1 & nq10=0 & b1)=0. d8=0.
+d9= nq18=0 | (q4=1 & ((nq1=0&q5=1)=0 | na1)=1)=1. d9=1.
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=0)=0)=0. d10=0.
+d11= nq1=0 | (a0 & ...)=0. d11=0.
+d12= nq5=0 | (q9=1 & ( ((nq6=1|nq13=0)=1 & q19=1)=1 | nq16=0)) =1. d12=1.
+d13= nq19=0 | (b1 & q8=0 & nq16=1)=0. d13=0.
+d14= nq13=0 | (q4=1 & ( ((nq16=0|nq18=0)=0 & q10=1)=0 | nq3=0))=0. d14=0.
+d15= nq14=1 | ...=1.
+d16= nq10=0 | (q9=1 & ( ((nb0|nq18=0)=0 & q8=0)=0 | nq12=1)) =1&(0|1)=1. d16=1.
+d17= nq16=0 | (q0=1 & ( ((nq11=0|nq6=1)=1 & a0)=0 | nq9=0))=0. d17=0.
+d18= nq8=1 | ...=1.
+d19= nq11=0 | (q13=1 & ( (q19=1&nq14=1)=1 | nq2=0)=1)=1. d19=1.
+S43 = [0,0,0,1,1,0,1,1,0,1,0,0,1,0,0,1,1,0,1,1]. Concatenate q0-9:0 0 0 1 1 0 1 1 0 1 =0001101101. q10-19:0 0 1 0 0 1 1 0 1 1 =0010011011. Full "00011011010010011011". Good.
+Check d0=0 because q14=0 (nq14=1? Wait d0 formula d0=nb | (q14 & (nq17|nq19)). For S42, q14=0? Let's verify S42 q14 = d14 from cycle41 =0. Yes q14=0. b=1 nb=0, q17=1,q19=1; q14=0 => d0=0. Good. d4: A4=nb0|nq14=1 =>1; &q16=1 =>1; p2=1; q9=1; q7=1 nq7=0; d4=1. yes.
+
+Cycle 43: S43 = [0,0,0,1,1,0,1,1,0,1,0,0,1,0,0,1,1,0,1,1]. Inputs t43: a=1 na0, b=0 nb1.
+Record O43: q10=0,q11=0,q13=0,q2=0,q3=1,q5=0 -> [0,0,0,0,1,0].
+Complements: nq0=1,nq1=1,nq2=1,nq3=0,nq4=0,nq5=1,nq6=0,nq7=0,nq8=1,nq9=0,nq10=1,nq11=1,nq12=0,nq13=1,nq14=1,nq15=0,nq16=0,nq17=1,nq18=0,nq19=0.
+d0= nb1 | ...=1.
+d1= nq3=0 | (q7=1 & q8=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=0 & ...)=0. d2=0.
+d3= nq12=0 | (q0=0 & ...)=0. d3=0.
+d4= nq7=0 | (q9=1 & ( ((nb1|nq14=1)=1 & q16=1)=1 | nq15=0)) =1&(1|0)=1. d4=1.
+d5= nq18=0 | (b0 & ...)=0. d5=0.
+d6= na0 | (q6=1 & ( ((nb1|nq3=0)=1 & q15=1)=1 | nq2=1)) =1&(1|1)=1. d6=1.
+d7= nq19=0 | (q17=0 & ...)=0. d7=0.
+d8= nq17=1 | ...=1.
+d9= nq18=0 | (q4=1 & ((nq1=1&q5=0)=0 | na0)=0)=0. d9=0.
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=0)=0)=0. d10=0.
+d11= nq1=1 | ...=1.
+d12= nq5=1 | ...=1.
+d13= nq19=0 | (b0 ...)=0. d13=0.
+d14= nq13=1 | ...=1.
+d15= nq14=1 | ...=1.
+d16= nq10=1 | ...=1.
+d17= nq16=0 | (q0=0 & ...)=0. d17=0.
+d18= nq8=1 | ...=1.
+d19= nq11=1 | ...=1.
+S44 = [1,0,0,0,1,0,1,0,1,0,0,1,1,0,1,1,1,0,1,1]. Concatenate q0-9:1 0 0 0 1 0 1 0 1 0 =1000101010. q10-19:0 1 1 0 1 1 1 0 1 1 =0110111011. Full "10001010100110111011". Good.
+Check d6=1: q15=1, A6=nb1|nq3=0=1, &q15=1, p2=1, q6=1. yes. d0=1 due b=0. good.
+
+Cycle 44: S44 = [1,0,0,0,1,0,1,0,1,0,0,1,1,0,1,1,1,0,1,1]. Inputs t44: a=1 na0, b=0 nb1.
+Record O44: q10=0,q11=1,q13=0,q2=0,q3=0,q5=0 -> [0,1,0,0,0,0].
+Complements: nq0=0,nq1=1,nq2=1,nq3=1,nq4=0,nq5=1,nq6=0,nq7=1,nq8=0,nq9=1,nq10=1,nq11=0,nq12=0,nq13=1,nq14=0,nq15=0,nq16=0,nq17=1,nq18=0,nq19=0.
+d0= nb1 | ...=1.
+d1= nq3=1 | ...=1.
+d2= nq18=0 | (q8=1 & (nq7=1 | nq4=0 | nb1)=1)=1. d2=1.
+d3= nq12=0 | (q0=1 & ( ((nq5=1|nq13=1)=1 & q4=1)=1 | nq3=1))=1. d3=1.
+d4= nq7=1 | ...=1.
+d5= nq18=0 | (b0 & ...)=0. d5=0.
+d6= na0 | (q6=1 & ( ((nb1|nq3=1)=1 & q15=1)=1 | nq2=1))=1. d6=1.
+d7= nq19=0 | (q17=0 & ...)=0. d7=0.
+d8= nq17=1 | ...=1.
+d9= nq18=0 | (q4=1 & ((nq1=1&q5=0)=0 | na0)=0)=0. d9=0.
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=0)=0)=0. d10=0.
+d11= nq1=1 | ...=1.
+d12= nq5=1 | ...=1.
+d13= nq19=0 | (b0 ...)=0. d13=0.
+d14= nq13=1 | ...=1.
+d15= nq14=0 | (q10=0 & ...)=0. d15=0.
+d16= nq10=1 | ...=1.
+d17= nq16=0 | (q0=1 & ( ((nq11=0|nq6=0)=0 & a1)=0 | nq9=1)) =1&(0|1)=1. d17=1.
+d18= nq8=0 | (q0=1 & ( ((nq2=1|nq1=1)=1 & q17=0)=0 | na0)=0)=0. d18=0.
+d19= nq11=0 | (q13=0 & ...)=0. d19=0.
+S45 = [1,1,1,1,1,0,1,0,1,0,0,1,1,0,1,0,1,1,0,0]. Concatenate q0-9:1 1 1 1 1 0 1 0 1 0 =1111101010. q10-19:0 1 1 0 1 0 1 1 0 0 =0110101100. Full "11111010100110101100". Good.
+Check d17=1: q9=0 nq9=1, q0=1, q16=1 nq16=0 => p2=(A17&a=0)|nq9=1; q0&=1. yes. d18=0 because q17=0 and a=1 na0, q8=1 nq8=0. good.
+
+Cycle 45: S45 = [1,1,1,1,1,0,1,0,1,0,0,1,1,0,1,0,1,1,0,0]. Inputs t45: a=1 na0, b=1 nb0.
+Record O45: q10=0,q11=1,q13=0,q2=1,q3=1,q5=0 -> [0,1,0,1,1,0].
+Complements: nq0=0,nq1=0,nq2=0,nq3=0,nq4=0,nq5=1,nq6=0,nq7=1,nq8=0,nq9=1,nq10=1,nq11=0,nq12=0,nq13=1,nq14=0,nq15=1,nq16=0,nq17=0,nq18=1,nq19=1.
+d0= nb0 | (q14=1 & (nq17=0 | nq19=1)=1)=1. d0=1.
+d1= nq3=0 | (q7=0 & ...)=0. d1=0.
+d2= nq18=1 | ...=1.
+d3= nq12=0 | (q0=1 & ( ((nq5=1|nq13=1)=1 & q4=1)=1 | nq3=0))=1. d3=1.
+d4= nq7=1 | ...=1.
+d5= nq18=1 | ...=1.
+d6= na0 | (q6=1 & ( ((nb0|nq3=0)=0 & q15=0)=0 | nq2=0)) =1&0=0. d6=0.
+d7= nq19=1 | ...=1.
+d8= nq17=0 | (q18=0 & ...)=0. d8=0.
+d9= nq18=1 | ...=1.
+d10= nq18=1 | ...=1.
+d11= nq1=0 | (a1 & (nq14=0 | nq2=0 | nq10=1)=1) =1. d11=1.
+d12= nq5=1 | ...=1.
+d13= nq19=1 | ...=1.
+d14= nq13=1 | ...=1.
+d15= nq14=0 | (q10=0 & ...)=0. d15=0.
+d16= nq10=1 | ...=1.
+d17= nq16=0 | (q0=1 & ( ((nq11=0|nq6=0)=0 & a1)=0 | nq9=1)) =1&(0|1)=1. d17=1.
+d18= nq8=0 | (q0=1 & ( ((nq2=0|nq1=0)=0 & q17=1)=0 | na0)=0)=0. d18=0.
+d19= nq11=0 | (q13=0 & ...)=0. d19=0.
+S46 = [1,0,1,1,1,1,0,1,0,1,1,1,1,1,1,0,1,1,0,0]. Concatenate q0-9:1 0 1 1 1 1 0 1 0 1 =1011110101. q10-19:1 1 1 1 1 0 1 1 0 0 =1111101100. Full "10111101011111101100". Good.
+Check d2=1 due nq18 (q18=0). d8=0: q17=1 nq17=0; q18=0 so term 0; d=0. good.
+
+Cycle 46: S46 = [1,0,1,1,1,1,0,1,0,1,1,1,1,1,1,0,1,1,0,0]. Inputs t46: a=0 na1, b=1 nb0.
+Record O46: q10=1,q11=1,q13=1,q2=1,q3=1,q5=1 -> [1,1,1,1,1,1].
+Complements: nq0=0,nq1=1,nq2=0,nq3=0,nq4=0,nq5=0,nq6=1,nq7=0,nq8=1,nq9=0,nq10=0,nq11=0,nq12=0,nq13=0,nq14=0,nq15=1,nq16=0,nq17=0,nq18=1,nq19=1.
+d0= nb0 | (q14=1 & (nq17=0 | nq19=1)=1)=1. d0=1.
+d1= nq3=0 | (q7=1 & q8=0 & ...)=0. d1=0.
+d2= nq18=1 | ...=1.
+d3= nq12=0 | (q0=1 & ( ((nq5=0|nq13=0)=0 & q4=1)=0 | nq3=0))=0. d3=0.
+d4= nq7=0 | (q9=1 & ( ((nb0|nq14=0)=0 & q16=1)=0 | nq15=1)) =1&(0|1)=1. d4=1.
+d5= nq18=1 | ...=1.
+d6= na1 | ...=1.
+d7= nq19=1 | ...=1.
+d8= nq17=0 | (q18=0 & ...)=0. d8=0.
+d9= nq18=1 | ...=1.
+d10= nq18=1 | ...=1.
+d11= nq1=1 | ...=1.
+d12= nq5=0 | (q9=1 & ( ((nq6=1|nq13=0)=1 & q19=0)=0 | nq16=0))=0. d12=0.
+d13= nq19=1 | ...=1.
+d14= nq13=0 | (q4=1 & ( ((nq16=0|nq18=1)=1 & q10=1)=1 | nq3=0))=1. d14=1.
+d15= nq14=0 | (q10=1 & (nq6=1 | (q2=1&nq13=0)=0)) =1&(1|0)=1. d15=1.
+d16= nq10=0 | (q9=1 & ( ((nb0|nq18=1)=1 & q8=0)=0 | nq12=0))=0. d16=0.
+d17= nq16=0 | (q0=1 & ( ((nq11=0|nq6=1)=1 & a0)=0 | nq9=0))=0. d17=0.
+d18= nq8=1 | ...=1.
+d19= nq11=0 | (q13=1 & ( (q19=0&nq14=0)=0 | nq2=0)=0)=0. d19=0.
+S47 = [1,0,1,0,1,1,1,1,0,1,1,1,0,1,1,1,0,0,1,0]. Concatenate q0-9:1 0 1 0 1 1 1 1 0 1 =1010111101. q10-19:1 1 0 1 1 1 0 0 1 0 =1101110010. Full "10101111011101110010". Good. This S47 would be used for cycle47 record. Need compute cycle47 record and also next? We need record outputs for t=47 from S47. We don't need compute S48 for output (unless verify). But we need record O47 from current state S47. We should still maybe compute d for cycle47? Not needed for output trace because cycles=48 records t=0..47. We do not need state after final edge. But careful: At each cycle step 3 record outputs then step4 edge. The result includes cycle47 recorded before edge. No need S48. However to be safe maybe compute O47 only. We have S47. Record O47: q10=1,q11=1,q13=1,q2=1,q3=0,q5=1 -> [1,1,1,1,0,1]. Need ensure S47 correct. Let's maybe compute S48? Not required, but can help detect if cycle46 update consistent? No further outputs. Fine.
+
+Now we need compile output lists for q10,q11,q13,q2,q3,q5 for t=0..47 from recorded O_t. Let's assemble carefully. We recorded O_t in order [q10,q11,q13,q2,q3,q5]. Need produce separate lists. Let's list all O_t with indices and then transpose. Need be very accurate. We'll create table t: O = (q10,q11,q13,q2,q3,q5). From above:
+t0: [1,0,1,1,0,1]
+t1: [0,1,1,0,1,0]
+t2: [1,1,0,1,0,0]
+t3: [1,1,0,0,1,1]
+t4: [0,1,1,1,0,0]
+t5: [1,1,1,1,1,1]
+t6: [1,0,1,0,0,0]
+t7: [0,1,1,0,1,1]
+t8: [1,0,0,0,0,0]
+t9: [1,1,0,0,1,0]
+t10:[0,0,1,1,1,1]
+t11:[0,1,1,0,0,0]
+t12:[1,1,0,0,1,0]
+t13:[0,0,0,0,1,0]
+t14:[0,1,1,1,1,1]
+t15:[1,1,0,0,0,0]
+t16:[1,1,1,1,1,0]
+t17:[1,0,1,1,1,1]
+t18:[0,0,1,1,0,1]
+t19:[1,1,0,1,1,1]
+t20:[1,0,0,0,1,0]
+t21:[1,1,1,0,0,1]
+t22:[0,1,0,0,1,1]
+t23:[0,0,1,1,1,0]
+t24:[0,1,1,0,1,0]
+t25:[1,1,0,0,1,0]
+t26:[0,1,0,0,1,1]
+t27:[0,1,1,1,0,1]
+t28:[1,1,1,1,1,1]
+t29:[1,0,1,0,1,0]
+t30:[0,1,1,0,1,1]
+t31:[0,1,0,0,0,1]
+t32:[1,1,1,1,1,1]
+t33:[1,0,1,1,1,1]
+t34:[1,0,1,1,1,1]
+t35:[1,0,0,1,0,0]
+t36:[0,0,0,0,1,0]
+t37:[0,0,0,1,1,0]
+t38:[1,1,0,1,1,0]
+t39:[1,1,0,1,1,0]
+t40:[0,1,1,1,1,1]
+t41:[0,1,1,0,0,1]
+t42:[1,1,1,1,1,1]
+t43:[0,0,0,0,1,0]
+t44:[0,1,0,0,0,0]
+t45:[0,1,0,1,1,0]
+t46:[1,1,1,1,1,1]
+t47:[1,1,1,1,0,1]
+Need verify each O against state tables. Let's cross-check some tricky ones and counts.
+
+Before transpose, let's validate state transitions perhaps with an independent check for selected outputs around cycles. Since manual errors possible. We can re-derive using an alternative method for some cycles or check consistency of recorded O_t with S_t list. The O_t must equal selected bits of S_t. We recorded O_t from S_t each time. Let's reconstruct S_t list and outputs to ensure no mismatch. We'll create a table of S_t selected bits maybe from state list and compare with O. We already did each cycle. But possible arithmetic mistakes in d formulas. Need robust verification.
+
+Potential risk: simplified formulas could be wrong for some chains. Let's re-derive general formula and simplifications to ensure no algebraic mistake. Given NAND chain: g0=1-(r&s). g1=1-(g0&u1). g2=1-(g1&u2). g3=1-(g2&u3). g4=1-(g3&u4). We set p2=g2. Then g4 = ~(g3&u4) = ~g3 | ~u4. g3=~(g2&u3), so ~g3 = g2&u3. Thus d=(g2&u3)|~u4. Good. g2 = ~(g1&u2)=~g1 | ~u2. g1=~(g0&u1)=~g0|~u1. ~g1 = g0&u1. Thus g2=(g0&u1)|~u2. g0=~r|~s. Good. Formula correct.
+
+Simplifications:
+d0 = (p2&q14)|~in1, p2=((~q17|~q17)&q14)|~q19 = (~q17&q14)|~q19. Then p2&q14 = (~q17&q14) | (~q19&q14) = q14&(~q17|~q19). Good. In cycle computations for d0 sometimes if b=0 ->1 regardless; if b=1 need q14 & (nq17|nq19). Good.
+
+d1: original c1 gates: c1_0=NAND(q4,in0). c1_1=NAND(c1_0,q8); c1_2=NAND(c1_1,q3); c1_3=NAND(c1_2,q7); c1_4=NAND(c1_3,q3). Here u2=q3 and u4=q3. Our d1 = ~q3 | (q7&q8&(~q4|~in0)). Let's verify with direct cases: If q3=0, u2=0 => g2=1. g3=NAND(1,q7)=~q7. g4=NAND(g3,u4=0)=1. So d=1. ~q3=1 ok. If q3=1: g2=(g0&q8)|0 = g0&q8. g3=NAND(g2,q7)=~(g2&q7). g4=NAND(g3,1)=~g3 = g2&q7 = g0&q8&q7. g0=~q4|~in0. Good. So d1 correct.
+
+d2: c2_0=NAND(q7,q4); u1=q8,u2=in1,u3=q8,u4=q18. If q18=0 -> d=1. If q18=1: d=p2&q8. p2=(g0&q8)|~b. If q8=1, p2 = g0 | ~b; d= g0 | ~b. g0=~q7|~q4. So d=~q18 | (q8 & (~q7|~q4|~b)). Good.
+
+d3 general not simplified; ok.
+d4 general; ok.
+d5: d5=(p2&in1)|~q18. p2=((~q19|~q7)&q8)|~q9. We used d5=~q18 | (b & p2). Good. But note if b=0, d5=~q18. We often set d5=0 when q18=1,b=0; correct. If q18=0, d5=1 regardless. Good.
+
+d8 simplification: original c8: g0=NAND(q10,q10)=~q10; u1=in1(b); u2=q18; u3=q18; u4=q17. d=(p2&q18)|~q17, p2=(~q10 & b)|~q18. If q18=1: p2=~q10&b; d=(~q10&b&1)|~q17. If q18=0: p2=1; d=(1&0)|~q17 = ~q17. Our simplified d8=~q17 | (q18&~q10&b). When q18=0 gives ~q17, yes because second term q18=0. Good. In cycle computations, e.g. S8 q17=0 => nq17=1 so d8=1 even though q18=1,nq10=0,b=0. yes.
+
+d10 simplification: c10 first NOT q4; u1=q18,u2=q15,u3=q16,u4=q18. d=(p2&q16)|~q18; p2=(~q4&q18)|~q15. If q18=0, p2=~q15; d=(~q15&q16)|1 =1. If q18=1, p2=~q4|~q15; d=(p2&q16). Our d10=~q18 | (q16&(~q4|~q15)). If q18=0 ->1; ok. Good.
+
+d11 simplification: c11: g0=NAND(q14,q2); u1=q10,u2=q10,u3=in0,u4=q1. p2=(g0&q10)|~q10. Since g0=~q14|~q2. p2 = (~q14|~q2)&q10 | ~q10 = (~q14|~q2|~q10) by absorption? Let's verify Boolean: (A & Q) | ~Q = A | ~Q (since (A&Q)|~Q = (A|~Q)&(Q|~Q)=A|~Q). Yes p2=~q14|~q2|~q10. d=(p2&in0)|~q1. Good. Used. If a=0 -> d=~q1. Good.
+
+d13 simplification: c13 first NAND(q16,in1); u1=in1, u2=q19,u3=q8,u4=q19. d=(p2&q8)|~q19; p2=((~q16|~b)&b)|~q19 = ((~q16&b) | (~b&b=0)) | ~q19 = (~q16&b)|~q19. If q19=1, p2=~q16&b; d=(~q16&b&q8)|0. If q19=0 d=1. Our d13=~q19 | (b&q8&~q16). Good.
+
+d15 simplification checked. d19 simplification: c19 first NAND(q19,q14); u1=q19,u2=q2,u3=q13,u4=q11. g0=~q19|~q14. p2=(g0&q19)|~q2 = ((~q19|~q14)&q19)|~q2 = (~q14&q19)|~q2. d=(p2&q13)|~q11. Good. Used.
+
+Need verify all state updates maybe with spot recomputation from original gates for a couple cycles. Let's pick cycle0 to confirm with direct gate evaluation maybe. S0 init; a0=0,b=1. Compute c14 chain for q14 maybe: c14_0=NAND(q16=0,q18=1)=1; c14_1=NAND(1,q10=1)=0; c14_2=NAND(0,q3=0)=1; c14_3=NAND(1,q4=1)=0; c14_4=NAND(0,q13=1)=1. d14=1 matches. c15: q10=1,q13=1 -> c15_0=0; c15_1=NAND(0,q2=1)=1; c15_2=NAND(1,q6=1)=0; c15_3=NAND(0,q10=1)=1; c15_4=NAND(1,q14=1)=0. d15=0 matches. c5: q19=0,q7=1 -> c5_0=1; c5_1=NAND(1,q8=0)=1; c5_2=NAND(1,q9=1)=0; c5_3=NAND(0,in1=1)=1; c5_4=NAND(1,q18=1)=0. d5=0. Good.
+
+Now need transpose outputs. Let's do carefully. We'll create columns. Maybe write O table as rows with positions and then read columns. To reduce errors, build each output list incrementally from table. Use index groups of 8 or 10. Let's create arrays length 48 initialized, fill from O rows.
+
+I'll make a table with t and six bits in order (A=q10, B=q11, C=q13, D=q2, E=q3, F=q5). Already above. Let's rewrite in chunks of 8 for transposition:
+t0-7:
+0: A1 B0 C1 D1 E0 F1
+1: A0 B1 C1 D0 E1 F0
+2: A1 B1 C0 D1 E0 F0
+3: A1 B1 C0 D0 E1 F1
+4: A0 B1 C1 D1 E0 F0
+5: A1 B1 C1 D1 E1 F1
+6: A1 B0 C1 D0 E0 F0
+7: A0 B1 C1 D0 E1 F1
+t8-15:
+8: A1 B0 C0 D0 E0 F0
+9: A1 B1 C0 D0 E1 F0
+10:A0 B0 C1 D1 E1 F1
+11:A0 B1 C1 D0 E0 F0
+12:A1 B1 C0 D0 E1 F0
+13:A0 B0 C0 D0 E1 F0
+14:A0 B1 C1 D1 E1 F1
+15:A1 B1 C0 D0 E0 F0
+t16-23:
+16:A1 B1 C1 D1 E1 F0
+17:A1 B0 C1 D1 E1 F1
+18:A0 B0 C1 D1 E0 F1
+19:A1 B1 C0 D1 E1 F1
+20:A1 B0 C0 D0 E1 F0
+21:A1 B1 C1 D0 E0 F1
+22:A0 B1 C0 D0 E1 F1
+23:A0 B0 C1 D1 E1 F0
+t24-31:
+24:A0 B1 C1 D0 E1 F0
+25:A1 B1 C0 D0 E1 F0
+26:A0 B1 C0 D0 E1 F1
+27:A0 B1 C1 D1 E0 F1
+28:A1 B1 C1 D1 E1 F1
+29:A1 B0 C1 D0 E1 F0
+30:A0 B1 C1 D0 E1 F1
+31:A0 B1 C0 D0 E0 F1
+t32-39:
+32:A1 B1 C1 D1 E1 F1
+33:A1 B0 C1 D1 E1 F1
+34:A1 B0 C1 D1 E1 F1
+35:A1 B0 C0 D1 E0 F0
+36:A0 B0 C0 D0 E1 F0
+37:A0 B0 C0 D1 E1 F0
+38:A1 B1 C0 D1 E1 F0
+39:A1 B1 C0 D1 E1 F0
+t40-47:
+40:A0 B1 C1 D1 E1 F1
+41:A0 B1 C1 D0 E0 F1
+42:A1 B1 C1 D1 E1 F1
+43:A0 B0 C0 D0 E1 F0
+44:A0 B1 C0 D0 E0 F0
+45:A0 B1 C0 D1 E1 F0
+46:A1 B1 C1 D1 E1 F1
+47:A1 B1 C1 D1 E0 F1
+
+Need verify rows t33/t34: both A=1,B=0,C=1,D=1,E=1,F=1. State S33 selected q10=1,q11=0,q13=1,q2=1,q3=1,q5=1 yes. S34 same selected yes (S34 q0.. all ones except q11=0,q14=0,q15=0; selected q10=1 q11=0 q13=1 q2=1 q3=1 q5=1). Good.
+Rows t38/t39 both same? t38 [1,1,0,1,1,0], t39 same. S38 selected: q10=1,q11=1,q13=0,q2=1,q3=1,q5=0 yes. S39 same selected (q10=1 q11=1 q13=0 q2=1 q3=1 q5=0). yes.
+Row t45 [0,1,0,1,1,0]. S45 q10=0 q11=1 q13=0 q2=1 q3=1 q5=0. yes.
+
+Now transpose. We'll produce list for q10 (A) length 48 by reading A column in order:
+A t0-7: [1,0,1,1,0,1,1,0]
+ t8-15: [1,1,0,0,1,0,0,1]
+ t16-23: [1,1,0,1,1,1,0,0]
+ t24-31: [0,1,0,0,1,1,0,0]
+ t32-39: [1,1,1,1,0,0,1,1]
+ t40-47: [0,0,1,0,0,0,1,1]
+Concatenate: indices 0-47:
+0 1
+1 0
+2 1
+3 1
+4 0
+5 1
+6 1
+7 0
+8 1
+9 1
+10 0
+11 0
+12 1
+13 0
+14 0
+15 1
+16 1
+17 1
+18 0
+19 1
+20 1
+21 1
+22 0
+23 0
+24 0
+25 1
+26 0
+27 0
+28 1
+29 1
+30 0
+31 0
+32 1
+33 1
+34 1
+35 1
+36 0
+37 0
+38 1
+39 1
+40 0
+41 0
+42 1
+43 0
+44 0
+45 0
+46 1
+47 1
+So q10 list = [1,0,1,1,0,1,1,0, 1,1,0,0,1,0,0,1, 1,1,0,1,1,1,0,0, 0,1,0,0,1,1,0,0, 1,1,1,1,0,0,1,1, 0,0,1,0,0,0,1,1]
+Count 48. Need maybe verify with S_t q10 values: Let's list S_t q10 from state list to compare A: S0 q10=1; S1 0; S2 1; S3 1; S4 0; S5 1; S6 1; S7 0; S8 1; S9 1; S10 0; S11 0; S12 1; S13 0; S14 0; S15 1; S16 1; S17 1; S18 0; S19 1; S20 1; S21 1; S22 0; S23 0; S24 0; S25 1; S26 0; S27 0; S28 1; S29 1; S30 0; S31 0; S32 1; S33 1; S34 1; S35 1; S36 0; S37 0; S38 1; S39 1; S40 0; S41 0; S42 1; S43 0; S44 0; S45 0; S46 1; S47 1. Matches A. Good.
+
+q11 (B) column:
+t0-7 B: [0,1,1,1,1,1,0,1]
+t8-15: [0,1,0,1,1,0,1,1]
+t16-23: [1,0,0,1,0,1,1,0]
+t24-31: [1,1,1,1,1,0,1,1]
+t32-39: [1,0,0,0,0,0,1,1]
+t40-47: [1,1,1,0,1,1,1,1]
+Concatenate with indices:
+0 0
+1 1
+2 1
+3 1
+4 1
+5 1
+6 0
+7 1
+8 0
+9 1
+10 0
+11 1
+12 1
+13 0
+14 1
+15 1
+16 1
+17 0
+18 0
+19 1
+20 0
+21 1
+22 1
+23 0
+24 1
+25 1
+26 1
+27 1
+28 1
+29 0
+30 1
+31 1
+32 1
+33 0
+34 0
+35 0
+36 0
+37 0
+38 1
+39 1
+40 1
+41 1
+42 1
+43 0
+44 1
+45 1
+46 1
+47 1
+List q11 = [0,1,1,1,1,1,0,1, 0,1,0,1,1,0,1,1, 1,0,0,1,0,1,1,0, 1,1,1,1,1,0,1,1, 1,0,0,0,0,0,1,1, 1,1,1,0,1,1,1,1]
+Check B from S_t q11: S0 q11=0; S1=1; S2=1; S3=1; S4=1; S5=1; S6=0; S7=1; S8=0; S9=1; S10=0; S11=1; S12=1; S13=0; S14=1; S15=1; S16=1; S17=0; S18=0; S19=1; S20=0; S21=1; S22=1; S23=0; S24=1; S25=1; S26=1; S27=1; S28=1; S29=0; S30=1; S31=1; S32=1; S33=0; S34=0; S35=0; S36=0; S37=0; S38=1; S39=1; S40=1; S41=1; S42=1; S43=0; S44=1; S45=1; S46=1; S47=1. matches.
+
+q13 (C) column:
+t0-7: [1,1,0,0,1,1,1,1]
+t8-15: [0,0,1,1,0,0,1,0]
+t16-23: [1,1,1,0,0,1,0,1]
+t24-31: [1,0,0,1,1,1,1,0]
+t32-39: [1,1,1,0,0,0,0,0]
+t40-47: [1,1,1,0,0,0,1,1]
+Concatenate indices:
+0 1
+1 1
+2 0
+3 0
+4 1
+5 1
+6 1
+7 1
+8 0
+9 0
+10 1
+11 1
+12 0
+13 0
+14 1
+15 0
+16 1
+17 1
+18 1
+19 0
+20 0
+21 1
+22 0
+23 1
+24 1
+25 0
+26 0
+27 1
+28 1
+29 1
+30 1
+31 0
+32 1
+33 1
+34 1
+35 0
+36 0
+37 0
+38 0
+39 0
+40 1
+41 1
+42 1
+43 0
+44 0
+45 0
+46 1
+47 1
+List q13 = [1,1,0,0,1,1,1,1, 0,0,1,1,0,0,1,0, 1,1,1,0,0,1,0,1, 1,0,0,1,1,1,1,0, 1,1,1,0,0,0,0,0, 1,1,1,0,0,0,1,1]
+Check S_t q13: S0=1,S1=1,S2=0,S3=0,S4=1,S5=1,S6=1,S7=1,S8=0,S9=0,S10=1,S11=1,S12=0,S13=0,S14=1,S15=0,S16=1,S17=1,S18=1,S19=0,S20=0,S21=1,S22=0,S23=1,S24=1,S25=0,S26=0,S27=1,S28=1,S29=1,S30=1,S31=0,S32=1,S33=1,S34=1,S35=0,S36=0,S37=0,S38=0,S39=0,S40=1,S41=1,S42=1,S43=0,S44=0,S45=0,S46=1,S47=1. matches.
+
+q2 (D) column:
+t0-7: [1,0,1,0,1,1,0,0]
+t8-15: [0,0,1,0,0,0,1,0]
+t16-23: [1,1,1,1,0,0,0,1]
+t24-31: [0,0,0,1,1,0,0,0]
+t32-39: [1,1,1,1,0,1,1,1]
+t40-47: [1,0,1,0,0,1,1,1]
+Concatenate indices:
+0 1
+1 0
+2 1
+3 0
+4 1
+5 1
+6 0
+7 0
+8 0
+9 0
+10 1
+11 0
+12 0
+13 0
+14 1
+15 0
+16 1
+17 1
+18 1
+19 1
+20 0
+21 0
+22 0
+23 1
+24 0
+25 0
+26 0
+27 1
+28 1
+29 0
+30 0
+31 0
+32 1
+33 1
+34 1
+35 1
+36 0
+37 1
+38 1
+39 1
+40 1
+41 0
+42 1
+43 0
+44 0
+45 1
+46 1
+47 1
+List q2 = [1,0,1,0,1,1,0,0, 0,0,1,0,0,0,1,0, 1,1,1,1,0,0,0,1, 0,0,0,1,1,0,0,0, 1,1,1,1,0,1,1,1, 1,0,1,0,0,1,1,1]
+Check S_t q2: S0=1,S1=0,S2=1,S3=0,S4=1,S5=1,S6=0,S7=0,S8=0,S9=0,S10=1,S11=0,S12=0,S13=0,S14=1,S15=0,S16=1,S17=1,S18=1,S19=1,S20=0,S21=0,S22=0,S23=1,S24=0,S25=0,S26=0,S27=1,S28=1,S29=0,S30=0,S31=0,S32=1,S33=1,S34=1,S35=1,S36=0,S37=1,S38=1,S39=1,S40=1,S41=0,S42=1,S43=0,S44=0,S45=1,S46=1,S47=1. matches. Note t37 D=1 yes S37 q2=1. Good.
+
+q3 (E) column:
+t0-7: [0,1,0,1,0,1,0,1]
+t8-15: [0,1,1,0,1,1,1,0]
+t16-23: [1,1,0,1,1,0,1,1]
+t24-31: [1,1,1,0,1,1,1,0]
+t32-39: [1,1,1,0,1,1,1,1]
+t40-47: [1,0,1,1,0,1,1,0]
+Concatenate indices:
+0 0
+1 1
+2 0
+3 1
+4 0
+5 1
+6 0
+7 1
+8 0
+9 1
+10 1
+11 0
+12 1
+13 1
+14 1
+15 0
+16 1
+17 1
+18 0
+19 1
+20 1
+21 0
+22 1
+23 1
+24 1
+25 1
+26 1
+27 0
+28 1
+29 1
+30 1
+31 0
+32 1
+33 1
+34 1
+35 0
+36 1
+37 1
+38 1
+39 1
+40 1
+41 0
+42 1
+43 1
+44 0
+45 1
+46 1
+47 0
+List q3 = [0,1,0,1,0,1,0,1, 0,1,1,0,1,1,1,0, 1,1,0,1,1,0,1,1, 1,1,1,0,1,1,1,0, 1,1,1,0,1,1,1,1, 1,0,1,1,0,1,1,0]
+Check S_t q3: S0=0,S1=1,S2=0,S3=1,S4=0,S5=1,S6=0,S7=1,S8=0,S9=1,S10=1,S11=0,S12=1,S13=1,S14=1,S15=0,S16=1,S17=1,S18=0,S19=1,S20=1,S21=0,S22=1,S23=1,S24=1,S25=1,S26=1,S27=0,S28=1,S29=1,S30=1,S31=0,S32=1,S33=1,S34=1,S35=0,S36=1,S37=1,S38=1,S39=1,S40=1,S41=0,S42=1,S43=1,S44=0,S45=1,S46=1,S47=0. matches. Good.
+
+q5 (F) column:
+t0-7: [1,0,0,1,0,1,0,1]
+t8-15: [0,0,1,0,0,0,1,0]
+t16-23: [0,1,1,1,0,1,1,0]
+t24-31: [0,0,1,1,1,0,1,1]
+t32-39: [1,1,1,0,0,0,0,0]
+t40-47: [1,1,1,0,0,0,1,1]
+Concatenate indices:
+0 1
+1 0
+2 0
+3 1
+4 0
+5 1
+6 0
+7 1
+8 0
+9 0
+10 1
+11 0
+12 0
+13 0
+14 1
+15 0
+16 0
+17 1
+18 1
+19 1
+20 0
+21 1
+22 1
+23 0
+24 0
+25 0
+26 1
+27 1
+28 1
+29 0
+30 1
+31 1
+32 1
+33 1
+34 1
+35 0
+36 0
+37 0
+38 0
+39 0
+40 1
+41 1
+42 1
+43 0
+44 0
+45 0
+46 1
+47 1
+List q5 = [1,0,0,1,0,1,0,1, 0,0,1,0,0,0,1,0, 0,1,1,1,0,1,1,0, 0,0,1,1,1,0,1,1, 1,1,1,0,0,0,0,0, 1,1,1,0,0,0,1,1]
+Check S_t q5: S0=1,S1=0,S2=0,S3=1,S4=0,S5=1,S6=0,S7=1,S8=0,S9=0,S10=1,S11=0,S12=0,S13=0,S14=1,S15=0,S16=0,S17=1,S18=1,S19=1,S20=0,S21=1,S22=1,S23=0,S24=0,S25=0,S26=1,S27=1,S28=1,S29=0,S30=1,S31=1,S32=1,S33=1,S34=1,S35=0,S36=0,S37=0,S38=0,S39=0,S40=1,S41=1,S42=1,S43=0,S44=0,S45=0,S46=1,S47=1. matches.
+
+Need ensure final JSON object maps each output net name to list. It says example object maps each output net name to list. We should include exactly outputs: "q10", "q11", "q13", "q2", "q3", "q5". Order can be as outputs array. Need no extra text? User said "End your reply with a single fenced json code block containing exactly one object..." We can just output that. Need no other json code block after. Good.
+
+Before final, let's deeply verify simulation for possible errors. This is critical. Let's perform an independent verification using maybe deriving next-state via direct gate chains for selected cycles or checking invariants. Since no code, but we can audit the state table for cycles where formulas likely mis-simplified. We'll re-evaluate some cycles from scratch maybe all? We already did. But to increase confidence, let's cross-verify using a second pass for d bits with an alternative method: For each chain, evaluate sequential NAND maybe for cycles with non-obvious results. We'll audit states and transitions where mistakes could propagate. Perhaps check periodicity? No.
+
+Let's create full state list S0..S47 (we have). Maybe verify each S_{t+1} by recomputing using original chain for a subset of bits, especially outputs and bits that feed many. The outputs are q10,q11,q13,q2,q3,q5. q13 is output and also feeds many. Need ensure q13 transitions correct. q13 formula d13 simple; check S_t q13 sequence vs d13 computed from previous state. d13 = ~q19 | (b & q8 & ~q16). Let's verify q13_{t+1} for all t using this simple formula; this can catch errors in state q13, q19,q8,q16,b. We'll make a table for d13 across t and compare to S_{t+1}.q13. This is manageable.
+
+For each cycle t, d13 = 1 if q19_t=0; else (q19=1) then b_t & q8_t & (1-q16_t). Let's compute from state list and inputs; compare q13 next (S_{t+1}[13]) for t=0..46 maybe (S47 q13 =1 from t46). And q13 at t0 init=1.
+List needed per t: q19, q8,q16,b. Let's table quickly from S list:
+S0: q19=0 -> d13=1 => S1 q13=1 yes.
+S1: q19=1,q8=1,q16=1,b=0 -> 0&? =0 => S2 q13=0 yes.
+S2: q19=1,q8=0,b=1 -> d=0 => S3 q13=0 yes.
+S3: q19=0 ->1 => S4 q13=1 yes.
+S4: q19=0 ->1 => S5 q13=1 yes.
+S5: q19=0 ->1 => S6 q13=1 yes.
+S6: q19=0 ->1 => S7 q13=1 yes.
+S7: q19=1,q8=0,b=0 ->0 => S8 q13=0 yes.
+S8: q19=1,q8=0,b=0 ->0 => S9 q13=0 yes.
+S9: q19=1,q8=1,q16=0,b=1 ->1 => S10 q13=1 yes.
+S10: q19=0 ->1 => S11 q13=1 yes.
+S11: q19=1,q8=0,b=0 ->0 => S12 q13=0 yes.
+S12: q19=1,q8=0,b=0 ->0 => S13 q13=0 yes.
+S13: q19=0 ->1 => S14 q13=1 yes.
+S14: q19=1,q8=1,q16=1,b=1 -> b&q8&~q16 =1&1&0=0; ~q19=0 ->0 => S15 q13=0 yes.
+S15: q19=0 ->1 => S16 q13=1 yes.
+S16: q19=0 ->1 => S17 q13=1 yes.
+S17: q19=0 ->1 => S18 q13=1 yes.
+S18: q19=1,q8=0,b=0 ->0 => S19 q13=0 yes.
+S19: q19=1,q8=0,b=1 ->0 => S20 q13=0 yes.
+S20: q19=0 ->1 => S21 q13=1 yes.
+S21: q19=1,q8=0,b=1 ->0 => S22 q13=0 yes.
+S22: q19=1,q8=1,q16=0,b=0 ->0 => S23 q13=1? Wait if q19=1, ~q19=0; b=0 so second=0; d13=0. But S23 q13 we set =1. Uh oh! Let's check S22 -> S23: S22 = [1,1,0,1,0,1,1,0,1,0,0,1,0,0,0,0,0,1,1,1]. q19=1, q8=1, q16=0, b for t22 = in1[22] = ? b list index22 (0-based) = 0? Let's check input b list: [1,0,1,0,0,1,1,0,0,1,0,0,0,1,1,0,1,1,0,1,1,1,0,0,0,1,1,0,1,1,1,1,1,0,0,0,0,0,0,1,1,0,1,0,0,1,1,0]. Index22 = value? Let's count: index0 1;1 0;2 1;3 0;4 0;5 1;6 1;7 0;8 0;9 1;10 0;11 0;12 0;13 1;14 1;15 0;16 1;17 1;18 0;19 1;20 1;21 1;22 0;23 0;24 0;25 1;26 1;27 0;28 1;29 1;30 1;31 1;32 1;33 0;34 0;35 0;36 0;37 0;38 0;39 1;40 1;41 0;42 1;43 0;44 0;45 1;46 1;47 0. Yes b22=0. So d13=0, S23 q13 should be 0. But in cycle22 computation, I set d13=0 (yes) and S23 q13=1? Let's look: At cycle22, I computed d13= nq19=0 | (b0 ...)=0. Then S23 = [1,0,1,1,1,0,1,0,0,0,0,0,0,1,1,1,1,1,1,0]. Here q13 is index13 = 1! Wait list positions: q10=0 (d10), q11=0(d11), q12=0(d12), q13=1(d14?) I need map carefully. I may have mis-assigned positions in S23 list! Let's revisit cycle22 computation. At cycle22, current S22, computed d values:
+d0=1
+d1=0
+d2=1
+d3=1
+d4=1
+d5=0
+d6=1
+d7=0
+d8=0
+d9=0
+d10=0
+d11=0
+d12=0
+d13=0
+d14=1
+d15=1
+d16=1
+d17=1
+d18=1
+d19=0
+Thus S23 should be [1,0,1,1,1,0,1,0,0,0,0,0,0,0,1,1,1,1,1,0], i.e. q13=0, q14=1,q15=1,q16=1,q17=1,q18=1,q19=0. But I wrote S23 = [1,0,1,1,1,0,1,0,0,0,0,0,0,1,1,1,1,1,1,0] with q13=1 and q14=1,q15=1,q16=1,q17=1,q18=1. That's an error! Let's check: In cycle22, after d12=0,d13=0,d14=1,d15=1,d16=1,d17=1,d18=1,d19=0. I wrote "S23 = [1,0,1,1,1,0,1,0,0,0,0,0,0,1,1,1,1,1,1,0]". Counting: positions: 0=1,1=0,2=1,3=1,4=1,5=0,6=1,7=0,8=0,9=0,10=0,11=0,12=0,13=1,14=1,15=1,16=1,17=1,18=1,19=0. Yes I accidentally set q13=1 (should be d13=0) and maybe shifted? Actually d14=1,d15=1,d16=1,d17=1,d18=1. If q13=0, then sequence q10-19 = d10=0,d11=0,d12=0,d13=0,d14=1,d15=1,d16=1,d17=1,d18=1,d19=0 = "0001111110" (four zeros? q10-q13 = 0000, q14-q18=11111, q19=0 -> "0000111110"? Wait length: q10=0,q11=0,q12=0,q13=0,q14=1,q15=1,q16=1,q17=1,q18=1,q19=0 = 0000 11111 0 = "0000111110" (4 zeros,5 ones,0). I earlier wrote q10-19 "0001111110" (three zeros then six ones?) which corresponds to q13=1. This is a mistake. Good catch. Need correct S23 and all subsequent states from cycle23 onward. This is significant. Let's correct from S23 onward. We need recompute from cycle22 update. Good we audited d13. Let's fix.
+
+Correct S23 = [1,0,1,1,1,0,1,0,0,0,0,0,0,0,1,1,1,1,1,0]. Let's call S23c. q0=1,q1=0,q2=1,q3=1,q4=1,q5=0,q6=1,q7=0,q8=0,q9=0,q10=0,q11=0,q12=0,q13=0,q14=1,q15=1,q16=1,q17=1,q18=1,q19=0. Only q13 changed from 1 to 0 compared to erroneous S23? Erroneous had q13=1,q14=1,q15=1,q16=1,q17=1,q18=1. Correct has q13=0; rest same. Actually erroneous S23 q14..q18 all ones; correct same. Only q13 1->0. This will affect many future computations (q13 feeds d0? d3,d5,d7,d12,d14,d15,d19 maybe). Need recompute cycles 23 onward entirely. Good thing. Let's restart from S23c at cycle23. We have inputs same. Need recompute S24..S47. This will change output lists from t23 onward maybe (O23 uses S23c selected: q10=0,q11=0,q13=0,q2=1,q3=1,q5=0 -> [0,0,0,1,1,0], not previous [0,0,1,1,1,0]). So O23 C changes from 1 to 0. Need redo cycles 23..47. Let's do carefully. Also need check for other similar mis-assignment errors. We'll use formula audit for simple chains after recompute.
+
+Let's establish corrected state list up to S22 is fine? Need verify S22 itself. It came from S21 cycle21. Let's audit d13 for earlier maybe no misassignment. S21 q19=1? S21=[1,0,0,0,0,1,1,1,0,0,1,1,1,1,1,1,0,0,1,1]; q19=1,q8=0,b21=1 -> d13=0, S22 q13=0 yes. Good. S22 correct. Need check d14/d15 for S22 maybe: At cycle21 (S21) computed S22; let's re-evaluate cycle21 fully to ensure no misassignment. S21 current: q=[1,0,0,0,0,1,1,1,0,0,1,1,1,1,1,1,0,0,1,1], a=1,b=1. We computed d: d0=1,d1=1,d2=0,d3=1,d4=0,d5=1,d6=1,d7=0,d8=1,d9=0,d10=0,d11=1,d12=0,d13=0,d14=0,d15=0,d16=0,d17=1,d18=1,d19=1 -> S22 [1,1,0,1,0,1,1,0,1,0,0,1,0,0,0,0,0,1,1,1]. Let's audit d8 for S21: q17=0 nq17=1 so d8=1 yes. d9 q4=0 ->0. d12 q9=0 ->0. d14 q4=0 ->0 (nq13=0 since q13=1) yes. d16 q9=0 ->0. Good. S22 okay.
+
+Now corrected from S23c.
+
+S23c = [1,0,1,1,1,0,1,0,0,0,0,0,0,0,1,1,1,1,1,0]. Inputs t23: a=0 na1, b=0 nb1.
+Record O23 corrected: q10=0,q11=0,q13=0,q2=1,q3=1,q5=0 -> [0,0,0,1,1,0]. (Previously C=1; now 0.)
+Compute complements: q0=1 n0; q1=0 n1; q2=1 n0; q3=1 n0; q4=1 n0; q5=0 n1; q6=1 n0; q7=0 n1; q8=0 n1; q9=0 n1; q10=0 n1; q11=0 n1; q12=0 n1; q13=0 n1; q14=1 n0; q15=1 n0; q16=1 n0; q17=1 n0; q18=1 n0; q19=0 n1.
+d0= nb1 | ... =1.
+d1= nq3=0 | (q7=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=0 & ...)=0. d2=0.
+d3= nq12=1 | ...=1. d3=1.
+d4= nq7=1 | ...=1. d4=1.
+d5= nq18=0 | (b0 & ...)=0. d5=0.
+d6= na1 | ...=1. d6=1.
+d7= nq19=1 | ...=1. d7=1.
+d8= nq17=0 | (q18=1 & nq10=1 & b0)=0. d8=0.
+d9= nq18=0 | (q4=1 & ((nq1=1&q5=0)=0 | na1)=1)=1. d9=1.
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=0)=0)=0. d10=0.
+d11= nq1=1 | ...=1. d11=1.
+d12= nq5=1 | ...=1. d12=1.
+d13= nq19=1 | ...=1. d13=1. (since q19=0)
+d14= nq13=1 | ...=1. (changed because q13=0) d14=1.
+d15= nq14=0 | (q10=0 & ...)=0. d15=0.
+d16= nq10=1 | ...=1. d16=1.
+d17= nq16=0 | (q0=1 & ( ((nq11=1|nq6=0)=1 & a0)=0 | nq9=1)) =1&(0|1)=1. d17=1.
+d18= nq8=1 | ...=1. d18=1.
+d19= nq11=1 | ...=1. d19=1.
+S24 = [1,0,0,1,1,0,1,1,0,1,0,1,1,1,1,0,1,1,1,1]. Compare to previous S24 [1,0,0,1,1,0,1,1,0,1,0,1,1,1,0,0,1,1,1,1]: q14 changes from 0 to1 (because d14 now nq13=1). Also q13=1 (d13=1) same as previous? Previous S24 q13=1 yes. q14 now 1 vs 0. q15=0 same. So S24c differs q14=1. Let's list: q0=1,q1=0,q2=0,q3=1,q4=1,q5=0,q6=1,q7=1,q8=0,q9=1,q10=0,q11=1,q12=1,q13=1,q14=1,q15=0,q16=1,q17=1,q18=1,q19=1. Good. (Previously q14=0). Need continue.
+
+Cycle24 corrected: S24c = [1,0,0,1,1,0,1,1,0,1,0,1,1,1,1,0,1,1,1,1]. Inputs t24: a=1 na0, b=0 nb1.
+Record O24: q10=0,q11=1,q13=1,q2=0,q3=1,q5=0 -> [0,1,1,0,1,0] same as before (q14 not output).
+Complements: nq0=0,nq1=1,nq2=1,nq3=0,nq4=0,nq5=1,nq6=0,nq7=0,nq8=1,nq9=0,nq10=1,nq11=0,nq12=0,nq13=0,nq14=0 (changed),nq15=1,nq16=0,nq17=0,nq18=0,nq19=0.
+Compute:
+d0= nb1 | ... =1.
+d1= nq3=0 | (q7=1 & q8=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=0 & ...)=0. d2=0.
+d3= nq12=0 | (q0=1 & ( ((nq5=1|nq13=0)=1 & q4=1)=1 | nq3=0))=1. d3=1.
+d4= nq7=0 | (q9=1 & ( ((nb1|nq14=0)=1 & q16=1)=1 | nq15=1))=1. d4=1.
+d5= nq18=0 | (b0 & ...)=0. d5=0.
+d6= na0 | (q6=1 & ( ((nb1|nq3=0)=1 & q15=0)=0 | nq2=1)) =1&(0|1)=1. d6=1.
+d7= nq19=0 | (q17=1 & ( ((nq13=0|nq6=0)=0 & q9=1)=0 | nq3=0))=0. d7=0.
+d8= nq17=0 | (q18=1 & nq10=1 & b0)=0. d8=0.
+d9= nq18=0 | (q4=1 & ((nq1=1&q5=0)=0 | na0)=0)=0. d9=0.
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=1)=1)=1. d10=1.
+d11= nq1=1 | ...=1.
+d12= nq5=1 | ...=1.
+d13= nq19=0 | (b0 ...)=0. d13=0.
+d14= nq13=0 | (q4=1 & ( ((nq16=0|nq18=0)=0 & q10=0)=0 | nq3=0))=0. d14=0. (same; q14 not feed)
+d15= nq14=0 | (q10=0 & ...)=0. d15=0. (changed from previous d15=1 because q14 now 1 nq14=0; q10=0 anyway so previous also? Previous S24 had q14=0 -> nq14=1, d15=1. Now q14=1 -> nq14=0 and q10=0 -> d15=0. So S25 q15 changes from 1 to 0.)
+d16= nq10=1 | ...=1.
+d17= nq16=0 | (q0=1 & ( ((nq11=0|nq6=0)=0 & a1)=0 | nq9=0))=0. d17=0.
+d18= nq8=1 | ...=1.
+d19= nq11=0 | (q13=1 & ( (q19=1&nq14=0)=0 | nq2=1)=1) =1. d19=1 (same).
+S25 = [1,0,0,1,1,0,1,0,0,0,1,1,1,0,0,0,1,0,1,1]. Compare previous S25 [1,0,0,1,1,0,1,0,0,0,1,1,1,0,0,1,1,0,1,1]: q15 changes 1->0. q16=1 same? Wait d16=1 so q16=1. previous q16=1. yes only q15. List positions: q0=1,q1=0,q2=0,q3=1,q4=1,q5=0,q6=1,q7=0,q8=0,q9=0,q10=1,q11=1,q12=1,q13=0,q14=0,q15=0,q16=1,q17=0,q18=1,q19=1. Good.
+
+Cycle25 corrected: S25c = [1,0,0,1,1,0,1,0,0,0,1,1,1,0,0,0,1,0,1,1]. Inputs t25: a=1 na0,b=1 nb0.
+Record O25: q10=1,q11=1,q13=0,q2=0,q3=1,q5=0 -> [1,1,0,0,1,0] same.
+Complements: nq0=0,nq1=1,nq2=1,nq3=0,nq4=0,nq5=1,nq6=0,nq7=1,nq8=1,nq9=1,nq10=0,nq11=0,nq12=0,nq13=1,nq14=1,nq15=1 (changed),nq16=0,nq17=1,nq18=0,nq19=0.
+Compute:
+d0= nb0 | (q14=0 & ...)=0. d0=0.
+d1= nq3=0 | (q7=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=0 & ...)=0. d2=0.
+d3= nq12=0 | (q0=1 & ( ((nq5=1|nq13=1)=1 & q4=1)=1 | nq3=0))=1. d3=1.
+d4= nq7=1 | ...=1.
+d5= nq18=0 | (b1 & ( ((nq19=0|nq7=1)=1 & q8=0)=0 | nq9=1)) =1&(0|1)=1. d5=1.
+d6= na0 | (q6=1 & ( ((nb0|nq3=0)=0 & q15=0)=0 | nq2=1)) =1&(0|1)=1. d6=1.
+d7= nq19=0 | (q17=0 & ...)=0. d7=0.
+d8= nq17=1 | ...=1.
+d9= nq18=0 | (q4=1 & ((nq1=1&q5=0)=0 | na0)=0)=0. d9=0.
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=1)=1)=1. (Previously q15=1 -> nq15=0 so d10=0; now q15=0 -> d10=1.) d10=1.
+d11= nq1=1 | ...=1.
+d12= nq5=1 | ...=1.
+d13= nq19=0 | (b1 & q8=0 & nq16=1)=0. d13=0.
+d14= nq13=1 | ...=1.
+d15= nq14=1 | ...=1.
+d16= nq10=0 | (q9=0 & ...)=0. d16=0.
+d17= nq16=0 | (q0=1 & ( ((nq11=0|nq6=0)=0 & a1)=0 | nq9=1)) =1&(0|1)=1. d17=1.
+d18= nq8=1 | ...=1.
+d19= nq11=0 | (q13=0 & ...)=0. d19=0.
+S26 = [0,0,0,1,1,1,1,0,1,0,1,1,1,0,1,1,0,1,1,0]. Compare previous S26 [0,0,0,1,1,1,1,0,1,0,0,1,1,0,1,1,0,1,1,0]: q10 changes 0->1. (q11 same1,q12=1,q13=0,q14=1,q15=1). Good. List: q0=0,q1=0,q2=0,q3=1,q4=1,q5=1,q6=1,q7=0,q8=1,q9=0,q10=1,q11=1,q12=1,q13=0,q14=1,q15=1,q16=0,q17=1,q18=1,q19=0. This will affect O26 (q10 becomes1 not 0). Continue.
+
+Cycle26 corrected: S26c = [0,0,0,1,1,1,1,0,1,0,1,1,1,0,1,1,0,1,1,0]. Inputs t26: a=1 na0,b=1 nb0.
+Record O26: q10=1,q11=1,q13=0,q2=0,q3=1,q5=1 -> [1,1,0,0,1,1] (A changed from 0 to1 vs previous).
+Complements: nq0=1,nq1=1,nq2=1,nq3=0,nq4=0,nq5=0,nq6=0,nq7=1,nq8=0,nq9=1,nq10=0 (changed),nq11=0,nq12=0,nq13=1,nq14=0,nq15=0,nq16=1,nq17=0,nq18=0,nq19=1.
+Compute:
+d0= nb0 | (q14=1 & (nq17=0 | nq19=1)=1)=1. d0=1.
+d1= nq3=0 | (q7=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=1 & (nq7=1 | nq4=0 | nb0)=1)=1. d2=1.
+d3= nq12=0 | (q0=0 & ...)=0. d3=0.
+d4= nq7=1 | ...=1.
+d5= nq18=0 | (b1 & ( ((nq19=1|nq7=1)=1 & q8=1)=1 | nq9=1)) =1. d5=1.
+d6= na0 | (q6=1 & ( ((nb0|nq3=0)=0 & q15=1)=0 | nq2=1)) =1&(0|1)=1. d6=1.
+d7= nq19=1 | ...=1.
+d8= nq17=0 | (q18=1 & nq10=0 & b1)=0. (Now q10=1 so nq10=0; previously d8=1 because q10=0. d8=0.) d8=0.
+d9= nq18=0 | (q4=1 & ((nq1=1&q5=1)=1 | na0)=1)=1. d9=1.
+d10= nq18=0 | (q16=0 & ...)=0. d10=0.
+d11= nq1=1 | ...=1.
+d12= nq5=0 | (q9=0 & ...)=0. d12=0.
+d13= nq19=1 | ...=1.
+d14= nq13=1 | ...=1.
+d15= nq14=0 | (q10=1 & (nq6=0 | (q2=0&nq13=1)=0)) =1&0=0. d15=0. (Previously q10=0 so also 0; same)
+d16= nq10=0 | (q9=0 & ...)=0. d16=0. (q10=1 nq10=0)
+d17= nq16=1 | ...=1.
+d18= nq8=0 | (q0=0 & ...)=0. d18=0.
+d19= nq11=0 | (q13=0 & ...)=0. d19=0.
+S27 = [1,0,1,0,1,1,1,1,0,1,0,1,0,1,1,0,0,1,0,0]. Compare previous S27 [1,0,1,0,1,1,1,1,1,1,0,1,0,1,1,0,1,1,0,0]: differences q8 1->0, q16 1->0, q17 1->1? Let's list previous: q0=1,q1=0,q2=1,q3=0,q4=1,q5=1,q6=1,q7=1,q8=1,q9=1,q10=0,q11=1,q12=0,q13=1,q14=1,q15=0,q16=1,q17=1,q18=0,q19=0. New: q8=0 (d8), q16=0 (d16), q17=1 (same), q18=0 (same). Also q9=1 same, q14=1 same. Good. Only q8 and q16 changed? d8 0 vs prev1, d16 0 vs prev1. Yes.
+Continue.
+
+Cycle27 corrected: S27c = [1,0,1,0,1,1,1,1,0,1,0,1,0,1,1,0,0,1,0,0]. Inputs t27: a=1 na0,b=0 nb1.
+Record O27: q10=0,q11=1,q13=1,q2=1,q3=0,q5=1 -> [0,1,1,1,0,1] same (q8/q16 not outputs).
+Complements: nq0=0,nq1=1,nq2=0,nq3=1,nq4=0,nq5=0,nq6=0,nq7=0,nq8=1 (changed),nq9=0,nq10=1,nq11=0,nq12=1,nq13=0,nq14=0,nq15=1,nq16=1 (changed),nq17=0,nq18=1,nq19=1.
+Compute:
+d0= nb1 | ...=1.
+d1= nq3=1 | ...=1.
+d2= nq18=1 | ...=1.
+d3= nq12=1 | ...=1.
+d4= nq7=0 | (q9=1 & ( ((nb1|nq14=0)=1 & q16=0)=0 | nq15=1)) =1&(0|1)=1. d4=1 (q16=0 but nq15=1).
+d5= nq18=1 | ...=1.
+d6= na0 | (q6=1 & ( ((nb1|nq3=1)=1 & q15=0)=0 | nq2=0)) =1&0=0. d6=0.
+d7= nq19=1 | ...=1.
+d8= nq17=0 | (q18=0 & ...)=0. d8=0.
+d9= nq18=1 | ...=1.
+d10= nq18=1 | ...=1.
+d11= nq1=1 | ...=1.
+d12= nq5=0 | (q9=1 & ( ((nq6=0|nq13=0)=0 & q19=0)=0 | nq16=1)) =1&(0|1)=1. (Previously q16=1 nq16=0 -> d12=0; now q16=0 -> d12=1.) d12=1.
+d13= nq19=1 | ...=1.
+d14= nq13=0 | (q4=1 & ( ((nq16=1|nq18=1)=1 & q10=0)=0 | nq3=1)) =1&(0|1)=1. d14=1.
+d15= nq14=0 | (q10=0 & ...)=0. d15=0.
+d16= nq10=1 | ...=1.
+d17= nq16=1 | ...=1. (changed from 0 to1 due q16=0)
+d18= nq8=1 | ...=1. (changed from 0? q8=0 so nq8=1; previously q8=1 and d18=1 via term anyway. same result 1)
+d19= nq11=0 | (q13=1 & ( (q19=0&nq14=0)=0 | nq2=0)=0)=0. d19=0.
+S28 = [1,1,1,1,1,1,0,1,0,1,1,1,1,1,1,0,1,1,1,0]. Compare previous S28 [1,1,1,1,1,1,0,1,0,1,1,1,0,1,1,0,1,0,1,0]: q12 changes 0->1, q17 changes0->1, q18=1 same? Previous q18=1 yes. New list: q0=1,q1=1,q2=1,q3=1,q4=1,q5=1,q6=0,q7=1,q8=0,q9=1,q10=1,q11=1,q12=1,q13=1,q14=1,q15=0,q16=1,q17=1,q18=1,q19=0. Wait d17=1 -> q17=1; d18=1 -> q18=1. previous q17=0,q18=1. Good. O28 will be q10=1,q11=1,q13=1,q2=1,q3=1,q5=1 same (still all ones). Continue.
+
+Cycle28 corrected: S28c = [1,1,1,1,1,1,0,1,0,1,1,1,1,1,1,0,1,1,1,0]. Inputs t28: a=1 na0,b=1 nb0.
+Record O28: [q10=1,q11=1,q13=1,q2=1,q3=1,q5=1] = [1,1,1,1,1,1] same.
+Complements: nq0=0,nq1=0,nq2=0,nq3=0,nq4=0,nq5=0,nq6=1,nq7=0,nq8=1,nq9=0,nq10=0,nq11=0,nq12=0 (changed),nq13=0,nq14=0,nq15=1,nq16=0,nq17=0 (changed),nq18=0,nq19=1.
+Compute:
+d0= nb0 | (q14=1 & (nq17=0 | nq19=1)=1)=1. d0=1.
+d1= nq3=0 | (q7=1 & q8=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=0 & ...)=0. d2=0.
+d3= nq12=0 | (q0=1 & ( ((nq5=0|nq13=0)=0 & q4=1)=0 | nq3=0)) =0. (Previously nq12=1 made d3=1; now q12=1 -> d3=0.) d3=0.
+d4= nq7=0 | (q9=1 & ( ((nb0|nq14=0)=0 & q16=1)=0 | nq15=1)) =1&(0|1)=1. d4=1.
+d5= nq18=0 | (b1 & ( ((nq19=1|nq7=0)=1 & q8=0)=0 | nq9=0))=0. d5=0.
+d6= na0 | (q6=0 & ...)=0. d6=0.
+d7= nq19=1 | ...=1.
+d8= nq17=0 | (q18=1 & nq10=0 & b1)=0. d8=0. (Previously nq17=1 made d8=1; now q17=1, q18=1,nq10=0? q10=1 so nq10=0; d8=0.) 
+d9= nq18=0 | (q4=1 & ((nq1=0&q5=1)=0 | na0)=0)=0. d9=0.
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=1)=1)=1. d10=1.
+d11= nq1=0 | (a1 & (nq14=0|nq2=0|nq10=0)=0)=0. d11=0.
+d12= nq5=0 | (q9=1 & ( ((nq6=1|nq13=0)=1 & q19=0)=0 | nq16=0))=0. d12=0.
+d13= nq19=1 | ...=1.
+d14= nq13=0 | (q4=1 & ( ((nq16=0|nq18=0)=0 & q10=1)=0 | nq3=0))=0. d14=0.
+d15= nq14=0 | (q10=1 & (nq6=1 | (q2=1&nq13=0)=0)) =1&(1|0)=1. d15=1.
+d16= nq10=0 | (q9=1 & ( ((nb0|nq18=0)=0 & q8=0)=0 | nq12=0)) =1&0=0. (Previously nq12=1 made d16=1; now q12=1 => d16=0.) d16=0.
+d17= nq16=0 | (q0=1 & ( ((nq11=0|nq6=1)=1 & a1)=1 | nq9=0))=1. d17=1.
+d18= nq8=1 | ...=1.
+d19= nq11=0 | (q13=1 & ( (q19=0&nq14=0)=0 | nq2=0)=0)=0. d19=0.
+S29 = [1,0,0,0,1,0,0,1,0,0,1,0,0,1,0,1,0,1,1,0]. Compare previous S29 [1,0,0,1,1,0,0,1,1,0,1,0,0,1,0,1,1,1,1,0]: differences q3 1->0, q8 1->0, q16 1->0. New list: q0=1,q1=0,q2=0,q3=0,q4=1,q5=0,q6=0,q7=1,q8=0,q9=0,q10=1,q11=0,q12=0,q13=1,q14=0,q15=1,q16=0,q17=1,q18=1,q19=0. Good. O29 = q10=1,q11=0,q13=1,q2=0,q3=0,q5=0 -> [1,0,1,0,0,0] (previous [1,0,1,0,1,0]; q3 changes to0). Continue.
+
+Cycle29 corrected: S29c = [1,0,0,0,1,0,0,1,0,0,1,0,0,1,0,1,0,1,1,0]. Inputs t29: a=1 na0,b=1 nb0.
+Record O29: [1,0,1,0,0,0] as just.
+Complements: nq0=0,nq1=1,nq2=1,nq3=1,nq4=0,nq5=1,nq6=1,nq7=0,nq8=1,nq9=1,nq10=0,nq11=1,nq12=1,nq13=0,nq14=1,nq15=0,nq16=1,nq17=0,nq18=0,nq19=1.
+Compute:
+d0= nb0 | (q14=0 & ...)=0. d0=0.
+d1= nq3=1 | ...=1. (changed; previously q3=1 nq3=0 and term zero -> d1=0; now d1=1) d1=1.
+d2= nq18=0 | (q8=0 & ...)=0. d2=0.
+d3= nq12=1 | ...=1.
+d4= nq7=0 | (q9=0 & ...)=0. d4=0.
+d5= nq18=0 | (b1 & ( ((nq19=1|nq7=0)=1 & q8=0)=0 | nq9=1)) =1&(0|1)=1. d5=1.
+d6= na0 | (q6=0 & ...)=0. d6=0.
+d7= nq19=1 | ...=1.
+d8= nq17=0 | (q18=1 & nq10=0 & b1)=0. d8=0.
+d9= nq18=0 | (q4=1 & ((nq1=1&q5=0)=0 | na0)=0)=0. d9=0.
+d10= nq18=0 | (q16=0 & ...)=0. d10=0.
+d11= nq1=1 | ...=1.
+d12= nq5=1 | ...=1.
+d13= nq19=1 | ...=1.
+d14= nq13=0 | (q4=1 & ( ((nq16=1|nq18=0)=1 & q10=1)=1 | nq3=1)) =1&(1|1)=1. (Previously q16=1,q3=1,q13=1 led d14=0; now q16=0/q3=0 makes d14=1.) d14=1.
+d15= nq14=1 | ...=1.
+d16= nq10=0 | (q9=0 & ...)=0. d16=0.
+d17= nq16=1 | ...=1. (changed; q16=0) 
+d18= nq8=1 | ...=1. (q8=0; previously d18=1 via q17 etc, same)
+d19= nq11=1 | ...=1.
+S30 = [0,1,0,1,0,1,0,1,0,0,0,1,1,1,1,1,0,1,1,1]. Compare previous S30 [0,0,0,1,0,1,0,1,0,0,0,1,1,1,0,1,0,1,1,1]: q1 0->1, q14 0->1. Also q3=1 same, q15=1 same. New list: q0=0,q1=1,q2=0,q3=1,q4=0,q5=1,q6=0,q7=1,q8=0,q9=0,q10=0,q11=1,q12=1,q13=1,q14=1,q15=1,q16=0,q17=1,q18=1,q19=1. O30 = q10=0,q11=1,q13=1,q2=0,q3=1,q5=1 -> [0,1,1,0,1,1] same as previous? Previous O30 [0,1,1,0,1,1], yes.
+
+Cycle30 corrected: S30c = [0,1,0,1,0,1,0,1,0,0,0,1,1,1,1,1,0,1,1,1]. Inputs t30: a=0 na1,b=1 nb0.
+Record O30 same [0,1,1,0,1,1].
+Complements: nq0=1,nq1=0,nq2=1,nq3=0,nq4=1,nq5=0,nq6=1,nq7=0,nq8=1,nq9=1,nq10=1,nq11=0,nq12=0,nq13=0,nq14=0 (changed),nq15=0,nq16=1,nq17=0,nq18=0,nq19=0.
+Compute:
+d0= nb0 | (q14=1 & (nq17=0 | nq19=0)=0)=0. d0=0.
+d1= nq3=0 | (q7=1 & q8=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=0 & ...)=0. d2=0.
+d3= nq12=0 | (q0=0 & ...)=0. d3=0.
+d4= nq7=0 | (q9=0 & ...)=0. d4=0.
+d5= nq18=0 | (b1 & ( ((nq19=0|nq7=0)=0 & q8=0)=0 | nq9=1)) =1&(0|1)=1. d5=1.
+d6= na1 | ...=1.
+d7= nq19=0 | (q17=1 & ( ((nq13=0|nq6=1)=1 & q9=0)=0 | nq3=0)) =1&0=0. d7=0.
+d8= nq17=0 | (q18=1 & nq10=1 & b1)=1. d8=1.
+d9= nq18=0 | (q4=0 & ...)=0. d9=0.
+d10= nq18=0 | (q16=0 & ...)=0. d10=0.
+d11= nq1=0 | (a0 & ...)=0. (q1=1 now; previous q1=0 had nq1=1 so d11=1. Now d11=0.) d11=0.
+d12= nq5=0 | (q9=0 & ...)=0. d12=0.
+d13= nq19=0 | (b1 & q8=0 & nq16=1)=0. d13=0.
+d14= nq13=0 | (q4=0 & ...)=0. d14=0.
+d15= nq14=0 | (q10=0 & ...)=0. d15=0. (changed; previous q14=0 made d15=1)
+d16= nq10=1 | ...=1.
+d17= nq16=1 | ...=1.
+d18= nq8=1 | ...=1.
+d19= nq11=0 | (q13=1 & ( (q19=1&nq14=0)=0 | nq2=1)=1)=1. d19=1 (same via nq2)
+S31 = [0,0,0,0,0,1,1,0,1,0,0,0,0,0,0,0,1,1,1,1]. Compare previous S31 [0,0,0,0,0,1,1,0,1,0,0,1,0,0,0,1,1,1,1,1]: differences q11 1->0, q15 1->0. Also q16=1 same? New q16=d16=1 yes, previous q16=1. q14=0,q15=0. List: q0=0,q1=0,q2=0,q3=0,q4=0,q5=1,q6=1,q7=0,q8=1,q9=0,q10=0,q11=0,q12=0,q13=0,q14=0,q15=0,q16=1,q17=1,q18=1,q19=1. O31 = q10=0,q11=0,q13=0,q2=0,q3=0,q5=1 -> [0,0,0,0,0,1] (previous [0,1,0,0,0,1]; q11 changed). Continue.
+
+Cycle31 corrected: S31c = [0,0,0,0,0,1,1,0,1,0,0,0,0,0,0,0,1,1,1,1]. Inputs t31: a=1 na0,b=1 nb0.
+Record O31: [0,0,0,0,0,1].
+Complements: nq0=1,nq1=1,nq2=1,nq3=1,nq4=1,nq5=0,nq6=0,nq7=1,nq8=0,nq9=1,nq10=1,nq11=1 (changed),nq12=1,nq13=1,nq14=1,nq15=1 (changed),nq16=0,nq17=0,nq18=0,nq19=0.
+Compute:
+d0= nb0 | (q14=0 & ...)=0. d0=0.
+d1= nq3=1 | ...=1.
+d2= nq18=0 | (q8=1 & (nq7=1 | nq4=1 | nb0)=1)=1. d2=1.
+d3= nq12=1 | ...=1.
+d4= nq7=1 | ...=1.
+d5= nq18=0 | (b1 & ( ((nq19=0|nq7=1)=1 & q8=1)=1 | nq9=1))=1. d5=1.
+d6= na0 | (q6=1 & ( ((nb0|nq3=1)=1 & q15=0)=0 | nq2=1)) =1&(0|1)=1. d6=1. (q15=0 but nq2=1; same d6=1)
+d7= nq19=0 | (q17=1 & ( ((nq13=1|nq6=0)=1 & q9=0)=0 | nq3=1)) =1&(0|1)=1. d7=1.
+d8= nq17=0 | (q18=1 & nq10=1 & b1)=1. d8=1.
+d9= nq18=0 | (q4=0 & ...)=0. d9=0.
+d10= nq18=0 | (q16=1 & (nq4=1 | nq15=1)=1)=1. d10=1.
+d11= nq1=1 | ...=1.
+d12= nq5=0 | (q9=0 & ...)=0. d12=0.
+d13= nq19=0 | (b1 & q8=1 & nq16=0)=0. d13=0.
+d14= nq13=1 | ...=1.
+d15= nq14=1 | ...=1.
+d16= nq10=1 | ...=1.
+d17= nq16=0 | (q0=0 & ...)=0. d17=0.
+d18= nq8=0 | (q0=0 & ...)=0. d18=0.
+d19= nq11=1 | ...=1. (changed; q11=0) d19=1.
+S32 = [0,1,1,1,1,1,1,1,1,0,1,1,0,1,1,1,1,0,0,1]. Compare previous S32 [0,1,1,1,1,1,1,1,1,0,1,1,0,1,1,1,1,0,0,0]: only q19 0->1. List: q0=0,q1=1,q2=1,q3=1,q4=1,q5=1,q6=1,q7=1,q8=1,q9=0,q10=1,q11=1,q12=0,q13=1,q14=1,q15=1,q16=1,q17=0,q18=0,q19=1. O32 = [q10=1,q11=1,q13=1,q2=1,q3=1,q5=1] all ones same. Continue.
+
+Cycle32 corrected: S32c = [0,1,1,1,1,1,1,1,1,0,1,1,0,1,1,1,1,0,0,1]. Inputs t32: a=0 na1,b=0 nb1.
+Record O32 all ones same.
+Complements: nq0=1,nq1=0,nq2=0,nq3=0,nq4=0,nq5=0,nq6=0,nq7=0,nq8=0,nq9=1,nq10=0,nq11=0,nq12=1,nq13=0,nq14=0,nq15=0,nq16=0,nq17=1,nq18=1,nq19=0 (changed).
+Compute:
+d0= nb1 | ...=1.
+d1= nq3=0 | (q7=1 & q8=1 & (nq4=0 | na1)=1)=1. d1=1.
+d2= nq18=1 | ...=1.
+d3= nq12=1 | ...=1.
+d4= nq7=0 | (q9=0 & ...)=0. d4=0.
+d5= nq18=1 | ...=1.
+d6= na1 | ...=1.
+d7= nq19=0 | (q17=0 & ...)=0. (q19=1 now; q17=0; d7=0. Previous q19=0 had d7=1. changed) d7=0.
+d8= nq17=1 | ...=1.
+d9= nq18=1 | ...=1.
+d10= nq18=1 | ...=1.
+d11= nq1=0 | (a0 & ...)=0. d11=0.
+d12= nq5=0 | (q9=0 & ...)=0. d12=0.
+d13= nq19=0 | (b0 ...)=0. d13=0. (changed; q19=1) 
+d14= nq13=0 | (q4=1 & ( ((nq16=0|nq18=1)=1 & q10=1)=1 | nq3=0))=1. d14=1.
+d15= nq14=0 | (q10=1 & (nq6=0 | (q2=1&nq13=0)=0))=0. d15=0.
+d16= nq10=0 | (q9=0 & ...)=0. d16=0.
+d17= nq16=0 | (q0=0 & ...)=0. d17=0.
+d18= nq8=0 | (q0=0 & ...)=0. d18=0.
+d19= nq11=0 | (q13=1 & ( (q19=1&nq14=0)=0 | nq2=0)=0)=0. d19=0 (same? previous q19=0 also term nq2=0, d19=0). 
+S33 = [1,1,1,1,0,1,1,0,1,1,1,0,0,1,1,0,0,0,0,0]. Compare previous S33 [1,1,1,1,0,1,1,1,1,1,1,0,0,1,1,0,0,0,0,0]: q7 changes 1->0; q13? d13=0 -> q13=1? Wait list positions: d0=1,d1=1,d2=1,d3=1,d4=0,d5=1,d6=1,d7=0,d8=1,d9=1,d10=1,d11=0,d12=0,d13=1,d14=1,d15=0,d16=0,d17=0,d18=0,d19=0. q13 (index13)=1 because d13=0? No hold on: S33 is next state = d values. We set d13=0. Therefore q13 in S33 = d13 = 0, not 1. I need be careful: S33 list should have index13 = d13. In the list I just wrote [1,1,1,1,0,1,1,0,1,1,1,0,0,1,1,0,0,0,0,0], index13 = 1 (since positions 10=1,11=0,12=0,13=1). That's inconsistent with d13=0. Let's recalc: d values for S33 (next after cycle32): d0=1; d1=1; d2=1; d3=1; d4=0; d5=1; d6=1; d7=0; d8=1; d9=1; d10=1; d11=0; d12=0; d13=0; d14=1; d15=0; d16=0; d17=0; d18=0; d19=0. Yes I mistakenly listed d13 as 1. Correct S33 = [1,1,1,1,0,1,1,0,1,1,1,0,0,0,1,0,0,0,0,0]. Note q13=0, q14=1. Compare previous S33 [1,1,1,1,0,1,1,1,1,1,1,0,0,1,1,0,0,0,0,0]: differences q7 1->0, q13 1->0. Also q8=1,q9=1 same. Good. Need set S33c = [1,1,1,1,0,1,1,0,1,1,1,0,0,0,1,0,0,0,0,0]. Record O33 = q10=1,q11=0,q13=0,q2=1,q3=1,q5=1 -> [1,0,0,1,1,1] (C changes from1 to0). Continue.
+
+This shows misassignments easy. Need be extra careful: when forming next state list, always use d values in order. We'll perhaps after computing d values, explicitly write them then list. Continue from corrected S33.
+
+S33c = [1,1,1,1,0,1,1,0,1,1,1,0,0,0,1,0,0,0,0,0]. Inputs t33: a=0 na1,b=0 nb1.
+Record O33 corrected [1,0,0,1,1,1].
+Complements: nq0=0,nq1=0,nq2=0,nq3=0,nq4=1,nq5=0,nq6=0,nq7=1 (changed),nq8=0,nq9=0,nq10=0,nq11=1,nq12=1,nq13=1 (changed),nq14=0,nq15=1,nq16=1,nq17=1,nq18=1,nq19=1.
+Compute d for S34:
+d0= nb1 | ...=1.
+d1= nq3=0 | (q7=0 & ...)=0. (changed q7=0; d1=0) d1=0.
+d2= nq18=1 | ...=1.
+d3= nq12=1 | ...=1.
+d4= nq7=1 | ...=1. (q7=0 -> d4=1) d4=1.
+d5= nq18=1 | ...=1.
+d6= na1 | ...=1.
+d7= nq19=1 | ...=1.
+d8= nq17=1 | ...=1.
+d9= nq18=1 | ...=1.
+d10= nq18=1 | ...=1.
+d11= nq1=0 | (a0 & ...)=0. d11=0.
+d12= nq5=0 | (q9=1 & ( ((nq6=0|nq13=1)=1 & q19=0)=0 | nq16=1)) =1&(0|1)=1. d12=1 (same? previous d12=1 yes)
+d13= nq19=1 | ...=1.
+d14= nq13=1 | ...=1 (changed; q13=0) d14=1.
+d15= nq14=0 | (q10=1 & (nq6=0 | (q2=1&nq13=1)=1)) =1&(0|1)=1. (changed; q13=0 makes q2&nq13=1) d15=1.
+d16= nq10=0 | (q9=1 & ( ((nb1|nq18=1)=1 & q8=1)=1 | nq12=1))=1. d16=1.
+d17= nq16=1 | ...=1.
+d18= nq8=0 | (q0=1 & ( ((nq2=0|nq1=0)=0 & q17=0)=0 | na1)) =1&(0|1)=1. d18=1.
+d19= nq11=1 | ...=1.
+S34 = [1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1]. Wait list d0..d19: d0=1,d1=0,d2=1,d3=1,d4=1,d5=1,d6=1,d7=1,d8=1,d9=1,d10=1,d11=0,d12=1,d13=1,d14=1,d15=1,d16=1,d17=1,d18=1,d19=1. Yes S34c = [1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1]. Compare previous S34 [1,1,1,1,1,1,1,1,1,1,1,0,1,1,0,0,1,1,1,1]: many differences (q1=0 vs1, q3=1 same? previous q3=1; q4=1, q14=1 vs0, q15=1 vs0). Good. O34 = q10=1,q11=0,q13=1,q2=1,q3=1,q5=1 -> [1,0,1,1,1,1] same as previous O34? Previous O34 [1,0,1,1,1,1]. yes coincidentally same (q13=1 now; in corrected S34 q13=d13=1; good). Wait S34c q13=1 yes. O34 same.
+
+Cycle34 corrected: S34c = [1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1]. Inputs t34: a=0 na1,b=0 nb1.
+Record O34 [1,0,1,1,1,1].
+Complements: nq0=0,nq1=1,nq2=0,nq3=0,nq4=0,nq5=0,nq6=0,nq7=0,nq8=0,nq9=0,nq10=0,nq11=1,nq12=0,nq13=0,nq14=0,nq15=0,nq16=0,nq17=0,nq18=0,nq19=0. (All q except q1=0,q11=0 are 1; q1=0,q11=0)
+Compute d:
+d0= nb1 | ...=1.
+d1= nq3=0 | (q7=1 & q8=1 & (nq4=0 | na1)=1)=1. d1=1.
+d2= nq18=0 | (q8=1 & (nq7=0 | nq4=0 | nb1)=1)=1. d2=1.
+d3= nq12=0 | (q0=1 & ( ((nq5=0|nq13=0)=0 & q4=1)=0 | nq3=0))=0. d3=0.
+d4= nq7=0 | (q9=1 & ( ((nb1|nq14=0)=1 & q16=1)=1 | nq15=0)) =1&(1|0)=1. d4=1.
+d5= nq18=0 | (b0 & ...)=0. d5=0.
+d6= na1 | ...=1.
+d7= nq19=0 | (q17=1 & ( ((nq13=0|nq6=0)=0 & q9=1)=0 | nq3=0))=0. d7=0.
+d8= nq17=0 | (q18=1 & nq10=0 & b0)=0. d8=0.
+d9= nq18=0 | (q4=1 & ((nq1=1&q5=1)=1 | na1)=1)=1. d9=1. (q1=0 q5=1)
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=0)=0)=0. d10=0.
+d11= nq1=1 | ...=1.
+d12= nq5=0 | (q9=1 & ( ((nq6=0|nq13=0)=0 & q19=1)=0 | nq16=0))=0. d12=0.
+d13= nq19=0 | (b0 ...)=0. d13=0.
+d14= nq13=0 | (q4=1 & ( ((nq16=0|nq18=0)=0 & q10=1)=0 | nq3=0))=0. d14=0.
+d15= nq14=0 | (q10=1 & (nq6=0 | (q2=1&nq13=0)=0)) =1&0=0. d15=0. (q14=1, q13=1, q6=1 => no term)
+d16= nq10=0 | (q9=1 & ( ((nb1|nq18=0)=1 & q8=1)=1 | nq12=0))=1. d16=1.
+d17= nq16=0 | (q0=1 & ( ((nq11=1|nq6=0)=1 & a0)=0 | nq9=0))=0. d17=0.
+d18= nq8=0 | (q0=1 & ( ((nq2=0|nq1=1)=1 & q17=1)=1 | na1)=1)=1. d18=1.
+d19= nq11=1 | ...=1.
+S35 = [1,1,1,0,1,0,1,0,0,1,0,1,0,0,0,0,1,0,1,1]. Compare previous S35 [1,1,1,0,1,0,1,0,0,1,1,0,0,0,0,1,1,0,1,1]: differences q10 1->0, q11 0->1, q15 1->0? Let's list new: q0=1,q1=1,q2=1,q3=0,q4=1,q5=0,q6=1,q7=0,q8=0,q9=1,q10=0,q11=1,q12=0,q13=0,q14=0,q15=0,q16=1,q17=0,q18=1,q19=1. Yes q10=0,q11=1,q15=0 vs prev q10=1,q11=0,q15=1. O35 = q10=0,q11=1,q13=0,q2=1,q3=0,q5=0 -> [0,1,0,1,0,0] (previous [1,0,0,1,0,0], changes A,B). Continue.
+
+Cycle35 corrected: S35c = [1,1,1,0,1,0,1,0,0,1,0,1,0,0,0,0,1,0,1,1]. Inputs t35: a=0 na1,b=0 nb1.
+Record O35 [0,1,0,1,0,0].
+Complements: nq0=0,nq1=0,nq2=0,nq3=1,nq4=0,nq5=1,nq6=0,nq7=1,nq8=1,nq9=0,nq10=1,nq11=0,nq12=1,nq13=1,nq14=1,nq15=1,nq16=0,nq17=1,nq18=0,nq19=0.
+Compute:
+d0= nb1 | ...=1.
+d1= nq3=1 | ...=1.
+d2= nq18=0 | (q8=0 & ...)=0. d2=0.
+d3= nq12=1 | ...=1.
+d4= nq7=1 | ...=1.
+d5= nq18=0 | (b0 & ...)=0. d5=0.
+d6= na1 | ...=1.
+d7= nq19=0 | (q17=0 & ...)=0. d7=0.
+d8= nq17=1 | ...=1.
+d9= nq18=0 | (q4=1 & ((nq1=0&q5=0)=0 | na1)=1)=1. d9=1.
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=1)=1)=1. d10=1 (q15=0 now; previously q15=1 led d10=0) 
+d11= nq1=0 | (a0 & ...)=0. d11=0.
+d12= nq5=1 | ...=1.
+d13= nq19=0 | (b0 ...)=0. d13=0.
+d14= nq13=1 | ...=1.
+d15= nq14=1 | ...=1.
+d16= nq10=1 | ...=1 (q10=0) 
+d17= nq16=0 | (q0=1 & ( ((nq11=0|nq6=0)=0 & a0)=0 | nq9=0))=0. d17=0.
+d18= nq8=1 | ...=1.
+d19= nq11=0 | (q13=0 & ...)=0. d19=0.
+S36 = [1,1,0,1,1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,0]. Compare previous S36 [1,1,0,1,1,0,1,0,1,1,0,0,1,0,1,1,1,0,1,1]: differences q10 0->1, q19 1->0. List: q0=1,q1=1,q2=0,q3=1,q4=1,q5=0,q6=1,q7=0,q8=1,q9=1,q10=1,q11=0,q12=1,q13=0,q14=1,q15=1,q16=1,q17=0,q18=1,q19=0. O36 = q10=1,q11=0,q13=0,q2=0,q3=1,q5=0 -> [1,0,0,0,1,0] (previous [0,0,0,0,1,0], A changes). Continue.
+
+Cycle36 corrected: S36c = [1,1,0,1,1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,0]. Inputs t36: a=0 na1,b=0 nb1.
+Record O36 [1,0,0,0,1,0].
+Complements: nq0=0,nq1=0,nq2=1,nq3=0,nq4=0,nq5=1,nq6=0,nq7=1,nq8=0,nq9=0,nq10=0,nq11=1,nq12=0,nq13=1,nq14=0,nq15=0,nq16=0,nq17=1,nq18=0,nq19=1.
+Compute:
+d0= nb1 | ...=1.
+d1= nq3=0 | (q7=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=1 & (nq7=1 | nq4=0 | nb1)=1)=1. d2=1.
+d3= nq12=0 | (q0=1 & ( ((nq5=1|nq13=1)=1 & q4=1)=1 | nq3=0))=1. d3=1.
+d4= nq7=1 | ...=1.
+d5= nq18=0 | (b0 & ...)=0. d5=0.
+d6= na1 | ...=1.
+d7= nq19=1 | ...=1. (changed; q19=0) d7=1.
+d8= nq17=1 | ...=1.
+d9= nq18=0 | (q4=1 & ((nq1=0&q5=0)=0 | na1)=1)=1. d9=1.
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=0)=0)=0. d10=0.
+d11= nq1=0 | (a0 & ...)=0. d11=0.
+d12= nq5=1 | ...=1.
+d13= nq19=1 | ...=1. (changed) 
+d14= nq13=1 | ...=1.
+d15= nq14=0 | (q10=1 & (nq6=0 | (q2=0&nq13=1)=0)) =1&0=0. d15=0.
+d16= nq10=0 | (q9=1 & ( ((nb1|nq18=0)=1 & q8=1)=1 | nq12=0))=1. d16=1.
+d17= nq16=0 | (q0=1 & ( ((nq11=1|nq6=0)=1 & a0)=0 | nq9=0))=0. d17=0.
+d18= nq8=0 | (q0=1 & ( ((nq2=1|nq1=0)=1 & q17=0)=0 | na1)=1)=1. d18=1.
+d19= nq11=1 | ...=1.
+S37 = [1,0,1,1,1,0,1,1,1,1,0,0,1,1,1,0,1,0,1,1]. Compare previous S37 [1,0,1,1,1,0,1,0,1,1,0,0,1,0,1,0,1,0,1,1]: differences q7 0->1, q13 0->1. List: q0=1,q1=0,q2=1,q3=1,q4=1,q5=0,q6=1,q7=1,q8=1,q9=1,q10=0,q11=0,q12=1,q13=1,q14=1,q15=0,q16=1,q17=0,q18=1,q19=1. O37 = q10=0,q11=0,q13=1,q2=1,q3=1,q5=0 -> [0,0,1,1,1,0] (previous [0,0,0,1,1,0]; C changes). Continue.
+
+Cycle37 corrected: S37c = [1,0,1,1,1,0,1,1,1,1,0,0,1,1,1,0,1,0,1,1]. Inputs t37: a=0 na1,b=0 nb1.
+Record O37 [0,0,1,1,1,0].
+Complements: nq0=0,nq1=1,nq2=0,nq3=0,nq4=0,nq5=1,nq6=0,nq7=0 (changed),nq8=0,nq9=0,nq10=1,nq11=1,nq12=0,nq13=0 (changed),nq14=0,nq15=1,nq16=0,nq17=1,nq18=0,nq19=0.
+Compute:
+d0= nb1 | ...=1.
+d1= nq3=0 | (q7=1 & q8=1 & (nq4=0 | na1)=1)=1. (changed; d1=1) d1=1.
+d2= nq18=0 | (q8=1 & (nq7=0 | nq4=0 | nb1)=1)=1. d2=1.
+d3= nq12=0 | (q0=1 & ( ((nq5=1|nq13=0)=1 & q4=1)=1 | nq3=0))=1. d3=1.
+d4= nq7=0 | (q9=1 & ( ((nb1|nq14=0)=1 & q16=1)=1 | nq15=1))=1. d4=1.
+d5= nq18=0 | (b0 & ...)=0. d5=0.
+d6= na1 | ...=1.
+d7= nq19=0 | (q17=0 & ...)=0. d7=0.
+d8= nq17=1 | ...=1.
+d9= nq18=0 | (q4=1 & ((nq1=1&q5=0)=0 | na1)=1)=1. d9=1.
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=1)=1)=1. d10=1.
+d11= nq1=1 | ...=1.
+d12= nq5=1 | ...=1.
+d13= nq19=0 | (b0 ...)=0. d13=0.
+d14= nq13=0 | (q4=1 & ( ((nq16=0|nq18=0)=0 & q10=0)=0 | nq3=0))=0. d14=0. (changed; q13=1 q16=1 q18=1 q10=0 q3=1 ->0; previous q13=0 had d14=1) 
+d15= nq14=0 | (q10=0 & ...)=0. d15=0.
+d16= nq10=1 | ...=1.
+d17= nq16=0 | (q0=1 & ( ((nq11=1|nq6=0)=1 & a0)=0 | nq9=0))=0. d17=0.
+d18= nq8=0 | (q0=1 & ( ((nq2=0|nq1=1)=1 & q17=0)=0 | na1)=1)=1. d18=1.
+d19= nq11=1 | ...=1.
+S38 = [1,1,1,1,1,0,1,0,1,1,1,1,1,0,0,0,1,0,1,1]. Compare previous S38 [1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,0,1,1]: q1 0->1, q14 1->0. List: q0=1,q1=1,q2=1,q3=1,q4=1,q5=0,q6=1,q7=0,q8=1,q9=1,q10=1,q11=1,q12=1,q13=0,q14=0,q15=0,q16=1,q17=0,q18=1,q19=1. O38 = q10=1,q11=1,q13=0,q2=1,q3=1,q5=0 -> [1,1,0,1,1,0] same as previous? Previous O38 [1,1,0,1,1,0], yes.
+
+Cycle38 corrected: S38c = [1,1,1,1,1,0,1,0,1,1,1,1,1,0,0,0,1,0,1,1]. Inputs t38: a=0 na1,b=0 nb1.
+Record O38 same [1,1,0,1,1,0].
+Complements: nq0=0,nq1=0 (changed),nq2=0,nq3=0,nq4=0,nq5=1,nq6=0,nq7=1,nq8=0,nq9=0,nq10=0,nq11=0,nq12=0,nq13=1,nq14=1 (changed),nq15=1,nq16=0,nq17=1,nq18=0,nq19=0.
+Compute:
+d0= nb1 | ...=1.
+d1= nq3=0 | (q7=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=1 & (nq7=1 | nq4=0 | nb1)=1)=1. d2=1.
+d3= nq12=0 | (q0=1 & ( ((nq5=1|nq13=1)=1 & q4=1)=1 | nq3=0))=1. d3=1.
+d4= nq7=1 | ...=1.
+d5= nq18=0 | (b0 & ...)=0. d5=0.
+d6= na1 | ...=1.
+d7= nq19=0 | (q17=0 & ...)=0. d7=0.
+d8= nq17=1 | ...=1.
+d9= nq18=0 | (q4=1 & ((nq1=0&q5=0)=0 | na1)=1)=1. d9=1.
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=1)=1)=1. d10=1.
+d11= nq1=0 | (a0 & ...)=0. (q1=1 now; previous q1=0 had nq1=1 -> d11=1. changed) d11=0.
+d12= nq5=1 | ...=1.
+d13= nq19=0 | (b0 ...)=0. d13=0.
+d14= nq13=1 | ...=1.
+d15= nq14=1 | ...=1. (q14=0)
+d16= nq10=0 | (q9=1 & ( ((nb1|nq18=0)=1 & q8=1)=1 | nq12=0))=1. d16=1.
+d17= nq16=0 | (q0=1 & ( ((nq11=0|nq6=0)=0 & a0)=0 | nq9=0))=0. d17=0.
+d18= nq8=0 | (q0=1 & ( ((nq2=0|nq1=0)=0 & q17=0)=0 | na1)=1)=1. d18=1.
+d19= nq11=0 | (q13=0 & ...)=0. d19=0.
+S39 = [1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,0]. Compare previous S39 [1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,1,1,0,1,0]: q11 changes 1->0. List: q0=1,q1=0,q2=1,q3=1,q4=1,q5=0,q6=1,q7=0,q8=1,q9=1,q10=1,q11=0,q12=1,q13=0,q14=1,q15=1,q16=1,q17=0,q18=1,q19=0. O39 = q10=1,q11=0,q13=0,q2=1,q3=1,q5=0 -> [1,0,0,1,1,0] (previous [1,1,0,1,1,0], B changes). Continue.
+
+Cycle39 corrected: S39c = [1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,0]. Inputs t39: a=0 na1,b=1 nb0.
+Record O39 [1,0,0,1,1,0].
+Complements: nq0=0,nq1=1,nq2=0,nq3=0,nq4=0,nq5=1,nq6=0,nq7=1,nq8=0,nq9=0,nq10=0,nq11=1 (changed),nq12=0,nq13=1,nq14=0,nq15=0,nq16=0,nq17=1,nq18=0,nq19=1.
+Compute:
+d0= nb0 | (q14=1 & (nq17=1 | nq19=1)=1)=1. d0=1.
+d1= nq3=0 | (q7=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=1 & (nq7=1 | nq4=0 | nb0)=1)=1. d2=1.
+d3= nq12=0 | (q0=1 & ( ((nq5=1|nq13=1)=1 & q4=1)=1 | nq3=0))=1. d3=1.
+d4= nq7=1 | ...=1.
+d5= nq18=0 | (b1 & ( ((nq19=1|nq7=1)=1 & q8=1)=1 | nq9=0)) =1&(1|0)=1. d5=1.
+d6= na1 | ...=1.
+d7= nq19=1 | ...=1.
+d8= nq17=1 | ...=1.
+d9= nq18=0 | (q4=1 & ((nq1=1&q5=0)=0 | na1)=1)=1. d9=1.
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=0)=0)=0. d10=0.
+d11= nq1=1 | ...=1.
+d12= nq5=1 | ...=1.
+d13= nq19=1 | ...=1.
+d14= nq13=1 | ...=1.
+d15= nq14=0 | (q10=1 & (nq6=0 | (q2=1&nq13=1)=1))=1. d15=1.
+d16= nq10=0 | (q9=1 & ( ((nb0|nq18=0)=0 & q8=1)=0 | nq12=0)) =1&0=0. d16=0.
+d17= nq16=0 | (q0=1 & ( ((nq11=1|nq6=0)=1 & a0)=0 | nq9=0)) =1&0=0. d17=0.
+d18= nq8=0 | (q0=1 & ( ((nq2=0|nq1=1)=1 & q17=0)=0 | na1)=1)=1. d18=1.
+d19= nq11=1 | ...=1. (changed; q11=0) d19=1.
+S40 = [1,0,1,1,1,1,1,1,1,1,0,1,1,1,1,1,0,0,1,1]. Compare previous S40 [1,0,1,1,1,1,1,1,1,1,0,1,1,1,1,1,0,0,1,0]: q19 changes 0->1. List: q0=1,q1=0,q2=1,q3=1,q4=1,q5=1,q6=1,q7=1,q8=1,q9=1,q10=0,q11=1,q12=1,q13=1,q14=1,q15=1,q16=0,q17=0,q18=1,q19=1. O40 = q10=0,q11=1,q13=1,q2=1,q3=1,q5=1 -> [0,1,1,1,1,1] same.
+
+Cycle40 corrected: S40c = [1,0,1,1,1,1,1,1,1,1,0,1,1,1,1,1,0,0,1,1]. Inputs t40: a=1 na0,b=1 nb0.
+Record O40 same [0,1,1,1,1,1].
+Complements: nq0=0,nq1=1,nq2=0,nq3=0,nq4=0,nq5=0,nq6=0,nq7=0,nq8=0,nq9=0,nq10=1,nq11=0,nq12=0,nq13=0,nq14=0,nq15=0,nq16=1,nq17=1,nq18=0,nq19=0 (changed from previous where q19=0 nq19=1; now q19=1 nq19=0).
+Compute:
+d0= nb0 | (q14=1 & (nq17=1 | nq19=0)=1)=1. d0=1 (still)
+d1= nq3=0 | (q7=1 & q8=1 & (nq4=0 | na0)=0)=0. d1=0.
+d2= nq18=0 | (q8=1 & (nq7=0 | nq4=0 | nb0)=0)=0. d2=0.
+d3= nq12=0 | (q0=1 & ( ((nq5=0|nq13=0)=0 & q4=1)=0 | nq3=0))=0. d3=0.
+d4= nq7=0 | (q9=1 & ( ((nb0|nq14=0)=0 & q16=0)=0 | nq15=0))=0. d4=0.
+d5= nq18=0 | (b1 & ( ((nq19=0|nq7=0)=0 & q8=1)=0 | nq9=0)) =1&0=0. (Previously q19=0 made nq19=1 so d5=1; now d5=0.) d5=0.
+d6= na0 | (q6=1 & ( ((nb0|nq3=0)=0 & q15=1)=0 | nq2=0))=0. d6=0.
+d7= nq19=0 | (q17=0 & ...)=0. d7=0. (prev q19=0 -> d7=1; changed)
+d8= nq17=1 | ...=1.
+d9= nq18=0 | (q4=1 & ((nq1=1&q5=1)=1 | na0)=1)=1. d9=1.
+d10= nq18=0 | (q16=0 & ...)=0. d10=0.
+d11= nq1=1 | ...=1.
+d12= nq5=0 | (q9=1 & ( ((nq6=0|nq13=0)=0 & q19=1)=0 | nq16=1)) =1&(0|1)=1. d12=1.
+d13= nq19=0 | (b1 & q8=1 & nq16=1)=1. (changed; prev q19=0 d13=1 via nq19 anyway? Wait previous S40 had q19=0 -> d13=1. Now q19=1, b=1,q8=1,q16=0 => second=1, so d13=1. same result!) d13=1.
+d14= nq13=0 | (q4=1 & ( ((nq16=1|nq18=0)=1 & q10=0)=0 | nq3=0))=0. d14=0.
+d15= nq14=0 | (q10=0 & ...)=0. d15=0.
+d16= nq10=1 | ...=1.
+d17= nq16=1 | ...=1.
+d18= nq8=0 | (q0=1 & ( ((nq2=0|nq1=1)=1 & q17=0)=0 | na0)=0)=0. d18=0.
+d19= nq11=0 | (q13=1 & ( (q19=1&nq14=0)=0 | nq2=0)=0)=0. d19=0 (same; q2=1)
+S41 = [1,0,0,0,0,0,0,0,1,1,0,1,1,1,0,0,1,1,0,0]. Compare previous S41 [1,0,0,0,0,1,0,1,1,1,0,1,1,1,0,0,1,1,0,0]: differences q5 1->0, q7 1->0. List: q0=1,q1=0,q2=0,q3=0,q4=0,q5=0,q6=0,q7=0,q8=1,q9=1,q10=0,q11=1,q12=1,q13=1,q14=0,q15=0,q16=1,q17=1,q18=0,q19=0. O41 = q10=0,q11=1,q13=1,q2=0,q3=0,q5=0 -> [0,1,1,0,0,0] (previous F=1; now0). Continue.
+
+Cycle41 corrected: S41c = [1,0,0,0,0,0,0,0,1,1,0,1,1,1,0,0,1,1,0,0]. Inputs t41: a=1 na0,b=0 nb1.
+Record O41 [0,1,1,0,0,0].
+Complements: nq0=0,nq1=1,nq2=1,nq3=1,nq4=1,nq5=1 (changed),nq6=1 (changed),nq7=1 (changed),nq8=0,nq9=0,nq10=1,nq11=0,nq12=0,nq13=0,nq14=1,nq15=1,nq16=0,nq17=0,nq18=1,nq19=1.
+Compute:
+d0= nb1 | ...=1.
+d1= nq3=1 | ...=1.
+d2= nq18=1 | ...=1.
+d3= nq12=0 | (q0=1 & ( ((nq5=1|nq13=0)=1 & q4=0)=0 | nq3=1)) =1&(0|1)=1. d3=1 (same)
+d4= nq7=1 | ...=1 (changed; q7=0) d4=1.
+d5= nq18=1 | ...=1.
+d6= na0 | (q6=0 & ...)=0. d6=0 (same; q6=0)
+d7= nq19=1 | ...=1.
+d8= nq17=0 | (q18=0 & ...)=0. d8=0.
+d9= nq18=1 | ...=1.
+d10= nq18=1 | ...=1.
+d11= nq1=1 | ...=1.
+d12= nq5=1 | ...=1 (changed; q5=0) d12=1.
+d13= nq19=1 | ...=1.
+d14= nq13=0 | (q4=0 & ...)=0. d14=0.
+d15= nq14=1 | ...=1.
+d16= nq10=1 | ...=1.
+d17= nq16=0 | (q0=1 & ( ((nq11=0|nq6=1)=1 & a1)=1 | nq9=0))=1. d17=1 (same)
+d18= nq8=0 | (q0=1 & ( ((nq2=1|nq1=1)=1 & q17=1)=1 | na0)=1)=1. d18=1.
+d19= nq11=0 | (q13=1 & ( (q19=0&nq14=1)=0 | nq2=1)=1)=1. d19=1 (same via nq2)
+S42 = [1,1,1,1,1,1,0,1,0,1,1,1,1,0,0,1,1,1,1,1]. Compare previous S42 [1,1,1,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,1,1]: q12 changes 0->1; q13 changes 1->0? Let's list new: d0=1,d1=1,d2=1,d3=1,d4=1,d5=1,d6=0,d7=1,d8=0,d9=1,d10=1,d11=1,d12=1,d13=1,d14=0,d15=1,d16=1,d17=1,d18=1,d19=1. Wait d13=1 (nq19=1 because q19=0 in S41) yes q13 next=1. Previous S42 q13=1 too. d14=0 vs previous d14=0? Previous S42 list [1,1,1,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,1,1] had q12=0,q13=1,q14=0,q15=1. New has q12=1,q13=1,q14=0,q15=1. Only q12 changes. Good. S42c = [1,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,1,1,1,1]. O42 = all selected? q10=1,q11=1,q13=1,q2=1,q3=1,q5=1 -> [1,1,1,1,1,1] same.
+
+Cycle42 corrected: S42c = [1,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,1,1,1,1]. Inputs t42: a=0 na1,b=1 nb0.
+Record O42 all ones same.
+Complements: nq0=0,nq1=0,nq2=0,nq3=0,nq4=0,nq5=0,nq6=1,nq7=0,nq8=1,nq9=0,nq10=0,nq11=0,nq12=0 (changed),nq13=0,nq14=1,nq15=0,nq16=0,nq17=0,nq18=0,nq19=0.
+Compute:
+d0= nb0 | (q14=0 & ...)=0. d0=0.
+d1= nq3=0 | (q7=1 & q8=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=0 & ...)=0. d2=0.
+d3= nq12=0 | (q0=1 & ( ((nq5=0|nq13=0)=0 & q4=1)=0 | nq3=0))=0. (Previously q12=0 nq12=1 made d3=1; now q12=1 -> d3=0.) d3=0.
+d4= nq7=0 | (q9=1 & ( ((nb0|nq14=1)=1 & q16=1)=1 | nq15=0)) =1&(1|0)=1. d4=1.
+d5= nq18=0 | (b1 & ( ((nq19=0|nq7=0)=0 & q8=0)=0 | nq9=0))=0. d5=0.
+d6= na1 | ...=1.
+d7= nq19=0 | (q17=1 & ( ((nq13=0|nq6=1)=1 & q9=1)=1 | nq3=0)) =1. d7=1.
+d8= nq17=0 | (q18=1 & nq10=0 & b1)=0. d8=0.
+d9= nq18=0 | (q4=1 & ((nq1=0&q5=1)=0 | na1)=1)=1. d9=1.
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=0)=0)=0. d10=0.
+d11= nq1=0 | (a0 & ...)=0. d11=0.
+d12= nq5=0 | (q9=1 & ( ((nq6=1|nq13=0)=1 & q19=1)=1 | nq16=0)) =1. d12=1.
+d13= nq19=0 | (b1 & q8=0 & nq16=1)=0. d13=0.
+d14= nq13=0 | (q4=1 & ( ((nq16=0|nq18=0)=0 & q10=1)=0 | nq3=0))=0. d14=0.
+d15= nq14=1 | ...=1.
+d16= nq10=0 | (q9=1 & ( ((nb0|nq18=0)=0 & q8=0)=0 | nq12=0))=0. (changed; q12=1) d16=0.
+d17= nq16=0 | (q0=1 & ( ((nq11=0|nq6=1)=1 & a0)=0 | nq9=0))=0. d17=0.
+d18= nq8=1 | ...=1.
+d19= nq11=0 | (q13=1 & ( (q19=1&nq14=1)=1 | nq2=0)=1)=1. d19=1.
+S43 = [0,0,0,0,1,0,1,1,0,1,0,0,1,0,0,1,0,0,1,1]. Compare previous S43 [0,0,0,1,1,0,1,1,0,1,0,0,1,0,0,1,1,0,1,1]: differences q3 1->0, q16 1->0. List: q0=0,q1=0,q2=0,q3=0,q4=1,q5=0,q6=1,q7=1,q8=0,q9=1,q10=0,q11=0,q12=1,q13=0,q14=0,q15=1,q16=0,q17=0,q18=1,q19=1. O43 = q10=0,q11=0,q13=0,q2=0,q3=0,q5=0 -> [0,0,0,0,0,0] (previous [0,0,0,0,1,0], q3 changes). Continue.
+
+Cycle43 corrected: S43c = [0,0,0,0,1,0,1,1,0,1,0,0,1,0,0,1,0,0,1,1]. Inputs t43: a=1 na0,b=0 nb1.
+Record O43 [0,0,0,0,0,0].
+Complements: nq0=1,nq1=1,nq2=1,nq3=1 (changed),nq4=0,nq5=1,nq6=0,nq7=0,nq8=1,nq9=0,nq10=1,nq11=1,nq12=0,nq13=1,nq14=1,nq15=0,nq16=1 (changed),nq17=1,nq18=0,nq19=0.
+Compute:
+d0= nb1 | ...=1.
+d1= nq3=1 | ...=1 (changed) d1=1.
+d2= nq18=0 | (q8=0 & ...)=0. d2=0.
+d3= nq12=0 | (q0=0 & ...)=0. d3=0.
+d4= nq7=0 | (q9=1 & ( ((nb1|nq14=1)=1 & q16=0)=0 | nq15=0)) =1&0=0. (Previously q16=1 made A4&q16=1 -> d4=1; now q16=0 and q15=1 nq15=0, q7=1 nq7=0 -> d4=0.) d4=0.
+d5= nq18=0 | (b0 & ...)=0. d5=0.
+d6= na0 | (q6=1 & ( ((nb1|nq3=1)=1 & q15=1)=1 | nq2=1)) =1&(1|1)=1. d6=1 (same)
+d7= nq19=0 | (q17=0 & ...)=0. d7=0.
+d8= nq17=1 | ...=1.
+d9= nq18=0 | (q4=1 & ((nq1=1&q5=0)=0 | na0)=0)=0. d9=0.
+d10= nq18=0 | (q16=0 & ...)=0. d10=0.
+d11= nq1=1 | ...=1.
+d12= nq5=1 | ...=1.
+d13= nq19=0 | (b0 ...)=0. d13=0.
+d14= nq13=1 | ...=1.
+d15= nq14=1 | ...=1.
+d16= nq10=1 | ...=1.
+d17= nq16=1 | ...=1 (changed; q16=0) d17=1.
+d18= nq8=1 | ...=1.
+d19= nq11=1 | ...=1.
+S44 = [1,1,0,0,0,0,1,0,1,0,0,1,1,0,1,1,1,1,1,1]. Compare previous S44 [1,0,0,0,1,0,1,0,1,0,0,1,1,0,1,1,1,0,1,1]: differences q1 0->1, q4 1->0, q17 0->1. List new: q0=1,q1=1,q2=0,q3=0,q4=0,q5=0,q6=1,q7=0,q8=1,q9=0,q10=0,q11=1,q12=1,q13=0,q14=1,q15=1,q16=1,q17=1,q18=1,q19=1. O44 = q10=0,q11=1,q13=0,q2=0,q3=0,q5=0 -> [0,1,0,0,0,0] same as previous? Previous O44 [0,1,0,0,0,0], yes.
+
+Cycle44 corrected: S44c = [1,1,0,0,0,0,1,0,1,0,0,1,1,0,1,1,1,1,1,1]. Inputs t44: a=1 na0,b=0 nb1.
+Record O44 same [0,1,0,0,0,0].
+Complements: nq0=0,nq1=0 (changed),nq2=1,nq3=1,nq4=1 (changed),nq5=1,nq6=0,nq7=1,nq8=0,nq9=1,nq10=1,nq11=0,nq12=0,nq13=1,nq14=0,nq15=0,nq16=0,nq17=0 (changed),nq18=0,nq19=0.
+Compute:
+d0= nb1 | ...=1.
+d1= nq3=1 | ...=1.
+d2= nq18=0 | (q8=1 & (nq7=1 | nq4=1 | nb1)=1)=1. d2=1.
+d3= nq12=0 | (q0=1 & ( ((nq5=1|nq13=1)=1 & q4=0)=0 | nq3=1)) =1&(0|1)=1. d3=1 (same via nq3)
+d4= nq7=1 | ...=1.
+d5= nq18=0 | (b0 & ...)=0. d5=0.
+d6= na0 | (q6=1 & ( ((nb1|nq3=1)=1 & q15=1)=1 | nq2=1))=1. d6=1.
+d7= nq19=0 | (q17=1 & ( ((nq13=1|nq6=0)=1 & q9=0)=0 | nq3=1)) =1&(0|1)=1. (changed; q17=1,q3=0) d7=1.
+d8= nq17=0 | (q18=1 & nq10=1 & b0)=0. d8=0.
+d9= nq18=0 | (q4=0 & ...)=0. (changed; q4=0) d9=0.
+d10= nq18=0 | (q16=1 & (nq4=1 | nq15=0)=1)=1. (changed; q4=0) d10=1.
+d11= nq1=0 | (a1 & (nq14=0 | nq2=1 | nq10=1)=1)=1. d11=1 (same)
+d12= nq5=1 | ...=1.
+d13= nq19=0 | (b0 ...)=0. d13=0.
+d14= nq13=1 | ...=1.
+d15= nq14=0 | (q10=0 & ...)=0. d15=0.
+d16= nq10=1 | ...=1.
+d17= nq16=0 | (q0=1 & ( ((nq11=0|nq6=0)=0 & a1)=0 | nq9=1)) =1&(0|1)=1. d17=1 (same)
+d18= nq8=0 | (q0=1 & ( ((nq2=1|nq1=0)=1 & q17=1)=1 | na0)=1)=1. (changed; q17=1) d18=1.
+d19= nq11=0 | (q13=0 & ...)=0. d19=0.
+S45 = [1,1,1,1,1,0,1,1,0,0,1,1,1,0,1,0,1,1,1,0]. Compare previous S45 [1,1,1,1,1,0,1,0,1,0,0,1,1,0,1,0,1,1,0,0]: differences q7 0->1, q9 1->0, q10 0->1, q18 0->1. List: q0=1,q1=1,q2=1,q3=1,q4=1,q5=0,q6=1,q7=1,q8=0,q9=0,q10=1,q11=1,q12=1,q13=0,q14=1,q15=0,q16=1,q17=1,q18=1,q19=0. O45 = q10=1,q11=1,q13=0,q2=1,q3=1,q5=0 -> [1,1,0,1,1,0] (previous [0,1,0,1,1,0], A changes). Continue.
+
+Cycle45 corrected: S45c = [1,1,1,1,1,0,1,1,0,0,1,1,1,0,1,0,1,1,1,0]. Inputs t45: a=1 na0,b=1 nb0.
+Record O45 [1,1,0,1,1,0].
+Complements: nq0=0,nq1=0,nq2=0,nq3=0,nq4=0,nq5=1,nq6=0,nq7=0 (changed),nq8=1,nq9=1 (changed),nq10=0 (changed),nq11=0,nq12=0,nq13=1,nq14=0,nq15=1,nq16=0,nq17=0,nq18=0 (changed),nq19=1.
+Compute:
+d0= nb0 | (q14=1 & (nq17=0 | nq19=1)=1)=1. d0=1.
+d1= nq3=0 | (q7=1 & q8=0 & ...)=0. d1=0 (q8=0; same)
+d2= nq18=0 | (q8=0 & ...)=0. (changed; q18=1 now, q8=0 => d2=0; previous q18=0 made d2=1) d2=0.
+d3= nq12=0 | (q0=1 & ( ((nq5=1|nq13=1)=1 & q4=1)=1 | nq3=0))=1. d3=1.
+d4= nq7=0 | (q9=0 & ...)=0. (changed; q9=0,q7=1 => d4=0; previous d4=1 via nq7) d4=0.
+d5= nq18=0 | (b1 & ( ((nq19=1|nq7=0)=1 & q8=0)=0 | nq9=1)) =1&(0|1)=1. d5=1 (still via nq9)
+d6= na0 | (q6=1 & ( ((nb0|nq3=0)=0 & q15=0)=0 | nq2=0))=0. d6=0.
+d7= nq19=1 | ...=1.
+d8= nq17=0 | (q18=1 & nq10=0 & b1)=0. d8=0.
+d9= nq18=0 | (q4=1 & ((nq1=0&q5=0)=0 | na0)=0)=0. (changed; q18=1 and q1=1,q5=0,a=1 =>0; previous q18=0 made d9=1) d9=0.
+d10= nq18=0 | (q16=1 & (nq4=0 | nq15=1)=1)=1. d10=1 (same)
+d11= nq1=0 | (a1 & (nq14=0 | nq2=0 | nq10=0)=0)=0. (changed; q10=1 so all complements zero; previous q10=0 made nq10=1 -> d11=1) d11=0.
+d12= nq5=1 | ...=1.
+d13= nq19=1 | ...=1.
+d14= nq13=1 | ...=1.
+d15= nq14=0 | (q10=1 & (nq6=0 | (q2=1&nq13=1)=1))=1. (changed; q10=1,q13=0,q2=1 -> d15=1; previous q10=0 d15=0) d15=1.
+d16= nq10=0 | (q9=0 & ...)=0. d16=0.
+d17= nq16=0 | (q0=1 & ( ((nq11=0|nq6=0)=0 & a1)=0 | nq9=1)) =1&(0|1)=1. d17=1 (same via nq9)
+d18= nq8=1 | ...=1.
+d19= nq11=0 | (q13=0 & ...)=0. d19=0.
+S46 = [1,0,0,1,0,1,0,1,0,0,1,0,1,1,1,1,0,1,1,0]. Compare previous S46 [1,0,1,1,1,1,0,1,0,1,1,1,1,1,1,0,1,1,0,0]: many differences. Let's list new carefully from d values: d0=1,d1=0,d2=0,d3=1,d4=0,d5=1,d6=0,d7=1,d8=0,d9=0,d10=1,d11=0,d12=1,d13=1,d14=1,d15=1,d16=0,d17=1,d18=1,d19=0. Yes S46c = [1,0,0,1,0,1,0,1,0,0,1,0,1,1,1,1,0,1,1,0]. O46 = q10=1,q11=0,q13=1,q2=0,q3=1,q5=1 -> [1,0,1,0,1,1] (previous [1,1,1,1,1,1], changes B,D). Continue to S47 for final record.
+
+Cycle46 corrected: S46c = [1,0,0,1,0,1,0,1,0,0,1,0,1,1,1,1,0,1,1,0]. Inputs t46: a=0 na1,b=1 nb0.
+Record O46 = [1,0,1,0,1,1] as above (q11=0,q2=0). Need compute S47 for final O47. Complements: nq0=0,nq1=1,nq2=1,nq3=0,nq4=1,nq5=0,nq6=1,nq7=0,nq8=1,nq9=1,nq10=0,nq11=1,nq12=0,nq13=0,nq14=0,nq15=0,nq16=1,nq17=0,nq18=0,nq19=1.
+Compute d to get S47:
+d0= nb0 | (q14=1 & (nq17=0 | nq19=1)=1)=1. d0=1.
+d1= nq3=0 | (q7=1 & q8=0 & ...)=0. d1=0.
+d2= nq18=0 | (q8=0 & ...)=0. d2=0.
+d3= nq12=0 | (q0=1 & ( ((nq5=0|nq13=0)=0 & q4=0)=0 | nq3=0)) =1&0=0. d3=0.
+d4= nq7=0 | (q9=0 & ...)=0. d4=0.
+d5= nq18=0 | (b1 & ( ((nq19=1|nq7=0)=1 & q8=0)=0 | nq9=1)) =1&(0|1)=1. d5=1.
+d6= na1 | ...=1.
+d7= nq19=1 | ...=1.
+d8= nq17=0 | (q18=1 & nq10=0 & b1)=0. d8=0.
+d9= nq18=0 | (q4=0 & ...)=0. d9=0.
+d10= nq18=0 | (q16=0 & ...)=0. d10=0.
+d11= nq1=1 | ...=1.
+d12= nq5=0 | (q9=0 & ...)=0. d12=0.
+d13= nq19=1 | ...=1.
+d14= nq13=0 | (q4=0 & ...)=0. d14=0.
+d15= nq14=0 | (q10=1 & (nq6=1 | (q2=0&nq13=0)=0)) =1&(1|0)=1. d15=1.
+d16= nq10=0 | (q9=0 & ...)=0. d16=0.
+d17= nq16=1 | ...=1.
+d18= nq8=1 | ...=1.
+d19= nq11=1 | ...=1.
+S47 = [1,0,0,0,0,1,1,1,0,0,0,1,0,1,0,1,0,1,1,1]. Let's list d: [1,0,0,0,0,1,1,1,0,0,0,1,0,1,0,1,0,1,1,1]. Check d14=0 because q4=0 and q13=1. yes. Record O47 from S47: q10=0,q11=1,q13=1,q2=0,q3=0,q5=1 -> [0,1,1,0,0,1]. This is final recorded cycle47. Note we don't need S48.
+
+But wait: Did we need to compute S47 from S46 with inputs t46; yes S47 is current state at cycle47 after edge from cycle46. We record O47. Good.
+
+Now outputs t0..t22 unchanged? The error started at S23 due misassignment, so O0..O22 remain as originally. O23 onward corrected. Need reconstruct output rows O_t corrected for t0..47. Let's produce corrected rows.
+
+Unchanged t0..t22 as before:
+t0: [1,0,1,1,0,1]
+1: [0,1,1,0,1,0]
+2: [1,1,0,1,0,0]
+3: [1,1,0,0,1,1]
+4: [0,1,1,1,0,0]
+5: [1,1,1,1,1,1]
+6: [1,0,1,0,0,0]
+7: [0,1,1,0,1,1]
+8: [1,0,0,0,0,0]
+9: [1,1,0,0,1,0]
+10:[0,0,1,1,1,1]
+11:[0,1,1,0,0,0]
+12:[1,1,0,0,1,0]
+13:[0,0,0,0,1,0]
+14:[0,1,1,1,1,1]
+15:[1,1,0,0,0,0]
+16:[1,1,1,1,1,0]
+17:[1,0,1,1,1,1]
+18:[0,0,1,1,0,1]
+19:[1,1,0,1,1,1]
+20:[1,0,0,0,1,0]
+21:[1,1,1,0,0,1]
+22:[0,1,0,0,1,1]
+Corrected t23 onward:
+23: S23c selected [q10=0,q11=0,q13=0,q2=1,q3=1,q5=0] = [0,0,0,1,1,0]
+24: S24c [0,1,1,0,1,0] (same as old)
+25: S25c [1,1,0,0,1,0] (same)
+26: S26c [1,1,0,0,1,1] (A changed from0 to1)
+27: S27c [0,1,1,1,0,1] (same)
+28: S28c [1,1,1,1,1,1] (same)
+29: S29c [1,0,1,0,0,0] (E changed 1->0)
+30: S30c [0,1,1,0,1,1] (same)
+31: S31c [0,0,0,0,0,1] (B changed 1->0; C? q13=0 same; D0,E0)
+32: S32c [1,1,1,1,1,1] (same)
+33: S33c [1,0,0,1,1,1] (C changed 1->0)
+34: S34c [1,0,1,1,1,1] (same as old)
+35: S35c [0,1,0,1,0,0] (A 1->0, B 0->1; C0; D1; E0; F0)
+36: S36c [1,0,0,0,1,0] (A 0->1; B0; C0; D0; E1; F0)
+37: S37c [0,0,1,1,1,0] (C 0->1)
+38: S38c [1,1,0,1,1,0] (same)
+39: S39c [1,0,0,1,1,0] (B 1->0)
+40: S40c [0,1,1,1,1,1] (same)
+41: S41c [0,1,1,0,0,0] (F 1->0)
+42: S42c [1,1,1,1,1,1] (same)
+43: S43c [0,0,0,0,0,0] (E 1->0)
+44: S44c [0,1,0,0,0,0] (same)
+45: S45c [1,1,0,1,1,0] (A 0->1)
+46: S46c [1,0,1,0,1,1] (B 1->0, D 1->0; C1,E1,F1)
+47: S47 [0,1,1,0,0,1] (A 1->0? previous final [1,1,1,1,0,1]; now [0,1,1,0,0,1]: A,D,E changes)
+Need verify t24/t25 rows after correction: t24 S24c selected q10=0,q11=1,q13=1,q2=0,q3=1,q5=0 yes. t25 same. Good.
+
+Now transpose corrected rows. Let's rebuild columns fully. Use chunks.
+
+Corrected O table rows t0-47 (A=q10,B=q11,C=q13,D=q2,E=q3,F=q5):
+0: 1 0 1 1 0 1
+1: 0 1 1 0 1 0
+2: 1 1 0 1 0 0
+3: 1 1 0 0 1 1
+4: 0 1 1 1 0 0
+5: 1 1 1 1 1 1
+6: 1 0 1 0 0 0
+7: 0 1 1 0 1 1
+8: 1 0 0 0 0 0
+9: 1 1 0 0 1 0
+10:0 0 1 1 1 1
+11:0 1 1 0 0 0
+12:1 1 0 0 1 0
+13:0 0 0 0 1 0
+14:0 1 1 1 1 1
+15:1 1 0 0 0 0
+16:1 1 1 1 1 0
+17:1 0 1 1 1 1
+18:0 0 1 1 0 1
+19:1 1 0 1 1 1
+20:1 0 0 0 1 0
+21:1 1 1 0 0 1
+22:0 1 0 0 1 1
+23:0 0 0 1 1 0
+24:0 1 1 0 1 0
+25:1 1 0 0 1 0
+26:1 1 0 0 1 1
+27:0 1 1 1 0 1
+28:1 1 1 1 1 1
+29:1 0 1 0 0 0
+30:0 1 1 0 1 1
+31:0 0 0 0 0 1
+32:1 1 1 1 1 1
+33:1 0 0 1 1 1
+34:1 0 1 1 1 1
+35:0 1 0 1 0 0
+36:1 0 0 0 1 0
+37:0 0 1 1 1 0
+38:1 1 0 1 1 0
+39:1 0 0 1 1 0
+40:0 1 1 1 1 1
+41:0 1 1 0 0 0
+42:1 1 1 1 1 1
+43:0 0 0 0 0 0
+44:0 1 0 0 0 0
+45:1 1 0 1 1 0
+46:1 0 1 0 1 1
+47:0 1 1 0 0 1
+
+Need be certain rows t35/t36 etc. Let's cross-check with corrected state list selected bits:
+S35c [1,1,1,0,1,0,1,0,0,1,0,1,0,0,0,0,1,0,1,1] -> q10=0 q11=1 q13=0 q2=1 q3=0 q5=0: row35 [0,1,0,1,0,0]. yes.
+S36c [1,1,0,1,1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,0] -> q10=1,q11=0,q13=0,q2=0,q3=1,q5=0: row36 [1,0,0,0,1,0]. yes.
+S37c [1,0,1,1,1,0,1,1,1,1,0,0,1,1,1,0,1,0,1,1] -> q10=0,q11=0,q13=1,q2=1,q3=1,q5=0 row37. yes.
+S41c [1,0,0,0,0,0,0,0,1,1,0,1,1,1,0,0,1,1,0,0] -> q10=0,q11=1,q13=1,q2=0,q3=0,q5=0 row41. yes.
+S46c [1,0,0,1,0,1,0,1,0,0,1,0,1,1,1,1,0,1,1,0] -> q10=1,q11=0,q13=1,q2=0,q3=1,q5=1. yes.
+S47 [1,0,0,0,0,1,1,1,0,0,0,1,0,1,0,1,0,1,1,1] -> q10=0,q11=1,q13=1,q2=0,q3=0,q5=1. yes.
+
+Now transpose columns accurately.
+
+q10 A column from rows:
+Rows 0-7 A: 1,0,1,1,0,1,1,0 (same)
+8-15 A: row8 1,9 1,10 0,11 0,12 1,13 0,14 0,15 1 = [1,1,0,0,1,0,0,1] (same)
+16-23 A: row16 1,17 1,18 0,19 1,20 1,21 1,22 0,23 0 = [1,1,0,1,1,1,0,0] (row23 A=0; same as before? before t23 A=0 yes; unchanged)
+24-31 A: row24 0,25 1,26 1,27 0,28 1,29 1,30 0,31 0 = [0,1,1,0,1,1,0,0]. (Changed at row26 from0 to1; row25=1; sequence previous [0,1,0,0,1,1,0,0], now [0,1,1,0,1,1,0,0])
+32-39 A: row32 1,33 1,34 1,35 0,36 1,37 0,38 1,39 1 = [1,1,1,0,1,0,1,1]. (previous [1,1,1,1,0,0,1,1]; changes row35 1->0, row36 0->1)
+40-47 A: row40 0,41 0,42 1,43 0,44 0,45 1,46 1,47 0 = [0,0,1,0,0,1,1,0]. (previous [0,0,1,0,0,0,1,1]; changes row45 0->1,row47 1->0)
+Concatenate A list length 48:
+[1,0,1,1,0,1,1,0,
+ 1,1,0,0,1,0,0,1,
+ 1,1,0,1,1,1,0,0,
+ 0,1,1,0,1,1,0,0,
+ 1,1,1,0,1,0,1,1,
+ 0,0,1,0,0,1,1,0]
+Count: 8*6=48. Good.
+
+q11 B column:
+Rows0-7 B: 0,1,1,1,1,1,0,1 (same)
+8-15: row8 0,9 1,10 0,11 1,12 1,13 0,14 1,15 1 = [0,1,0,1,1,0,1,1] same
+16-23: row16 1,17 0,18 0,19 1,20 0,21 1,22 1,23 0 = [1,0,0,1,0,1,1,0] same (row23 B=0)
+24-31: row24 1,25 1,26 1,27 1,28 1,29 0,30 1,31 0 = [1,1,1,1,1,0,1,0]. (previous [1,1,1,1,1,0,1,1]; row31 B 1->0)
+32-39: row32 1,33 0,34 0,35 1,36 0,37 0,38 1,39 0 = [1,0,0,1,0,0,1,0]. (previous [1,0,0,0,0,0,1,1]; changes row35 0->1,row39 1->0)
+40-47: row40 1,41 1,42 1,43 0,44 1,45 1,46 0,47 1 = [1,1,1,0,1,1,0,1]. (previous [1,1,1,0,1,1,1,1]; row46 1->0)
+Concatenate B:
+[0,1,1,1,1,1,0,1,
+ 0,1,0,1,1,0,1,1,
+ 1,0,0,1,0,1,1,0,
+ 1,1,1,1,1,0,1,0,
+ 1,0,0,1,0,0,1,0,
+ 1,1,1,0,1,1,0,1]
+Count 48.
+
+q13 C column:
+Rows0-7 C: 1,1,0,0,1,1,1,1 (same)
+8-15: row8 0,9 0,10 1,11 1,12 0,13 0,14 1,15 0 = [0,0,1,1,0,0,1,0] same
+16-23: row16 1,17 1,18 1,19 0,20 0,21 1,22 0,23 0 = [1,1,1,0,0,1,0,0] (row23 C changed 1->0)
+24-31: row24 1,25 0,26 0,27 1,28 1,29 1,30 1,31 0 = [1,0,0,1,1,1,1,0] same? Previous [1,0,0,1,1,1,1,0] yes.
+32-39: row32 1,33 0,34 1,35 0,36 0,37 1,38 0,39 0 = [1,0,1,0,0,1,0,0]. (previous [1,1,1,0,0,0,0,0]; changes row33 1->0,row37 0->1; row34 remains1)
+40-47: row40 1,41 1,42 1,43 0,44 0,45 0,46 1,47 1 = [1,1,1,0,0,0,1,1] same as previous? previous [1,1,1,0,0,0,1,1], yes.
+Concatenate C:
+[1,1,0,0,1,1,1,1,
+ 0,0,1,1,0,0,1,0,
+ 1,1,1,0,0,1,0,0,
+ 1,0,0,1,1,1,1,0,
+ 1,0,1,0,0,1,0,0,
+ 1,1,1,0,0,0,1,1]
+Count 48.
+
+q2 D column:
+Rows0-7 D: 1,0,1,0,1,1,0,0 same
+8-15: row8 0,9 0,10 1,11 0,12 0,13 0,14 1,15 0 = [0,0,1,0,0,0,1,0] same
+16-23: row16 1,17 1,18 1,19 1,20 0,21 0,22 0,23 1 = [1,1,1,1,0,0,0,1] same
+24-31: row24 0,25 0,26 0,27 1,28 1,29 0,30 0,31 0 = [0,0,0,1,1,0,0,0] same (row29 D=0 now; previous row29 D=0? Yes previous S29 q2=0 too. unchanged)
+32-39: row32 1,33 1,34 1,35 1,36 0,37 1,38 1,39 1 = [1,1,1,1,0,1,1,1] same? previous [1,1,1,1,0,1,1,1], yes.
+40-47: row40 1,41 0,42 1,43 0,44 0,45 1,46 0,47 0 = [1,0,1,0,0,1,0,0]. (previous [1,0,1,0,0,1,1,1]; changes row46 1->0,row47 1->0)
+Concatenate D:
+[1,0,1,0,1,1,0,0,
+ 0,0,1,0,0,0,1,0,
+ 1,1,1,1,0,0,0,1,
+ 0,0,0,1,1,0,0,0,
+ 1,1,1,1,0,1,1,1,
+ 1,0,1,0,0,1,0,0]
+Count 48.
+
+q3 E column:
+Rows0-7 E: 0,1,0,1,0,1,0,1 same
+8-15: row8 0,9 1,10 1,11 0,12 1,13 1,14 1,15 0 = [0,1,1,0,1,1,1,0] same
+16-23: row16 1,17 1,18 0,19 1,20 1,21 0,22 1,23 1 = [1,1,0,1,1,0,1,1] same (row23 E=1)
+24-31: row24 1,25 1,26 1,27 0,28 1,29 0,30 1,31 0 = [1,1,1,0,1,0,1,0]. (previous [1,1,1,0,1,1,1,0]; row29 E 1->0)
+32-39: row32 1,33 1,34 1,35 0,36 1,37 1,38 1,39 1 = [1,1,1,0,1,1,1,1] same as previous? previous [1,1,1,0,1,1,1,1], yes.
+40-47: row40 1,41 0,42 1,43 0,44 0,45 1,46 1,47 0 = [1,0,1,0,0,1,1,0]. (previous [1,0,1,1,0,1,1,0]; row43 E 1->0)
+Concatenate E:
+[0,1,0,1,0,1,0,1,
+ 0,1,1,0,1,1,1,0,
+ 1,1,0,1,1,0,1,1,
+ 1,1,1,0,1,0,1,0,
+ 1,1,1,0,1,1,1,1,
+ 1,0,1,0,0,1,1,0]
+Count 48.
+
+q5 F column:
+Rows0-7 F: 1,0,0,1,0,1,0,1 same
+8-15: row8 0,9 0,10 1,11 0,12 0,13 0,14 1,15 0 = [0,0,1,0,0,0,1,0] same
+16-23: row16 0,17 1,18 1,19 1,20 0,21 1,22 1,23 0 = [0,1,1,1,0,1,1,0] same
+24-31: row24 0,25 0,26 1,27 1,28 1,29 0,30 1,31 1 = [0,0,1,1,1,0,1,1] same? previous [0,0,1,1,1,0,1,1], yes (row26 F=1 unchanged? previous row26 F=1 yes; good)
+32-39: row32 1,33 1,34 1,35 0,36 0,37 0,38 0,39 0 = [1,1,1,0,0,0,0,0] same
+40-47: row40 1,41 0,42 1,43 0,44 0,45 0,46 1,47 1 = [1,0,1,0,0,0,1,1]. (previous [1,1,1,0,0,0,1,1]; row41 F 1->0)
+Concatenate F:
+[1,0,0,1,0,1,0,1,
+ 0,0,1,0,0,0,1,0,
+ 0,1,1,1,0,1,1,0,
+ 0,0,1,1,1,0,1,1,
+ 1,1,1,0,0,0,0,0,
+ 1,0,1,0,0,0,1,1]
+Count 48.
+
+Need ensure no further misassignment in corrected recomputation. Let's audit simple d13 again for corrected S23..S46 to ensure q13 sequence matches. We can compute q13 column C list and see if transition d13 holds. For t, q13_{t+1} should equal ~q19_t | (b_t & q8_t & ~q16_t). We partially corrected. Let's audit around corrected cycles 23 onward quickly using states:
+S23c q19=0 -> S24 q13=1 yes (C row24=1). S24c q19=1,q8=0,b24=0 -> S25 q13=0 yes. S25c q19=1,q8=0,b25=1 -> S26 q13=0 yes. S26c q19=0 -> S27 q13=1 yes. S27c q19=0 -> S28 q13=1. S28c q19=0 -> S29 q13=1. S29c q19=0 -> S30 q13=1. S30c q19=1,q8=0,b30=1 -> S31 q13=0 yes. S31c q19=1,q8=1,q16=1,b31=1 -> b&q8&~q16 =0; ~q19=0 -> S32 q13=0? Wait S32c q13=1! Let's check: S31c = [0,0,0,0,0,1,1,0,1,0,0,0,0,0,0,0,1,1,1,1]. q19=1, q8=1, q16=1 (nq16=0), b31 = in1 index31 = 1. d13 = ~q19 (0) | (1&1&0)=0. Therefore S32 q13 should be 0. But corrected S32c has q13=1 (index13=1). Did we make another mistake? Let's revisit cycle31 computation. S31c current, a=1,b=1. We computed d13= nq19=0 | (b1 & q8=1 & nq16=0)=0. Yes d13=0. Then in S32 list, d13 should be 0. But I wrote S32 = [0,1,1,1,1,1,1,1,1,0,1,1,0,1,1,1,1,0,0,1]. Index13 =? positions: q0=0 (d0), q1=1(d1), q2=1(d2), q3=1(d3), q4=1(d4), q5=1(d5), q6=1(d6), q7=1(d7), q8=1(d8), q9=0(d9), q10=1(d10), q11=1(d11), q12=0(d12), q13=1? Wait d13=0 so q13 should be 0, but list has q13=1. Let's count the list [0,1,1,1,1,1,1,1,1,0,1,1,0,1,1,1,1,0,0,1]: indexes: 0=0,1=1,2=1,3=1,4=1,5=1,6=1,7=1,8=1,9=0,10=1,11=1,12=0,13=1,14=1,15=1,16=1,17=0,18=0,19=1. Yes index13=1. Inconsistent: d14 maybe? Let's recalc cycle31 d values fully; maybe d12/d13/d14 mislisted. At cycle31 corrected, S31c = q0=0,q1=0,q2=0,q3=0,q4=0,q5=1,q6=1,q7=0,q8=1,q9=0,q10=0,q11=0,q12=0,q13=0,q14=0,q15=0,q16=1,q17=1,q18=1,q19=1; a=1 (na0), b=1(nb0).
+Compute all d carefully:
+d0 = nb0 | (q14=0 & ...) =0. (ok)
+d1 = nq3=1 | ... =1.
+d2 = nq18=0 | (q8=1 & (nq7=1 | nq4=1 | nb0)=1) =1.
+d3 = nq12=1 | ... =1.
+d4 = nq7=1 | ... =1.
+d5 = nq18=0 | (b1 & ( ((nq19=0|nq7=1)=1 & q8=1)=1 | nq9=1)) = b1 & (1|1)=1. yes d5=1.
+d6 = na0 | (q6=1 & ( ((nb0|nq3=1)=1 & q15=0)=0 | nq2=1)) = q6 & (0|1)=1. d6=1.
+d7 = nq19=0 | (q17=1 & ( ((nq13=1|nq6=0)=1 & q9=0)=0 | nq3=1)) = 1 & (0|1)=1. d7=1.
+d8 = nq17=0 | (q18=1 & nq10=1 & b1)=1. d8=1.
+d9 = nq18=0 | (q4=0 & ...)=0. d9=0.
+d10= nq18=0 | (q16=1 & (nq4=1 | nq15=1)=1)=1. d10=1.
+d11= nq1=1 | ... =1. d11=1.
+d12= nq5=0 | (q9=0 & ...)=0. d12=0.
+d13= nq19=0 | (b1 & q8=1 & nq16=0)=0. d13=0.
+d14= nq13=1 | ... =1. d14=1.
+d15= nq14=1 | ... =1. d15=1.
+d16= nq10=1 | ... =1. d16=1.
+d17= nq16=0 | (q0=0 & ...)=0. d17=0.
+d18= nq8=0 | (q0=0 & ...)=0. d18=0.
+d19= nq11=1 | ... =1. d19=1.
+So d list = [0,1,1,1,1,1,1,1,1,0,1,1,0,0,1,1,1,0,0,1]. I earlier wrote d13=0 but then S32 list had q13=1 and q14=1,q15=1; the correct list should be [0,1,1,1,1,1,1,1,1,0,1,1,0,0,1,1,1,0,0,1] (q13=0,q14=1,q15=1,q16=1). I erroneously set q13=1 (maybe copied d14). Correct S32c2 = index13=0, index14=1,index15=1,index16=1,index17=0,index18=0,index19=1. So S32 q13=0 not 1. But O32 recorded from S32 should then be q13=0, not all ones. However note S32 is state at cycle32, produced by edge after cycle31. We record O32 from S32. We previously recorded O32 all ones from old S32; corrected S32 has q13=0, so O32 = [q10=1,q11=1,q13=0,q2=1,q3=1,q5=1] = [1,1,0,1,1,1], not all ones. This changes C at t32 and subsequent states (S33 etc) because we used S32 with q13=1 in cycle32 computations. Need correct again from S32 onward. This is tricky. Let's systematically restart from S31c (which seems correct) and recompute S32..S47 with extra care. S31c is likely correct? It came from S30c; we should audit d13 for S30->S31: S30c q19=1,q8=0,b30=1 -> d13=0, S31 q13=0 yes. S31c list had q13=0. Good. So restart at S31c. S31c = [0,0,0,0,0,1,1,0,1,0,0,0,0,0,0,0,1,1,1,1]. Record O31 [0,0,0,0,0,1] (already). Compute S32 (next) as just d list: S32 = [0,1,1,1,1,1,1,1,1,0,1,1,0,0,1,1,1,0,0,1]. Let's call S32 correct. Note q12=0,q13=0,q14=1,q15=1,q16=1,q17=0,q18=0,q19=1.
+Record O32 = q10=1,q11=1,q13=0,q2=1,q3=1,q5=1 -> [1,1,0,1,1,1]. (Not all ones). Good.
+
+Now cycle32 (to compute S33) with S32c2, inputs t32 a=0 na1,b=0 nb1.
+S32c2: q0=0,q1=1,q2=1,q3=1,q4=1,q5=1,q6=1,q7=1,q8=1,q9=0,q10=1,q11=1,q12=0,q13=0,q14=1,q15=1,q16=1,q17=0,q18=0,q19=1.
+Complements: nq0=1,nq1=0,nq2=0,nq3=0,nq4=0,nq5=0,nq6=0,nq7=0,nq8=0,nq9=1,nq10=0,nq11=0,nq12=1,nq13=1,nq14=0,nq15=0,nq16=0,nq17=1,nq18=1,nq19=0.
+Compute d:
+d0= nb1 | ...=1.
+d1= nq3=0 | (q7=1 & q8=1 & (nq4=0 | na1)=1)=1. d1=1.
+d2= nq18=1 | ...=1.
+d3= nq12=1 | ...=1.
+d4= nq7=0 | (q9=0 & ...)=0. d4=0.
+d5= nq18=1 | ...=1.
+d6= na1 | ...=1.
+d7= nq19=0 | (q17=0 & ...)=0. d7=0.
+d8= nq17=1 | ...=1.
+d9= nq18=1 | ...=1.
+d10= nq18=1 | ...=1.
+d11= nq1=0 | (a0 & ...)=0. d11=0.
+d12= nq5=0 | (q9=0 & ...)=0. d12=0.
+d13= nq19=0 | (b0 ...)=0. d13=0.
+d14= nq13=1 | ...=1. (q13=0) d14=1.
+d15= nq14=0 | (q10=1 & (nq6=0 | (q2=1&nq13=1)=1)) =1&(0|1)=1. d15=1. (changed from previous d15=0 because q13=0 now) 
+d16= nq10=0 | (q9=0 & ...)=0. d16=0.
+d17= nq16=0 | (q0=0 & ...)=0. d17=0.
+d18= nq8=0 | (q0=0 & ...)=0. d18=0.
+d19= nq11=0 | (q13=0 & ...)=0. d19=0.
+S33 = [1,1,1,1,0,1,1,0,1,1,1,0,0,0,1,1,0,0,0,0]. Compare previous corrected S33 [1,1,1,1,0,1,1,0,1,1,1,0,0,0,1,0,0,0,0,0]: q15 changes 0->1. Good. S33c2 = q0=1,q1=1,q2=1,q3=1,q4=0,q5=1,q6=1,q7=0,q8=1,q9=1,q10=1,q11=0,q12=0,q13=0,q14=1,q15=1,q16=0,q17=0,q18=0,q19=0. Record O33 = q10=1,q11=0,q13=0,q2=1,q3=1,q5=1 -> [1,0,0,1,1,1] (same as corrected O33; good C=0). 
+
+Cycle33: S33c2 = [1,1,1,1,0,1,1,0,1,1,1,0,0,0,1,1,0,0,0,0]. Inputs a=0 na1,b=0 nb1.
+Record O33 [1,0,0,1,1,1].
+Complements: nq0=0,nq1=0,nq2=0,nq3=0,nq4=1,nq5=0,nq6=0,nq7=1,nq8=0,nq9=0,nq10=0,nq11=1,nq12=1,nq13=1,nq14=0,nq15=0 (changed),nq16=1,nq17=1,nq18=1,nq19=1.
+Compute d for S34:
+d0= nb1 | ...=1.
+d1= nq3=0 | (q7=0 & ...)=0. d1=0.
+d2= nq18=1 | ...=1.
+d3= nq12=1 | ...=1.
+d4= nq7=1 | ...=1.
+d5= nq18=1 | ...=1.
+d6= na1 | ...=1.
+d7= nq19=1 | ...=1.
+d8= nq17=1 | ...=1.
+d9= nq18=1 | ...=1.
+d10= nq18=1 | ...=1.
+d11= nq1=0 | (a0 & ...)=0. d11=0.
+d12= nq5=0 | (q9=1 & ( ((nq6=0|nq13=1)=1 & q19=0)=0 | nq16=1)) =1&(0|1)=1. d12=1.
+d13= nq19=1 | ...=1.
+d14= nq13=1 | ...=1.
+d15= nq14=0 | (q10=1 & (nq6=0 | (q2=1&nq13=1)=1)) =1. d15=1.
+d16= nq10=0 | (q9=1 & ( ((nb1|nq18=1)=1 & q8=1)=1 | nq12=1))=1. d16=1.
+d17= nq16=1 | ...=1.
+d18= nq8=0 | (q0=1 & ( ((nq2=0|nq1=0)=0 & q17=0)=0 | na1)=1)=1. d18=1.
+d19= nq11=1 | ...=1.
+S34 = [1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1]. This is same as S34c previously? Yes [1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1]. Good, because q15 change didn't affect? It matches S34c. O34 [1,0,1,1,1,1]. Good. So from S34 onward previous corrected (after first fix) may be okay? We computed S34c same. Then cycle34 computations used S34c and produced S35c etc. Are those still valid? Yes because S34c same as what we used after first correction for cycle34. Wait after first correction, S34 = [1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1], and we computed cycle34 -> S35c. That remains valid. Good. The only additional correction was S32 q13 and S33 q15, but S34 ended same as before? Let's verify: Before second correction, S33 (after first correction) was [1,1,1,1,0,1,1,0,1,1,1,0,0,0,1,0,0,0,0,0] (q15=0). We computed S34 from that and got [1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1]. Now with S33c2 q15=1, d15 for S34? In cycle33, d15 = nq14=0 | (q10=1 & (nq6=0 | (q2=1&nq13=1)=1)) =1 regardless of q15; q15 current doesn't feed d15? d15 formula uses q14,q10,q6,q2,q13, not q15. So S34 same. Other d's maybe q15 feeds d4? d4 uses q15 via nq15 in p2; in cycle33, S33c2 q15=1 (nq15=0) whereas first-correction S33 q15=0 (nq15=1). Did d4 change? Let's check cycle33 d4: S33c2 q7=0 -> nq7=1, so d4=1 regardless. In first-correction S33 q7=0 too, so d4=1. d6 uses q15: d6 = na1 (a=0) so d6=1 regardless. d10 uses nq15 but nq18=1 (q18=0) so d10=1 regardless. d16 uses q15? no. d17 uses q16 etc not q15. So S34 same. Good. Thus S34 onward computations after first correction are valid. Nice.
+
+But need update O32 (C from1 to0) and maybe O33? O33 remains [1,0,0,1,1,1]. O34 onward unchanged from first correction. O31 etc unchanged. So only additional change vs first corrected table: row32 C becomes 0 (was 1). Also row33? first corrected row33 [1,0,0,1,1,1] already; good. Did row32 F etc unchanged. Need adjust q13 list at index32 from 1 to 0. Also check S32 q13=0 may affect output q13 at t32 only; subsequent q13 sequence already? Let's audit q13 transition from S32c2 to S33: S32c2 q19=1,q8=1,q16=1,b32=0 -> d13=0; S33 q13=0 yes. S33 q19=0 -> S34 q13=1. Good. The C list after correction: index32=0, index33=0, index34=1,... Let's update C column accordingly.
+
+Let's reconstruct final output rows with row32 C=0. Previous corrected rows t0-31 as above; t32 = [1,1,0,1,1,1]; t33=[1,0,0,1,1,1]; t34=[1,0,1,1,1,1]; t35=[0,1,0,1,0,0]; t36=[1,0,0,0,1,0]; t37=[0,0,1,1,1,0]; t38=[1,1,0,1,1,0]; t39=[1,0,0,1,1,0]; t40=[0,1,1,1,1,1]; t41=[0,1,1,0,0,0]; t42=[1,1,1,1,1,1]; t43=[0,0,0,0,0,0]; t44=[0,1,0,0,0,0]; t45=[1,1,0,1,1,0]; t46=[1,0,1,0,1,1]; t47=[0,1,1,0,0,1].
+Need check t42 all ones with S42c [1,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,1,1,1,1]: selected q10=1 q11=1 q13=1 q2=1 q3=1 q5=1 yes.
+
+Now update columns. Only C column index32 changes from previous corrected C. Let's produce final lists with this change.
+
+q10 A list unaffected by S32 q13? It may be affected? A from rows; row32 A=1 unchanged; subsequent rows computed from S34 same, so A list as after first correction: 
+A = [1,0,1,1,0,1,1,0, 1,1,0,0,1,0,0,1, 1,1,0,1,1,1,0,0, 0,1,1,0,1,1,0,0, 1,1,1,0,1,0,1,1, 0,0,1,0,0,1,1,0]
+Need check row33 A=1, row34=1,row35=0,row36=1,row37=0,row38=1,row39=1. yes.
+
+q11 B list as after first correction (row32 B=1): 
+B = [0,1,1,1,1,1,0,1, 0,1,0,1,1,0,1,1, 1,0,0,1,0,1,1,0, 1,1,1,1,1,0,1,0, 1,0,0,1,0,0,1,0, 1,1,1,0,1,1,0,1]
+
+q13 C list: previous after first correction was:
+[1,1,0,0,1,1,1,1,
+ 0,0,1,1,0,0,1,0,
+ 1,1,1,0,0,1,0,0,
+ 1,0,0,1,1,1,1,0,
+ 1,0,1,0,0,1,0,0,
+ 1,1,1,0,0,0,1,1]
+Now set index32 (first element of fifth chunk) from 1 to 0. Fifth chunk (indices32-39) becomes [0,0,1,0,0,1,0,0]? Wait C indices 32-39 rows: row32 C=0 (changed), row33 C=0, row34 C=1,row35 C=0,row36 C=0,row37 C=1,row38 C=0,row39 C=0. Yes fifth chunk = [0,0,1,0,0,1,0,0]. Note row34 C=1. The previous chunk [1,0,1,0,0,1,0,0] changes first element 1->0. Good. Also check index33=0, index34=1. So C final:
+[1,1,0,0,1,1,1,1,
+ 0,0,1,1,0,0,1,0,
+ 1,1,1,0,0,1,0,0,
+ 1,0,0,1,1,1,1,0,
+ 0,0,1,0,0,1,0,0,
+ 1,1,1,0,0,0,1,1]
+Let's count and maybe verify with S_t q13 selected: t32 S32 q13=0; t33 S33 q13=0; t34 S34 q13=1; yes.
+
+q2 D list unaffected by S32 q13? D row32=1; subsequent same. D final as after first correction:
+[1,0,1,0,1,1,0,0,
+ 0,0,1,0,0,0,1,0,
+ 1,1,1,1,0,0,0,1,
+ 0,0,0,1,1,0,0,0,
+ 1,1,1,1,0,1,1,1,
+ 1,0,1,0,0,1,0,0]
+
+q3 E list as after first correction:
+[0,1,0,1,0,1,0,1,
+ 0,1,1,0,1,1,1,0,
+ 1,1,0,1,1,0,1,1,
+ 1,1,1,0,1,0,1,0,
+ 1,1,1,0,1,1,1,1,
+ 1,0,1,0,0,1,1,0]
+Need check E index43 =0 (row43 [0,0,0,0,0,0]) yes. Good.
+
+q5 F list as after first correction:
+[1,0,0,1,0,1,0,1,
+ 0,0,1,0,0,0,1,0,
+ 0,1,1,1,0,1,1,0,
+ 0,0,1,1,1,0,1,1,
+ 1,1,1,0,0,0,0,0,
+ 1,0,1,0,0,0,1,1]
+F row32=1, okay.
+
+However, we need be absolutely sure S31c and earlier are correct. We found two misassignment errors. Let's perform more audits using simple formulas for other output bits across all cycles maybe. Since output bits are state bits; we can verify transition relations for q10,q11,q13,q2,q3,q5 using formulas and previous state. This can catch remaining errors systematically. We'll audit each output's next value sequence using its d formula and the state/input sequence. We have final output lists (recorded current states). For each output bit x, the list Lx[t] = qx at cycle t. For t=0..46, Lx[t+1] should equal dx computed from full state at t. We can audit for simpler formulas:
+- q11 next d11 = ~q1 | (a & (~q14|~q2|~q10)). This uses q1,q14,q2,q10. We can verify L_q11. Maybe not necessary but let's check some critical transitions after corrections.
+- q13 we audited.
+- q2 next d2 = ~q18 | (q8 & (~q7|~q4|~b)). Simple-ish; audit sequence q2 maybe.
+- q3 next d3 = ~q12 | (q0 & ((((~q5|~q13)&q4)|~q3))). More complex.
+- q5 next d5 = ~q18 | (b & ((((~q19|~q7)&q8)|~q9))). 
+- q10 next d10 = ~q18 | (q16 & (~q4|~q15)). Very simple! Audit q10 list using previous state q18,q16,q4,q15. This can catch q10 errors. Let's do q10 audit thoroughly.
+
+For each cycle t, q10_{t+1} = d10 = (q18_t==0 ? 1 : (q16_t & ((q4_t==0)|(q15_t==0)))). Since d10 = ~q18 | (q16 & (nq4|nq15)). Use Lq10 (A) and states. We can verify A[t+1] for t=0..46. Need q18,q16,q4,q15 from state list. We have final states S0..S47 (corrected). Let's list relevant bits per cycle maybe and check. This is worthwhile.
+
+Final corrected state list S0..S47 (let's compile fully to audit):
+S0  = [1,0,1,0,1,1,1,1,0,1,1,0,0,1,1,1,0,0,1,0]
+S1  = [1,1,0,1,0,0,1,1,1,1,0,1,1,1,1,0,1,1,1,1]
+S2  = [1,1,1,0,1,0,1,0,0,0,1,1,1,0,0,0,1,0,1,1]
+S3  = [0,1,0,1,1,1,0,0,1,0,1,1,1,0,1,1,0,1,1,0]
+S4  = [1,0,1,0,1,0,0,1,0,0,0,1,0,1,1,1,0,1,0,0]
+S5  = [1,1,1,1,0,1,0,1,0,1,1,1,1,1,1,0,1,1,1,0]
+S6  = [1,0,0,0,1,0,0,1,0,0,1,0,0,1,0,1,0,1,1,0]
+S7  = [0,1,0,1,0,1,1,1,0,1,0,1,1,1,1,1,1,1,1,1]
+S8  = [1,0,0,0,1,0,1,0,0,0,1,0,0,0,0,0,1,0,1,1]
+S9  = [1,1,0,1,1,0,1,0,1,0,1,1,1,0,1,1,0,1,1,1]
+S10 = [0,0,1,1,1,1,1,0,0,1,0,0,1,1,1,0,0,1,1,0]
+S11 = [1,0,0,0,1,0,1,1,0,1,0,1,1,1,0,0,1,1,1,1]
+S12 = [1,1,0,1,1,0,1,1,0,1,1,1,1,0,1,1,1,0,1,1]
+S13 = [1,0,0,1,1,0,1,0,1,1,0,0,1,0,1,0,0,0,1,0]
+S14 = [1,0,1,1,1,1,1,1,1,1,0,1,1,1,1,0,1,1,1,1]
+S15 = [0,1,0,0,1,0,1,0,1,1,1,1,0,0,0,0,1,0,1,0]
+S16 = [1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,1,1,0,0,0]
+S17 = [1,1,1,1,0,1,1,1,1,1,1,0,1,1,1,0,0,1,1,0]
+S18 = [1,1,1,0,1,1,0,1,0,0,0,0,1,1,0,0,0,1,0,1]
+S19 = [1,1,1,1,0,1,0,1,0,1,1,1,0,0,1,1,1,1,1,1]
+S20 = [0,0,0,1,0,0,0,1,0,0,1,0,1,0,1,1,1,1,1,0]
+S21 = [1,0,0,0,0,1,1,1,0,0,1,1,1,1,1,1,0,0,1,1]
+S22 = [1,1,0,1,0,1,1,0,1,0,0,1,0,0,0,0,0,1,1,1]
+S23 = [1,0,1,1,1,0,1,0,0,0,0,0,0,0,1,1,1,1,1,0]  (corrected q13=0)
+S24 = [1,0,0,1,1,0,1,1,0,1,0,1,1,1,1,0,1,1,1,1]
+S25 = [1,0,0,1,1,0,1,0,0,0,1,1,1,0,0,0,1,0,1,1]
+S26 = [0,0,0,1,1,1,1,0,1,0,1,1,1,0,1,1,0,1,1,0]
+S27 = [1,0,1,0,1,1,1,1,0,1,0,1,0,1,1,0,0,1,0,0]
+S28 = [1,1,1,1,1,1,0,1,0,1,1,1,1,1,1,0,1,1,1,0]
+S29 = [1,0,0,0,1,0,0,1,0,0,1,0,0,1,0,1,0,1,1,0]
+S30 = [0,1,0,1,0,1,0,1,0,0,0,1,1,1,1,1,0,1,1,1]
+S31 = [0,0,0,0,0,1,1,0,1,0,0,0,0,0,0,0,1,1,1,1]
+S32 = [0,1,1,1,1,1,1,1,1,0,1,1,0,0,1,1,1,0,0,1]
+S33 = [1,1,1,1,0,1,1,0,1,1,1,0,0,0,1,1,0,0,0,0]
+S34 = [1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1]
+S35 = [1,1,1,0,1,0,1,0,0,1,0,1,0,0,0,0,1,0,1,1]
+S36 = [1,1,0,1,1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,0]
+S37 = [1,0,1,1,1,0,1,1,1,1,0,0,1,1,1,0,1,0,1,1]
+S38 = [1,1,1,1,1,0,1,0,1,1,1,1,1,0,0,0,1,0,1,1]
+S39 = [1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,0]
+S40 = [1,0,1,1,1,1,1,1,1,1,0,1,1,1,1,1,0,0,1,1]
+S41 = [1,0,0,0,0,0,0,0,1,1,0,1,1,1,0,0,1,1,0,0]
+S42 = [1,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,1,1,1,1]
+S43 = [0,0,0,0,1,0,1,1,0,1,0,0,1,0,0,1,0,0,1,1]
+S44 = [1,1,0,0,0,0,1,0,1,0,0,1,1,0,1,1,1,1,1,1]
+S45 = [1,1,1,1,1,0,1,1,0,0,1,1,1,0,1,0,1,1,1,0]
+S46 = [1,0,0,1,0,1,0,1,0,0,1,0,1,1,1,1,0,1,1,0]
+S47 = [1,0,0,0,0,1,1,1,0,0,0,1,0,1,0,1,0,1,1,1]
+Need verify S23..S47 list consistency. This is final. Let's audit q10 transitions with formula d10.
+For each t, compute expected q10 at S_{t+1}; compare A[t+1]. We can use state list.
+d10 = if q18_t=0 ->1 else q16_t & (q4_t==0 or q15_t==0).
+Let's make table for t, q18,q16,q4,q15 -> expected next q10, compare S_{t+1}.q10.
+t0 S0: q18=1,q16=0,q4=1,q15=1 -> q16=0 =>0. S1 q10=0 yes.
+t1 S1: q18=1,q16=1,q4=0,q15=0 -> condition true =>1. S2 q10=1 yes.
+t2 S2: q18=1,q16=1,q4=1,q15=0 -> true =>1. S3 q10=1 yes.
+t3 S3: q18=1,q16=0 ->0. S4 q10=0 yes.
+t4 S4: q18=0 ->1. S5 q10=1 yes.
+t5 S5: q18=1,q16=1,q4=0,q15=0 ->1. S6 q10=1 yes.
+t6 S6: q18=1,q16=0 ->0. S7 q10=0 yes.
+t7 S7: q18=1,q16=1,q4=0,q15=1 -> (nq4=1) =>1. S8 q10=1 yes.
+t8 S8: q18=1,q16=1,q4=1,q15=0 ->1. S9 q10=1 yes.
+t9 S9: q18=1,q16=0 ->0. S10 q10=0 yes.
+t10 S10: q18=1,q16=0 ->0. S11 q10=0 yes.
+t11 S11: q18=1,q16=1,q4=1,q15=0 ->1. S12 q10=1 yes.
+t12 S12: q18=1,q16=1,q4=1,q15=1 -> condition (nq4|nq15)=0 =>0. S13 q10=0 yes.
+t13 S13: q18=1,q16=0 ->0. S14 q10=0 yes.
+t14 S14: q18=1,q16=1,q4=1,q15=0 ->1. S15 q10=1 yes.
+t15 S15: q18=1,q16=1,q4=1,q15=0 ->1. S16 q10=1 yes.
+t16 S16: q18=0 ->1. S17 q10=1 yes.
+t17 S17: q18=1,q16=0 ->0. S18 q10=0 yes.
+t18 S18: q18=0 ->1. S19 q10=1 yes.
+t19 S19: q18=1,q16=1,q4=0,q15=1 -> (nq4=1) =>1. S20 q10=1 yes.
+t20 S20: q18=1,q16=1,q4=0,q15=1 ->1. S21 q10=1 yes.
+t21 S21: q18=1,q16=0 ->0. S22 q10=0 yes.
+t22 S22: q18=1,q16=0 ->0. S23 q10=0 yes.
+t23 S23: q18=1,q16=1,q4=1,q15=1 -> condition 0 =>0. S24 q10=0 yes.
+t24 S24: q18=1,q16=1,q4=1,q15=0 ->1. S25 q10=1 yes.
+t25 S25: q18=1,q16=1,q4=1,q15=0 ->1. S26 q10=1 yes. (Good; corrected q10=1)
+t26 S26: q18=1,q16=0 ->0. S27 q10=0 yes.
+t27 S27: q18=0 ->1. S28 q10=1 yes.
+t28 S28: q18=1,q16=1,q4=1,q15=0 ->1. S29 q10=1 yes.
+t29 S29: q18=1,q16=0 ->0. S30 q10=0 yes.
+t30 S30: q18=1,q16=0 ->0. S31 q10=0 yes.
+t31 S31: q18=1,q16=1,q4=0,q15=0 ->1. S32 q10=1 yes.
+t32 S32: q18=0 ->1. S33 q10=1 yes.
+t33 S33: q18=0 ->1. S34 q10=1 yes.
+t34 S34: q18=1,q16=1,q4=1,q15=1 ->0. S35 q10=0 yes.
+t35 S35: q18=1,q16=1,q4=1,q15=0 ->1. S36 q10=1 yes.
+t36 S36: q18=1,q16=1,q4=1,q15=1 ->0. S37 q10=0 yes.
+t37 S37: q18=1,q16=1,q4=1,q15=0 ->1. S38 q10=1 yes.
+t38 S38: q18=1,q16=1,q4=1,q15=0 ->1. S39 q10=1 yes.
+t39 S39: q18=1,q16=1,q4=1,q15=1 ->0. S40 q10=0 yes.
+t40 S40: q18=1,q16=0 ->0. S41 q10=0 yes.
+t41 S41: q18=0 ->1. S42 q10=1 yes.
+t42 S42: q18=1,q16=1,q4=1,q15=0 ->1. S43 q10=0? Wait expected d10 for S43 (next after t42) =1, so S43 q10 should be 1. But S43 list has q10=0! Let's check. At cycle42, S42 = [1,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,1,1,1,1]. q18=1,q16=1,q4=1,q15=0. d10 = ~q18=0 | (q16=1 & (nq4=0 | nq15=1)=1) =1. Therefore S43 q10 should be 1. But our S43 list from cycle42 computation has q10=0. Another misassignment! Let's revisit cycle42 computation. S42c current, a=0,b=1. We computed d10= nq18=0 | (q16=1 & (nq4=0 | nq15=0)=0)=0. Wait in S42c, what is q15? S42c list [1,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,1,1,1,1]: q14=0, q15=1? Let's index: q0=1,q1=1,q2=1,q3=1,q4=1,q5=1,q6=0,q7=1,q8=0,q9=1,q10=1,q11=1,q12=1,q13=1,q14=0,q15=1,q16=1,q17=1,q18=1,q19=1. Yes q15=1 (not 0). I mistakenly in audit just said q15=0; correct q15=1. Then nq4=0,nq15=0 => d10=0. S43 q10=0 correct. Good. No error. Continue audit.
+ t42 expected S43 q10=0 yes.
+t43 S43: q18=1,q16=0 ->0. S44 q10=0 yes.
+t44 S44: q18=1,q16=1,q4=0,q15=1 -> (nq4=1) =>1. S45 q10=1 yes.
+t45 S45: q18=1,q16=1,q4=1,q15=0 ->1. S46 q10=1 yes.
+t46 S46: q18=1,q16=0 ->0. S47 q10=0 yes. Great q10 list consistent.
+
+Audit q13 formula we did; final C list with index32=0. Let's verify q13 transitions for t31/t32: S31 q19=1,q8=1,q16=1,b31=1 -> d13=0; S32 q13=0. S32 q19=1,q8=1,q16=1,b32=0 -> d13=0; S33 q13=0. S33 q19=0 -> S34 q13=1. Good. C list index31? q13 at S31 =0. d13 from S30 q19=1,q8=0,b=1 ->0, yes. Good.
+
+Audit q11 formula d11 = ~q1 | (a & (nq14|nq2|nq10)). Let's verify transitions maybe around changes. Use B list. For t, expected B[t+1]. We'll check some critical t where B changed: t30->S31 B=0. S30: q1=1? S30c q1=1, a30=0, so d11=~q1=0 | (a0 & ...)=0. B31=0 yes. t31->S32 B=1. S31 q1=0 => d11=1. yes. t38->S39 B=0. S38 q1=1, a38=0 => d11=0; B39=0 yes. t39->S40 B=1. S39 q1=0 =>1. yes. t45->S46 B=0. S45 q1=1,a45=1, need (nq14|nq2|nq10): S45 q14=1 nq14=0,q2=1 nq2=0,q10=1 nq10=0 =>0; d11=0. B46=0 yes. t46->S47 B=1: S46 q1=0 => d11=1. yes. Good.
+
+Audit q2 formula d2 = nq18 | (q8 & (nq7|nq4|nb)). Check critical t44->S45 q2=1: S44 q18=1,q8=1,q7=0 nq7=1 => d2=1. yes. t45->S46 q2=0: S45 q18=1,q8=0 -> d2=0. yes. t46->S47 q2=0: S46 q18=1,q8=0 ->0. yes. Good.
+
+Audit q5 formula d5 = nq18 | (b & ( (((nq19|nq7)&q8) | nq9))). Check t40->S41 q5=0: S40 q18=1,b40=1; compute inside: nq19? S40 q19=1 ->0; nq7=0; (0|0)&q8=1 =>0; |nq9 (q9=1 ->0) =0; b&=0; nq18=0 => d5=0. yes. t41->S42 q5=1: S41 q18=0 -> d5=1. yes. t45->S46 q5=1: S45 q18=1,b=1; inside: nq19=1 (q19=0) | nq7=0 =>1; &q8=0 =>0; | nq9 (q9=0 ->1) =>1; d5=1. yes. t46->S47 q5=1: S46 q18=1,b=1; inside: nq19=1|nq7=0 =1; &q8=0 =>0; |nq9=1 =>1; d5=1. yes. Good.
+
+Audit q3 maybe more complex but our state list likely okay after audits. Let's check q3 transitions around changed t28/t29. d3 = nq12 | (q0 & ( (((nq5|nq13)&q4) | nq3))). For t28 S28 -> S29 q3=0: S28 q12=1 (nq12=0), q0=1, q5=1 nq5=0,q13=1 nq13=0,q4=1 => (0&1)=0; nq3=0 (q3=1) => inner0; d3=0. S29 q3=0 yes. t29 S29 -> S30 q3=1: S29 q12=0 nq12=1 -> d3=1. yes. t43 S43 -> S44 q3=0: S43 q12=1 nq12=0; q0=0 -> d3=0. S44 q3=0 yes. t44 S44 -> S45 q3=1: S44 q12=1? S44 q12=1 nq12=0; q0=1; q5=0 nq5=1,q13=0 nq13=1 => (1|1)=1 & q4=0 (S44 q4=0) =0; |nq3 (q3=0 ->1) => inner1; d3=1. yes. Good.
+
+Now, need ensure initial S0 and cycles 0-22 were unaffected by later corrections. We found first error at S23 assignment; cycles0-22 state list likely okay. But let's audit q13 simple formula for t0-22 quickly done; okay. Audit q10 for t0-22 done. Good.
+
+Now final output lists with C index32=0. Let's produce final JSON. Need ensure all lists exactly 48 integers. Let's count each final list by chunks.
+
+Final lists:
+q10: chunk0 indices0-7: 1 0 1 1 0 1 1 0
+ chunk1 8-15: 1 1 0 0 1 0 0 1
+ chunk2 16-23: 1 1 0 1 1 1 0 0
+ chunk3 24-31: 0 1 1 0 1 1 0 0
+ chunk4 32-39: 1 1 1 0 1 0 1 1
+ chunk5 40-47: 0 0 1 0 0 1 1 0
+Concatenate q10 final:
+[1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 1, 0]
+Count 48. Let's count by chunks: yes.
+
+q11 final:
+chunk0 0-7: 0 1 1 1 1 1 0 1
+chunk1 8-15: 0 1 0 1 1 0 1 1
+chunk2 16-23: 1 0 0 1 0 1 1 0
+chunk3 24-31: 1 1 1 1 1 0 1 0
+chunk4 32-39: 1 0 0 1 0 0 1 0
+chunk5 40-47: 1 1 1 0 1 1 0 1
+Concatenate:
+[0,1,1,1,1,1,0,1,0,1,0,1,1,0,1,1,1,0,0,1,0,1,1,0,1,1,1,1,1,0,1,0,1,0,0,1,0,0,1,0,1,1,1,0,1,1,0,1]
+Count: Let's count in final written maybe. chunk4 has 8 values: indices32=1,33=0,34=0,35=1,36=0,37=0,38=1,39=0. Good. chunk5 indices40=1,41=1,42=1,43=0,44=1,45=1,46=0,47=1.
+
+q13 final:
+chunk0: 1 1 0 0 1 1 1 1
+chunk1: 0 0 1 1 0 0 1 0
+chunk2: 1 1 1 0 0 1 0 0
+chunk3: 1 0 0 1 1 1 1 0
+chunk4: 0 0 1 0 0 1 0 0  (index32=0,33=0,34=1,35=0,36=0,37=1,38=0,39=0)
+chunk5: 1 1 1 0 0 0 1 1
+Concatenate:
+[1,1,0,0,1,1,1,1,0,0,1,1,0,0,1,0,1,1,1,0,0,1,0,0,1,0,0,1,1,1,1,0,0,0,1,0,0,1,0,0,1,1,1,0,0,0,1,1]
+Let's map indices around 24-39: indices24=1,25=0,26=0,27=1,28=1,29=1,30=1,31=0,32=0,33=0,34=1,35=0,36=0,37=1,38=0,39=0. Yes. Note q13 has three consecutive? indices31=0,32=0,33=0 then 34=1. Good.
+
+q2 final:
+chunk0: 1 0 1 0 1 1 0 0
+chunk1: 0 0 1 0 0 0 1 0
+chunk2: 1 1 1 1 0 0 0 1
+chunk3: 0 0 0 1 1 0 0 0
+chunk4: 1 1 1 1 0 1 1 1
+chunk5: 1 0 1 0 0 1 0 0
+Concatenate:
+[1,0,1,0,1,1,0,0,0,0,1,0,0,0,1,0,1,1,1,1,0,0,0,1,0,0,0,1,1,0,0,0,1,1,1,1,0,1,1,1,1,0,1,0,0,1,0,0]
+Count? chunk5 indices40=1,41=0,42=1,43=0,44=0,45=1,46=0,47=0. Good.
+
+q3 final:
+chunk0: 0 1 0 1 0 1 0 1
+chunk1: 0 1 1 0 1 1 1 0
+chunk2: 1 1 0 1 1 0 1 1
+chunk3: 1 1 1 0 1 0 1 0
+chunk4: 1 1 1 0 1 1 1 1
+chunk5: 1 0 1 0 0 1 1 0
+Concatenate:
+[0,1,0,1,0,1,0,1,0,1,1,0,1,1,1,0,1,1,0,1,1,0,1,1,1,1,1,0,1,0,1,0,1,1,1,0,1,1,1,1,1,0,1,0,0,1,1,0]
+Check chunk3 indices24-31: row24 E=1,25=1,26=1,27=0,28=1,29=0,30=1,31=0 -> [1,1,1,0,1,0,1,0]. Good. chunk5 [1,0,1,0,0,1,1,0].
+
+q5 final:
+chunk0: 1 0 0 1 0 1 0 1
+chunk1: 0 0 1 0 0 0 1 0
+chunk2: 0 1 1 1 0 1 1 0
+chunk3: 0 0 1 1 1 0 1 1
+chunk4: 1 1 1 0 0 0 0 0
+chunk5: 1 0 1 0 0 0 1 1
+Concatenate:
+[1,0,0,1,0,1,0,1,0,0,1,0,0,0,1,0,0,1,1,1,0,1,1,0,0,0,1,1,1,0,1,1,1,1,1,0,0,0,0,0,1,0,1,0,0,0,1,1]
+Check chunk3 indices24-31: row24 F=0,row25=0,row26=1,row27=1,row28=1,row29=0,row30=1,row31=1 -> [0,0,1,1,1,0,1,1]. Good. chunk5 row41 F=0; yes.
+
+Need maybe include spaces after commas; fine. The final must be single fenced json code block containing exactly one object. We can output only that. Ensure no trailing text after. Good.
+
+Let's consider if there might be an even earlier misassignment around S11/S24 etc. We audited q10,q11,q13,q2,q5, q3 partially. The state list has been corrected in a cascading way. But to be extra certain, let's verify a few full transitions with direct gate evaluation for the corrected states after the error region. For example S31->S32 direct for c13/c14/c15: S31 q13=0,q14=0,q15=0,q16=1,q17=1,q18=1,q19=1. Original c13 chain: c13_0=NAND(q16=1,in1 b31=1)=0; c13_1=NAND(0,in1=1)=1; c13_2=NAND(1,q19=1)=0; c13_3=NAND(0,q8=1)=1; c13_4=NAND(1,q19=1)=0. d13=0. Good. c14: c14_0=NAND(q16=1,q18=1)=0; c14_1=NAND(0,q10=0)=1; c14_2=NAND(1,q3=0)=1; c14_3=NAND(1,q4=0)=1; c14_4=NAND(1,q13=0)=1. d14=1. c15: c15_0=NAND(q10=0,q13=0)=1; c15_1=NAND(1,q2=0)=1; c15_2=NAND(1,q6=1)=0; c15_3=NAND(0,q10=0)=1; c15_4=NAND(1,q14=0)=1. d15=1. Good. S32 q13=0,q14=1,q15=1. Fine.
+
+Check S32->S33 direct for c15 since changed: S32 q10=1,q13=0,q2=1,q6=1,q14=1. c15_0=NAND(1,0)=1; c15_1=NAND(1,q2=1)=0; c15_2=NAND(0,q6=1)=1; c15_3=NAND(1,q10=1)=0; c15_4=NAND(0,q14=1)=1. d15=1. Good. c13: S32 q16=1,b32=0 -> c13_0=NAND(1,0)=1; c13_1=NAND(1,0)=1; c13_2=NAND(1,q19=1)=0; c13_3=NAND(0,q8=1)=1; c13_4=NAND(1,q19=1)=0. d13=0. Good.
+
+Check S42->S43 d3/d16 changed: S42 q12=1,q0=1,q5=1,q13=1,q4=1,q3=1. c3 chain: c3_0=NAND(q5=1,q13=1)=0; c3_1=NAND(0,q4=1)=1; c3_2=NAND(1,q3=1)=0; c3_3=NAND(0,q0=1)=1; c3_4=NAND(1,q12=1)=0. d3=0. Good. c16: S42 q10=1,q9=1,b42=1,q18=1,q8=0,q12=1. c16_0=NAND(in1=1,q18=1)=0; c16_1=NAND(0,q8=0)=1; c16_2=NAND(1,q12=1)=0; c16_3=NAND(0,q9=1)=1; c16_4=NAND(1,q10=1)=0. d16=0. Good. S43 q16=0. Fine.
+
+Check S45->S46 direct for d11/d15: S45 q1=1,q14=1,q2=1,q10=1,a45=1 => c11 chain: c11_0=NAND(q14=1,q2=1)=0; c11_1=NAND(0,q10=1)=1; c11_2=NAND(1,q10=1)=0; c11_3=NAND(0,in0=1)=1; c11_4=NAND(1,q1=1)=0. d11=0. Good. c15: q10=1,q13=0 -> c15_0=1; c15_1=NAND(1,q2=1)=0; c15_2=NAND(0,q6=1)=1; c15_3=NAND(1,q10=1)=0; c15_4=NAND(0,q14=1)=1. d15=1. Good. S46 q11=0,q15=1. Fine.
+
+Now final JSON object. Need map output net names to lists. Use exact names. Order maybe as outputs. Ensure lists contain integers 0/1 separated by commas. No comments. Final only code block.
+
+Let's also consider whether outputs should be recorded after gates settle using current input and current q. We did. DFF init values before cycle0. Good.
+
+One more subtlety: net names q0..q19 and gates c... The output list includes q13 before q2 etc; final object can be in any order. We'll use outputs order. Good.
+
+Let's ensure JSON syntax valid, no trailing commas. Use one object. 
+
+Final code block only. Done.
+
+=== response ===
+```json
+{"q10": [1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 1, 0], "q11": [0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 1, 1, 0, 1, 1, 0, 1], "q13": [1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1], "q2": [1, 0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 0], "q3": [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0], "q5": [1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 1, 1, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 1]}
+```

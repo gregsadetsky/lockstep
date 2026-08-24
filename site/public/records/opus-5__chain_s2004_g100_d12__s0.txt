@@ -1,0 +1,405 @@
+model: anthropic/claude-opus-5
+circuit: chain_s2004_g100_d12
+score: {'status': 'ok', 'prefix_cycles': 24, 'pointwise': 1.0, 'exact': True}
+
+=== reasoning ===
+I need to trace through this 100-gate circuit with 12 DFFs across 24 cycles, so I'm working through the gate formulas one by one, tracking how each NAND-based signal depends on the flip-flop states and inputs.
+
+Still deriving gate expressions...
+
+Still building the gate chain...
+
+With the final gates defined, I'm now mapping out the DFF update rules connecting each flip-flop to its next-state expression, noting that in2 is unused, then listing the four output signals and setting the initial state values for all twelve flip-flops before starting to trace through cycle 0 with input in0.
+
+Still computing gate values...
+
+Still computing gate values...
+
+Still computing gate values...
+
+Still computing gate values...
+
+Continuing tracing the state values, I get q0=1, q1=0, q2=0, q3=1, q7=1, q10=1, q11=1 for cycle 0, then move into cycle 1 with inputs in0=1, in1=1, computing the gate values n0 through n3 step by step...
+
+Still tracing gate logic...
+
+Still computing gate values...
+
+Still computing gate values...
+
+Still computing gate values...
+
+Now I'm assembling the cycle 1 output and the next state values from these computed nodes.
+
+Moving to cycle 2 with inputs in0=0, in1=1, I'm recomputing the gate logic against the updated state values.
+
+Still computing gate values...
+
+Still computing gate values...
+
+Still computing gate values...
+
+Still computing gate values...
+
+I finish computing the outputs and next-state values for cycle 2, then start cycle 3 with new inputs, updating the flip-flop states and beginning the next round of gate evaluations.
+
+Still computing gate values...
+
+Still evaluating gate values...
+
+Still computing gate values...
+
+Finishing cycle 3, I get the output bits and derive the next state vector, then move into cycle 4 with new inputs and the updated state values.
+
+Still computing gate values...
+
+Still computing gate values...
+
+Still computing gate values...
+
+Finishing cycle4 outputs and starting to derive the next state's register values from the computed n-values.
+
+Now moving into cycle5 with new inputs in0=0, in1=0, setting up the current state vector and beginning to compute the next round of gate logic n0 through n12.
+
+Still computing gate values...
+
+Still evaluating gate logic...
+
+Finishing cycle 5's outputs and computing the next state values, I notice this new state matches cycle 3's state exactly — meaning I've found a repeating cycle in the sequence.
+
+Since cycle 3 and cycle 6 have identical states and matching inputs, their outputs and resulting next states must also match, letting me reuse cycle 3's output values and map the next state to what I found in cycle 4. I'm now stepping into computing cycle 7's state from there.
+
+Cycle 7 also matches its prior counterpart (cycle 4) exactly in state and inputs, so its outputs and next state mirror that of cycle 5, giving me a fully updated state vector to carry into cycle 8.
+
+Now for cycle 8, the state matches cycle 5 but the inputs differ (in0 flips to 1), so I can't reuse previous results and need to recompute all the gate values fresh from this new input combination.
+
+Still computing the gate logic...
+
+Still computing gate values...
+
+Still computing gate values...
+
+Finishing cycle 8 with n99=0, and outputs q11=1, q6=1, q8=1, then updating the next state values q0=1, q1=1 for the following cycle.
+
+Moving into cycle 9 with inputs in0=0, in1=0, noting this state resembles cycle 3 but with q7=0 instead of 1. I'm now computing the gate values for this new cycle.
+
+Still computing gate logic...
+
+Still computing gate values...
+
+Still computing gate values...
+
+Finishing cycle9 gives n99=1, q11=1, q6=0, q8=0. Comparing against cycle3's results, where q7=1 and in1=1, I'm noticing some discrepancies and want to verify specific gates like n32 and n18, both of which simplify to 1 since their dependent signals (n31, n17) are 0.
+
+Since n11/n12 come out the same, everything downstream matches too, so I can compute the next state directly: q0 through q11 taking values 1,1,1,1,1,1,1,1,1,0,1,0 respectively.
+
+Now moving to cycle 10 with inputs in0=0, in1=0, I want to compare this against cycle5's result to see if a repeating pattern is forming.
+
+Continuing to compute the gate values n11 through n23...
+
+Still evaluating gate logic...
+
+Still computing gate values...
+
+Finishing cycle10 gives outputs n99=0, q11=0, q6=1, q8=1, with the next state matching cycle3/cycle6 — a repeating pattern I'm now checking against earlier cycles.
+
+Moving to cycle 11 with in0=1, in1=0, I'm computing the node values through the state (1,1,0,1,0,1,0,1,0,0,1,1)...
+
+Computing node values...
+
+Still evaluating gate expressions...
+
+Still computing gate values...
+
+Continuing the gate calculations, cycle 11's outputs match cycle 9 with a slightly different internal state, and the resulting next state turns out identical to cycle 10's state (1,1,1,1,1,1,1,1,1,0,1,0), which I'm labeling S_B. Now I'm moving into cycle 12 starting from S_B with in0=0, in1=1, and beginning the same gate-by-gate evaluation.
+
+Continuing the propagation through n93 to n99, I find n99 comes out to 0, matching cycle10's value exactly since all the intermediate nets track the same pattern.
+
+With q11=0, q6=1, q8=1, the next state matches S_A from cycle10, so cycle11 will reproduce those exact outputs (n99=1, q11=1, q6=0, q8=0), advancing to S_B.
+
+Now for cycle14, I'm in state S_B with both inputs set to 1 this time — different from the earlier passes where in0 was 0 — so I need to recompute n0 onward since q5=1 combined with in0=1 flips the initial gate value.
+
+Working through the gate chain for this state...
+
+Still computing gate values...
+
+Still computing gate values...
+
+Finishing cycle 14, I get n99=0, with outputs q11=0, q6=1, q8=1.
+
+Computing the next state values, I find it matches (1,1,0,1,0,1,0,0,0,0,1,1) — this is the same as the state seen back in cycle 9, which I'm labeling S_C. So cycle 15 will begin from state S_C.
+
+Now with in0=1 and in1=1 this time, unlike cycle9 where both inputs were 0, so I need to recompute the transition logic step by step for the new inputs, working through each node's update rule in order.
+
+Still computing gate values...
+
+Still evaluating gate logic...
+
+Finishing cycle 15, I get output values n99=0, q11=1, q6=0, q8=0, and derive the next state vector S_D = (1,1,0,1,0,1,0,1,1,0,1,0). Now moving into cycle 16 with inputs in0=1, in1=1, I start evaluating q5=1 with in0=1.
+
+Computing gate values for cycle 16...
+
+Still evaluating gate values...
+
+Still computing gate values...
+
+Still verifying gate values...
+
+Still computing gate values...
+
+Still computing gate values...
+
+I'm noticing an inconsistency in my earlier work where I had conflicting values for n56 and n57, so I need to go back and double-check that step before trusting the later results.
+
+Continuing to verify each node value through n86, and everything's checking out against my earlier computations.
+
+With cycle16's outputs settled, I derive the next state values: q0=1, q1=0, q2=1, q3=1, q4=1, q5=0, q6=1, q7=1, q8=0, q9=0, q10=1, q11=0.
+
+Now moving to cycle17 with inputs in0=1, in1=1, I start computing the node values n0 through n11 based on this new state S_E.
+
+Continuing the boolean gate evaluations...
+
+Still computing gate values...
+
+Finishing the n99 computation, I get output cycle 17 with q11=0, q6=1, q8=0, then derive the next state vector S_F=(1,1,1,1,1,1,1,1,0,0,0,0), and I'm moving into cycle 18's input.
+
+Computing next-node values...
+
+Still computing gate values...
+
+Still computing gate values...
+
+Continuing gate value computations...
+
+Still verifying gate values...
+
+Still computing gate values...
+
+Still verifying node values...
+
+Still evaluating gate values...
+
+Finishing cycle18 outputs and computing the next state vector, giving S_G with q0-q11 values, then starting cycle19 with in0=0.
+
+Continuing to work through the n0-n17 logic gates for cycle19...
+
+Still computing gate values...
+
+Still evaluating gate values...
+
+Finishing the cycle 19 computation, I find the next state matches S_G exactly again, confirming the cycle repeats. Now I'm moving to cycle 20 with in0=1, in1=1, starting fresh calculations from state S_G with the new inputs.
+
+Still computing gate values...
+
+Still computing gate values...
+
+Continuing gate evaluations through n99, I find cycle20 outputs match cycle19, confirming the state loops back to S_G. Moving into cycle21 with inputs in0=0, in1=0, still in state S_G, I start recalculating the gate values for this next cycle.
+
+Still evaluating gate logic...
+
+Still computing gate values...
+
+Finishing the remaining node calculations for cycle 21, I get output n99=1, q11=1, q6=1, q8=0, giving next state S_B=(1,1,1,1,1,1,1,1,1,0,1,0), matching my earlier prediction. Checking cycle 22 with state S_B and inputs in0=0, in1=0, I realize this is identical to cycle 10, confirming the pattern repeats.
+
+Cycle 22 outputs n99=0, q11=0, q6=1, q8=1, transitioning to state S_A. In cycle 23, S_A with in0=0, in1=0 resembles cycle 3's setup, which used S_A but with in1=1 instead. Comparing the intermediate calculations between the two input values, I find n11 flips but n12 comes out the same either way, so the results match.
+
+Continuing that comparison down the chain, n92 lands at 1 in cycle 3, but n93 depends on in1, giving 0 for in1=1 versus 1 for in1=0 — so this cycle diverges there, and I need to keep tracing n94 and beyond with the new in1=0 value.
+
+Working through the rest of the chain, cycle 23 produces n99=1, q11=1, q6=0, q8=0. Now I'm compiling the full output table across all 15+ cycles for n99, q11, q6, and q8 to see the overall pattern.
+
+I'm now double-checking the state transitions at cycle 15 and cycle 8, tracing back through prior cycles to confirm the q11, q6, q8 values match what the next-state logic predicted.
+
+Everything checks out through cycle 23, so I want to go back and re-verify the earliest transitions at cycle 0 and 1 more carefully, since that's where I'm least confident.
+
+I'm working through the initial state and recomputing each gate value against the expected output, node by node, to confirm the logic holds at the starting point before trusting the later cycles.
+
+Still verifying each NAND gate output...
+
+Still verifying each bit sequentially...
+
+Verifying more gate values through this pass, then rechecking the first cycle's outputs against the state and input values to confirm everything lines up correctly.
+
+Continuing to verify the sequence up through n37, each value checking out against the NAND recurrence.
+
+Still verifying NAND values...
+
+Still verifying each NAND gate value...
+
+Continuing into cycle 2, confirming the next state transitions and starting to recompute the gate outputs for the new input combination.
+
+Still computing the NAND sequence...
+
+Still computing gate values...
+
+Finishing the remaining gate calculations confirms the next state matches S_A exactly, verifying the cycle transition holds.
+
+That confirms the n93-n99 values match between cycles 3 and 23. Now I'm tracing cycle 3's next-state bits (q0 through q11) and starting to verify n90's computation for the transition.
+
+Continuing to trace through, n29, n75-n77 check out consistent with cycle3 values, and n11/n12 match between cycles too. Now verifying n99's output chain by tracing back through n92, n91, and n90 dependencies.
+
+The n90-n99 computations for cycle4 all check out against expectations. I'm assembling the next state vector from cycle4: q0 through q8 come from n77, n88, n79, n82, n81, n90, with q9=n78=0 and q10=n89=0, and now I need to compute n84 for q11.
+
+Moving into cycle5 with the resulting state (1,1,1,1,1,1,1,1,1,0,0,1) and inputs in0=0,in1=0, I'm recomputing n89 and n90 to verify the transition matches what I had before.
+
+Let me recheck n84: n83=~(n82=1 & n58=1)=0, so n84=~(0&n52)=1, confirming q11 next=1.
+
+Cycle6 matches cycle3's state with in0=0, in1=1 as expected. Cycle7 matches cycle4's state with matching inputs, giving the same output and transitioning into cycle5's state correctly. Now checking cycle8, which starts from cycle5's state with in0=1, in1=0, verifying a few of the computed n-values there.
+
+Still verifying each gate...
+
+Still verifying each bit sequentially...
+
+Continuing through the sequence, verifying each computed value...
+
+The state after cycle 9 matches S_C as expected, confirming the transition is consistent with the target machine's behavior.
+
+Wait, I need to recheck q10 - it depends on n89, and I calculated n89=0, not 1 as I stated earlier. Let me fix this error and redo the cycle9 next state calculation properly.
+
+Redoing it, cycle10 state becomes (1,1,1,1,1,1,1,1,1,0,0,0) - which matches the cycle2 state exactly. That means I made an error earlier with q10=1, q11=0, so I need to redo cycle10 onward carefully, starting by rechecking n62 in cycle9.
+
+I trace through the nested logic and confirm n62=1, giving n89=0 and q10 next=0 - matching what I had. I also cross-check against cycle3's identical structure, confirming q10=0 there too, before moving to check cycle5's n62 value.
+
+Now I notice cycle10's state matches cycle2's exactly except for the in1 input value. Tracing through the gate chain, I find that despite the different in1 value, the intermediate signals n11 and n12 end up identical between the two cycles, meaning everything through n92 stays the same as cycle2's computation.
+
+Continuing the trace, n93 through n99 all resolve identically to cycle2's values, giving the same output n99=0 and the same next-state transition to S_A.
+
+Now I'm double-checking cycle11: I initially had q10=n89=1, but recomputing with n88=1 and n62=1 gives n89=0, so q10 should actually be 0 — I need to correct that.
+
+Working through the rest of cycle11's state values, I get S_H as the resulting next state with output n99=1, matching what I found for cycle 9 (S_C with in0=0,in1=0 also producing S_H). Then cycle 12 lands on state S_H with in0=0,in1=1, which is identical to cycle 2's setup.
+
+For cycle 13, I have S_A with in0=1,in1=0 matching cycle 11's transition exactly, so it also outputs n99=1 and moves to S_H. For cycle 14, I need to double-check state S_H under in0=1,in1=1 against my earlier S_B computation — tracing through, the q10 difference doesn't actually propagate through the n75/n76 chain since n46=0 forces n76=1 regardless, so the earlier cycle14 results still hold except I need to verify the n89 chain separately.
+
+I'm re-verifying q10's next value for cycle 14 and confirming it should be 1, then checking that the resulting next state matches S_C as I found before. But now stepping into cycle 15 (state S_C, in0=1,in1=1), I catch a mistake — I previously wrote q10=n89=1, but recomputing n89 from n88 and n62 actually gives 0, so I need to retrace this chain carefully to fix the error.
+
+So with q10=0, the state matches cycle4's state exactly, which is a great find since it means the sequence might be entering a cycle. Now I need to redo cycle16 using this state with in0=1, in1=1, comparing against what cycle4 had for those inputs.
+
+I need to trace through the changed values carefully: n29 stays 1 regardless of q10, but n75 flips depending on q10 (0 vs 1), which then changes n76 downstream. This propagates differently through the logic than my earlier calculation with q10=1, so I need to retrace n77 onward.
+
+Following this through, n77 comes out to 1 in both scenarios since it depends on n20=0, so the difference in n76 doesn't actually matter — cycle16's results hold as before: n99=1, and the state outputs q11=0, q6=0, q8=1 match the earlier S_D pattern.
+
+I'm now computing the next state values for cycle16: q0 through q11 come out to (1,0,1,1,1,0,1,1,0,0,1,0), verifying n89=1 confirms q10=1 as expected, giving state S_E starting with (1,0,1,1,1...).
+
+Moving into cycle17 with S_E and inputs in0=1, in1=1, I catch an error in my earlier n89 computation — rechecking n61, n62, n88, and n89 step by step confirms n89=1, so q10 should be 1, not 0 as I'd mistakenly transcribed. Recomputing the full next-state vector for cycle17 gives q0=1, q1=1, q2=1, q3=1, q4=1, q5=1, q6=1, q7=1, q8=0, q9=0, q10=1, q11=0, and I verify n90, n84, and n82 all check out against these values.
+
+This means my earlier S_F state was wrong on q10=0 when it should be 1, so I need to redo cycle18 entirely with q10=1 for inputs in0=1, in1=0. Tracing through, the change in q10 flips n29's result since it depends on both n28 and q10 directly, which cascades into different values for the rest of the network — I'm now recomputing n0 through n10 and beyond under the corrected state.
+
+Still computing node values...
+
+Still evaluating gate expressions...
+
+Comparing against the old computed values, I find that nearly all the intermediate node values match exactly between versions—only n29 and n30 actually differ, meaning the rest of the chain propagates identically.
+
+Verifying cycle 18 confirms outputs n99=1, q11=0, q6=1, q8=0 all check out, and the next state matches state S_G as computed before. Now I'm moving on to cycle 19 with state S_G and inputs in0=0, in1=1.
+
+I need to recompute n77 through n90 carefully for cycle19 since q3=0 changes the intermediate signals. Starting through the initial gates n0 and n1 with the given state values, both evaluate to 1, and I'll continue tracing through the rest of the logic chain to verify the full next-state transition.
+
+Still computing gate values...
+
+Still computing gate values...
+
+Still computing gate values...
+
+Continuing through the remaining nodes, I arrive at n99=1, confirming the output. I'm now assembling the next state vector from the computed values.
+
+Moving into cycle 20 with in0=1, in1=1, I trace how the input change propagates and note that several gates like n1 and n53 remain unchanged since they only depend on q3 which is still 0.
+
+For cycle 21, though, changing in1 to 0 actually alters n12 compared to cycle 19, so this case can't be shortcut — I need to fully recompute the entire next-state logic for state S_G with in0=0, in1=0, starting from n0 through n5 and continuing across all the gates.
+
+Still evaluating gate values...
+
+Still evaluating gate values...
+
+Finishing this cycle's outputs gives cycle21: n99=1, q11=1, q6=1, q8=0, matching what I found earlier. But I need to recompute the next state carefully — I catch an error where q5 should be n82=0, not 1 as I had written before, since n81=1 and n34=1 force n82 to 0.
+
+So the corrected new state after cycle21 is (1,1,1,1,1,0,1,1,1,0,0,0), differing from the earlier reference state S_H only at q5. Checking cycle22 with in0=0, in1=0: since q5 only feeds into n0 and n49, and both nodes evaluate identically regardless of whether q5 is 0 or 1 in this input context, the two states behave the same going forward.
+
+So cycle22 mirrors cycle10's results exactly: n99=0, outputs q11=0, q6=1, q8=1, and next state becomes S_A=(1,1,0,1,0,1,0,1,0,0,1,1). I want to double-check this by tracing back through cycle2 (which cycle10 duplicates), confirming n89 resolves to 1 via n88=1 and n62=0, giving q10=1 as expected.
+
+Given I made errors earlier at cycles 9, 11, 15, 17, and 21, I should redo the next-state computations from scratch. Starting with cycle0's transition, all the intermediate nets resolve to give q0=1,q1=0,q2=0,q3=1,q4=0,q5=0,q6=0,q7=1,q8=0,q9=0,q10=1,q11=1, which feeds into cycle1. Then working through cycle1's transition, I'm tracking how its nets settle to determine the next set of register values.
+
+I confirm cycle1's output matches state S_H, cycle2's output matches S_A, and cycle3 produces a new state I'll call S_J with q10=0,q11=0, consistent with what I used going into cycle4.
+
+Working through cycle4, I double-check n89 by re-deriving it from n88 and n62 to make sure q10=0 holds, and it does. This gives cycle5's state (1,1,1,1,1,1,1,1,1,0,0,1), matching q11=1,q10=0 as I already used.
+
+Cycle5's next state computes to match S_A exactly. Cycle6 reproduces cycle3's transition (S_A with inputs 0,1) leading into S_J, and cycle7 reproduces cycle4's transition (S_J with inputs 0,0), landing back on the state I labeled S_K.
+
+For cycle8, I confirm S_K with inputs (1,0) matches q10=0, q11=1 as expected, with output n99=0 checking out, then I start computing the next state's components.
+
+Continuing forward, cycle8 lands on S_C, and cycle9 verifies S_C with inputs (0,0) producing output 1 and transitioning to a corrected S_H state. Cycle10 confirms S_H with zero inputs mirrors cycle2's pattern and outputs 0 while returning to S_A, and cycle11 tests S_A with inputs (1,0), giving output 1 and again landing on the corrected S_H — I'm now double-checking this cycle11 transition since it's a new case, working through the q5/in0 computation carefully.
+
+Tracing through the gate values confirms cycle11's transition to S_H is correct: q8, q3, q7, q5 all resolve to 1, q11 stays 0, and q9/q10 stay 0, matching the expected state. This means cycle12 (S_H with in0=0, in1=1) matches cycle2's behavior, outputting 0 and moving to S_A, while cycle13 (S_A with in0=1, in1=0) matches cycle11, outputting 1 and heading toward S_H again.
+
+For cycle14 (S_H, in0=1, in1=1), I check whether the differing q10 bit between this state and the earlier S_B case actually matters — tracing through n75 and n29's dependencies shows q10's value gets masked out either way, so the result is identical regardless.
+
+Working through cycle14's next state gives (1,1,0,1,0,1,0,0,0,0,1,1), matching S_C. Cycle15 (S_C, in0=1, in1=1) produces output 0 and transitions to state (1,1,0,1,0,1,0,1,1,0,0,0), which I identify as S_J after correcting an earlier mismatch.
+
+Now for cycle16 (S_J, in0=1, in1=1), I'm comparing against my earlier S_D computation — the two states differ only in q10 (1 vs 0), with q11 matching at 0 in both cases.
+
+Verifying: the q10 difference turns out irrelevant since n28=0 regardless in cycle16, making n29=1 either way, and tracing through n74-n77 confirms the outputs match whether q10 is 0 or 1. So the output n99=1 holds, and the next state computes to q0=1,q1=0,q2=1,q3=1,q4=1,q5=0,q6=1,q7=1,q8=0,q9=0,q10=1,q11=0, which I'm labeling S_E.
+
+I continue stepping through cycles 17 through 21, tracking each state transition (S_E→S_F'→S_G→S_G→S_G→S_I) and confirming n99=1 outputs at every step, then start into cycle 22 checking S_I against the earlier S_H case.
+
+For cycle22, I get n99=0 with outputs q11=0,q6=1,q8=1, transitioning to S_A. In cycle23, S_A with (0,0) gives n99=1 and outputs q11=1,q6=0,q8=0.
+
+I double-check that S_I and S_H are equivalent since they only differ in q5, verifying that q5's only downstream effects (through n0 and n49) don't actually change given the other inputs — n49 comes out to 1 regardless, confirming the states behave the same. Then I start verifying cycle23 by comparing it against cycle3, which had the same S_A state but with in1=1 instead of 0, to see how the outputs differ.
+
+Working through the net values step by step (n90, n91, n92, n93...n99), I confirm each matches expectations, arriving at n99=1 for cycle23. Now I'm compiling the complete n99 output sequence across all 24 cycles into a list.
+
+With n99 finalized, I'm now tracking q11's state at each cycle, mapping each cycle to its corresponding named state (S_H, S_A, S_J, S_K, S_C) to build the full sequence.
+
+Continuing to trace through the bit values for q8, tracking which state each column corresponds to as I work through the sequence.
+
+
+
+=== response ===
+## Reasoning
+
+I simulated the netlist cycle by cycle, tracking the 12 DFF states. The state vector is written as (q0..q11).
+
+Key states that recur:
+- **S_A** = (1,1,0,1,0,1,0,1,0,0,1,1)
+- **S_H** = (1,1,1,1,1,1,1,1,1,0,0,0)
+- **S_J** = (1,1,0,1,0,1,0,1,1,0,0,0)
+- **S_K** = (1,1,1,1,1,1,1,1,1,0,0,1)
+- **S_C** = (1,1,0,1,0,1,0,0,0,0,1,1)
+- **S_G** = (1,1,1,1,1,1,1,0? …) — precisely (1,1,1,0,1,1,1,0,0,1,1,1), a fixed point for the input patterns seen at cycles 19–20.
+
+State trajectory (state present *during* each cycle):
+
+| t | state | in0,in1 | n99 |
+|---|-------|---------|-----|
+|0|init (0,0,0,0,1,0,0,0,0,1,1,1)|0,0|0|
+|1|(1,0,0,1,0,0,0,1,0,0,1,1)|1,1|1|
+|2|S_H|0,1|0|
+|3|S_A|0,1|0|
+|4|S_J|0,0|1|
+|5|S_K|0,0|0|
+|6|S_A|0,1|0|
+|7|S_J|0,0|1|
+|8|S_K|1,0|0|
+|9|S_C|0,0|1|
+|10|S_H|0,0|0|
+|11|S_A|1,0|1|
+|12|S_H|0,1|0|
+|13|S_A|1,0|1|
+|14|S_H|1,1|0|
+|15|S_C|1,1|0|
+|16|S_J|1,1|1|
+|17|S_E=(1,0,1,1,1,0,1,1,0,0,1,0)|1,1|1|
+|18|(1,1,1,1,1,1,1,1,0,0,1,0)|1,0|1|
+|19|S_G|0,1|1|
+|20|S_G|1,1|1|
+|21|S_G|0,0|1|
+|22|S_I=(1,1,1,1,1,0,1,1,1,0,0,0)|0,0|0|
+|23|S_A|0,0|1|
+
+Useful shortcuts verified along the way: with `n10=1` and `n12=1` the input `in1` only affects the tail `n93…n99`; and `q10`/`q5` differences were shown to be masked (through `n29`/`n76` and `n49`) in several states, letting repeated states reuse earlier evaluations.
+
+Outputs `q11`, `q6`, `q8` are just the corresponding state bits at each cycle.
+
+```json
+{"n99": [0,1,0,0,1,0,0,1,0,1,0,1,0,1,0,0,1,1,1,1,1,1,0,1],
+ "q11": [1,1,0,1,0,1,1,0,1,1,0,1,0,1,0,1,0,0,0,1,1,1,0,1],
+ "q6":  [0,0,1,0,0,1,0,0,1,0,1,0,1,0,1,0,0,1,1,1,1,1,1,0],
+ "q8":  [0,0,1,0,1,1,0,1,1,0,1,0,1,0,1,0,1,0,0,0,0,0,1,0]}
+```

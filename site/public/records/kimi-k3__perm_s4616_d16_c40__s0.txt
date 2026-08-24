@@ -1,0 +1,1853 @@
+model: moonshotai/kimi-k3
+circuit: perm_s4616_d16_c40
+score: {'status': 'format_error', 'prefix_cycles': 0, 'pointwise': 0.0, 'exact': False}
+
+=== reasoning ===
+Let me work through this carefully.
+
+We have a circuit with DFFs only (no gates). Each DFF q takes d's value just before the edge. So at each cycle:
+1. Inputs take trace values. DFF q hold current state.
+2. Gates settle (none).
+3. Record outputs: q0, q1, q10, q12, q14, q2, q5, q6.
+4. Clock edge: each dff loads its d value (the settled value from this cycle, which for DFF d inputs that are q nets means the current state before edge).
+
+So this is a synchronous update: new_q[i] = d[i] evaluated using old q values (and current inputs).
+
+Let me list the DFF transitions (new value after edge = function of current state and current input):
+
+- q0.d = q13  => q0_next = q13
+- q1.d = q11  => q1_next = q11
+- q2.d = q12  => q2_next = q12
+- q3.d = q8   => q3_next = q8
+- q4.d = q3   => q4_next = q3
+- q5.d = q14  => q5_next = q14
+- q6.d = q4   => q6_next = q4
+- q7.d = q2   => q7_next = q2
+- q8.d = q0   => q8_next = q0
+- q9.d = in0  => q9_next = in0
+- q10.d = q9  => q10_next = q9
+- q11.d = q5  => q11_next = q5
+- q12.d = q6  => q12_next = q6
+- q13.d = in1 => q13_next = in1
+- q14.d = q10 => q14_next = q10
+- q15.d = q15 => q15_next = q15 (stays 0)
+
+Initial values (before cycle 0):
+q0=0, q1=1, q2=1, q3=1, q4=1, q5=1, q6=0, q7=1, q8=1, q9=1, q10=1, q11=0, q12=1, q13=0, q14=1, q15=0.
+
+Note outputs recorded in step 3 use the state during the cycle (before edge). So output at cycle t = current q values (state at start of cycle t). Then edge updates for next cycle.
+
+So essentially: the recorded output at cycle t is the state S_t. Then S_{t+1} = f(S_t, inputs_t). S_0 = init.
+
+Wait, careful: at cycle 0, inputs take trace[0], dff q hold init. Record outputs = init values (for the q outputs). Then edge: q loads d based on current (init state and input[0]). So S_1 = f(S_0, in[0]).
+
+So output list for output qX is just S_t[qX] for t=0..39.
+
+We need to compute S_t for t=0..39. That's 40 states. Let's just simulate.
+
+Let me denote state vector in order:
+[q0,q1,q2,q3,q4,q5,q6,q7,q8,q9,q10,q11,q12,q13,q14,q15]
+
+S_0 (init):
+q0=0
+q1=1
+q2=1
+q3=1
+q4=1
+q5=1
+q6=0
+q7=1
+q8=1
+q9=1
+q10=1
+q11=0
+q12=1
+q13=0
+q14=1
+q15=0
+
+Update rules for S_{t+1} from S_t and inputs (in0_t, in1_t):
+q0' = q13
+q1' = q11
+q2' = q12
+q3' = q8
+q4' = q3
+q5' = q14
+q6' = q4
+q7' = q2
+q8' = q0
+q9' = in0
+q10' = q9
+q11' = q5
+q12' = q6
+q13' = in1
+q14' = q10
+q15' = q15 (=0 always)
+
+Let's verify there's no combinational settling issue: d values reference q nets and inputs only (no gates). At the edge, d had value "just before the edge" = settled value during the cycle = current q (since q holds during cycle) or input. So q0_next = q13_current. Yes.
+
+Now we need outputs per cycle: q0, q1, q10, q12, q14, q2, q5, q6. I'll record these from each S_t.
+
+Let me set up inputs arrays (index t=0..39):
+
+in0: 
+t0:1
+t1:0
+t2:1
+t3:1
+t4:0
+t5:0
+t6:0
+t7:0
+t8:0
+t9:1
+t10:1
+t11:1
+t12:1
+t13:0
+t14:0
+t15:0
+t16:1
+t17:1
+t18:1
+t19:1
+t20:0
+t21:1
+t22:0
+t23:0
+t24:1
+t25:0
+t26:1
+t27:0
+t28:0
+t29:0
+t30:1
+t31:1
+t32:0
+t33:1
+t34:1
+t35:0
+t36:0
+t37:0
+t38:1
+t39:0
+
+Let me double check in0 list from circuit:
+[1, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 1, 0]
+Count: let's index:
+0:1
+1:0
+2:1
+3:1
+4:0
+5:0
+6:0
+7:0
+8:0
+9:1
+10:1
+11:1
+12:1
+13:0
+14:0
+15:0
+16:1
+17:1
+18:1
+19:1
+20:0
+21:1
+22:0
+23:0
+24:1
+25:0
+26:1
+27:0
+28:0
+29:0
+30:1
+31:1
+32:0
+33:1
+34:1
+35:0
+36:0
+37:0
+38:1
+39:0
+Good, 40.
+
+in1:
+[0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1]
+Index:
+0:0
+1:1
+2:1
+3:1
+4:1
+5:1
+6:1
+7:0
+8:1
+9:1
+10:1
+11:1
+12:1
+13:0
+14:0
+15:0
+16:1
+17:1
+18:0
+19:0
+20:0
+21:1
+22:0
+23:1
+24:0
+25:1
+26:1
+27:1
+28:1
+29:0
+30:0
+31:1
+32:0
+33:0
+34:1
+35:0
+36:0
+37:0
+38:0
+39:1
+Count 40. Good.
+
+Now simulate. I'll keep full state but focus. Since q15 always 0, ignore.
+
+Let me write each S_t as a tuple. I'll compute S_{t+1} from S_t.
+
+S_0:
+q0=0, q1=1, q2=1, q3=1, q4=1, q5=1, q6=0, q7=1, q8=1, q9=1, q10=1, q11=0, q12=1, q13=0, q14=1.
+
+Outputs at t=0: q0=0, q1=1, q10=1, q12=1, q14=1, q2=1, q5=1, q6=0.
+
+Now compute S_1 using in0[0]=1, in1[0]=0:
+q0' = q13 = 0
+q1' = q11 = 0
+q2' = q12 = 1
+q3' = q8 = 1
+q4' = q3 = 1
+q5' = q14 = 1
+q6' = q4 = 1
+q7' = q2 = 1
+q8' = q0 = 0
+q9' = in0 = 1
+q10' = q9 = 1
+q11' = q5 = 1
+q12' = q6 = 0
+q13' = in1 = 0
+q14' = q10 = 1
+
+S_1:
+q0=0, q1=0, q2=1, q3=1, q4=1, q5=1, q6=1, q7=1, q8=0, q9=1, q10=1, q11=1, q12=0, q13=0, q14=1.
+
+Outputs t=1: q0=0, q1=0, q10=1, q12=0, q14=1, q2=1, q5=1, q6=1.
+
+S_2 using in0[1]=0, in1[1]=1:
+q0' = q13(S1)=0
+q1' = q11(S1)=1
+q2' = q12(S1)=0
+q3' = q8(S1)=0
+q4' = q3(S1)=1
+q5' = q14(S1)=1
+q6' = q4(S1)=1
+q7' = q2(S1)=1
+q8' = q0(S1)=0
+q9' = in0[1]=0
+q10' = q9(S1)=1
+q11' = q5(S1)=1
+q12' = q6(S1)=1
+q13' = in1[1]=1
+q14' = q10(S1)=1
+
+S_2:
+q0=0, q1=1, q2=0, q3=0, q4=1, q5=1, q6=1, q7=1, q8=0, q9=0, q10=1, q11=1, q12=1, q13=1, q14=1.
+
+Outputs t=2: q0=0,q1=1,q10=1,q12=1,q14=1,q2=0,q5=1,q6=1.
+
+S_3 using in0[2]=1, in1[2]=1:
+From S_2:
+q0'=q13=1
+q1'=q11=1
+q2'=q12=1
+q3'=q8=0
+q4'=q3=0
+q5'=q14=1
+q6'=q4=1
+q7'=q2=0
+q8'=q0=0
+q9'=in0=1
+q10'=q9=0
+q11'=q5=1
+q12'=q6=1
+q13'=in1=1
+q14'=q10=1
+
+S_3:
+q0=1,q1=1,q2=1,q3=0,q4=0,q5=1,q6=1,q7=0,q8=0,q9=1,q10=0,q11=1,q12=1,q13=1,q14=1.
+
+Outputs t=3: q0=1,q1=1,q10=0,q12=1,q14=1,q2=1,q5=1,q6=1.
+
+S_4 using in0[3]=1, in1[3]=1:
+From S_3:
+q0'=q13=1
+q1'=q11=1
+q2'=q12=1
+q3'=q8=0
+q4'=q3=0
+q5'=q14=1
+q6'=q4=0
+q7'=q2=1
+q8'=q0=1
+q9'=in0=1
+q10'=q9=1
+q11'=q5=1
+q12'=q6=1
+q13'=in1=1
+q14'=q10=0
+
+S_4:
+q0=1,q1=1,q2=1,q3=0,q4=0,q5=1,q6=0,q7=1,q8=1,q9=1,q10=1,q11=1,q12=1,q13=1,q14=0.
+
+Outputs t=4: q0=1,q1=1,q10=1,q12=1,q14=0,q2=1,q5=1,q6=0.
+
+S_5 using in0[4]=0, in1[4]=1:
+From S_4:
+q0'=q13=1
+q1'=q11=1
+q2'=q12=1
+q3'=q8=1
+q4'=q3=0
+q5'=q14=0
+q6'=q4=0
+q7'=q2=1
+q8'=q0=1
+q9'=in0=0
+q10'=q9=1
+q11'=q5=1
+q12'=q6=0
+q13'=in1=1
+q14'=q10=1
+
+S_5:
+q0=1,q1=1,q2=1,q3=1,q4=0,q5=0,q6=0,q7=1,q8=1,q9=0,q10=1,q11=1,q12=0,q13=1,q14=1.
+
+Outputs t=5: q0=1,q1=1,q10=1,q12=0,q14=1,q2=1,q5=0,q6=0.
+
+S_6 using in0[5]=0, in1[5]=1:
+From S_5:
+q0'=q13=1
+q1'=q11=1
+q2'=q12=0
+q3'=q8=1
+q4'=q3=1
+q5'=q14=1
+q6'=q4=0
+q7'=q2=1
+q8'=q0=1
+q9'=in0=0
+q10'=q9=0
+q11'=q5=0
+q12'=q6=0
+q13'=in1=1
+q14'=q10=1
+
+S_6:
+q0=1,q1=1,q2=0,q3=1,q4=1,q5=1,q6=0,q7=1,q8=1,q9=0,q10=0,q11=0,q12=0,q13=1,q14=1.
+
+Outputs t=6: q0=1,q1=1,q10=0,q12=0,q14=1,q2=0,q5=1,q6=0.
+
+S_7 using in0[6]=0, in1[6]=1:
+From S_6:
+q0'=q13=1
+q1'=q11=0
+q2'=q12=0
+q3'=q8=1
+q4'=q3=1
+q5'=q14=1
+q6'=q4=1
+q7'=q2=0
+q8'=q0=1
+q9'=in0=0
+q10'=q9=0
+q11'=q5=1
+q12'=q6=0
+q13'=in1=1
+q14'=q10=0
+
+S_7:
+q0=1,q1=0,q2=0,q3=1,q4=1,q5=1,q6=1,q7=0,q8=1,q9=0,q10=0,q11=1,q12=0,q13=1,q14=0.
+
+Outputs t=7: q0=1,q1=0,q10=0,q12=0,q14=0,q2=0,q5=1,q6=1.
+
+S_8 using in0[7]=0, in1[7]=0:
+From S_7:
+q0'=q13=1
+q1'=q11=1
+q2'=q12=0
+q3'=q8=1
+q4'=q3=1
+q5'=q14=0
+q6'=q4=1
+q7'=q2=0
+q8'=q0=1
+q9'=in0=0
+q10'=q9=0
+q11'=q5=1
+q12'=q6=1
+q13'=in1=0
+q14'=q10=0
+
+S_8:
+q0=1,q1=1,q2=0,q3=1,q4=1,q5=0,q6=1,q7=0,q8=1,q9=0,q10=0,q11=1,q12=1,q13=0,q14=0.
+
+Outputs t=8: q0=1,q1=1,q10=0,q12=1,q14=0,q2=0,q5=0,q6=1.
+
+S_9 using in0[8]=0, in1[8]=1:
+From S_8:
+q0'=q13=0
+q1'=q11=1
+q2'=q12=1
+q3'=q8=1
+q4'=q3=1
+q5'=q14=0
+q6'=q4=1
+q7'=q2=0
+q8'=q0=1
+q9'=in0=0
+q10'=q9=0
+q11'=q5=0
+q12'=q6=1
+q13'=in1=1
+q14'=q10=0
+
+S_9:
+q0=0,q1=1,q2=1,q3=1,q4=1,q5=0,q6=1,q7=0,q8=1,q9=0,q10=0,q11=0,q12=1,q13=1,q14=0.
+
+Outputs t=9: q0=0,q1=1,q10=0,q12=1,q14=0,q2=1,q5=0,q6=1.
+
+S_10 using in0[9]=1, in1[9]=1:
+From S_9:
+q0'=q13=1
+q1'=q11=0
+q2'=q12=1
+q3'=q8=1
+q4'=q3=1
+q5'=q14=0
+q6'=q4=1
+q7'=q2=1
+q8'=q0=0
+q9'=in0=1
+q10'=q9=0
+q11'=q5=0
+q12'=q6=1
+q13'=in1=1
+q14'=q10=0
+
+S_10:
+q0=1,q1=0,q2=1,q3=1,q4=1,q5=0,q6=1,q7=1,q8=0,q9=1,q10=0,q11=0,q12=1,q13=1,q14=0.
+
+Outputs t=10: q0=1,q1=0,q10=0,q12=1,q14=0,q2=1,q5=0,q6=1.
+
+S_11 using in0[10]=1, in1[10]=1:
+From S_10:
+q0'=q13=1
+q1'=q11=0
+q2'=q12=1
+q3'=q8=0
+q4'=q3=1
+q5'=q14=0
+q6'=q4=1
+q7'=q2=1
+q8'=q0=1
+q9'=in0=1
+q10'=q9=1
+q11'=q5=0
+q12'=q6=1
+q13'=in1=1
+q14'=q10=0
+
+S_11:
+q0=1,q1=0,q2=1,q3=0,q4=1,q5=0,q6=1,q7=1,q8=1,q9=1,q10=1,q11=0,q12=1,q13=1,q14=0.
+
+Outputs t=11: q0=1,q1=0,q10=1,q12=1,q14=0,q2=1,q5=0,q6=1.
+
+S_12 using in0[11]=1, in1[11]=1:
+From S_11:
+q0'=q13=1
+q1'=q11=0
+q2'=q12=1
+q3'=q8=1
+q4'=q3=0
+q5'=q14=0
+q6'=q4=1
+q7'=q2=1
+q8'=q0=1
+q9'=in0=1
+q10'=q9=1
+q11'=q5=0
+q12'=q6=1
+q13'=in1=1
+q14'=q10=1
+
+S_12:
+q0=1,q1=0,q2=1,q3=1,q4=0,q5=0,q6=1,q7=1,q8=1,q9=1,q10=1,q11=0,q12=1,q13=1,q14=1.
+
+Outputs t=12: q0=1,q1=0,q10=1,q12=1,q14=1,q2=1,q5=0,q6=1.
+
+S_13 using in0[12]=1, in1[12]=1:
+From S_12:
+q0'=q13=1
+q1'=q11=0
+q2'=q12=1
+q3'=q8=1
+q4'=q3=1
+q5'=q14=1
+q6'=q4=0
+q7'=q2=1
+q8'=q0=1
+q9'=in0=1
+q10'=q9=1
+q11'=q5=0
+q12'=q6=1
+q13'=in1=1
+q14'=q10=1
+
+S_13:
+q0=1,q1=0,q2=1,q3=1,q4=1,q5=1,q6=0,q7=1,q8=1,q9=1,q10=1,q11=0,q12=1,q13=1,q14=1.
+
+Outputs t=13: q0=1,q1=0,q10=1,q12=1,q14=1,q2=1,q5=1,q6=0.
+
+S_14 using in0[13]=0, in1[13]=0:
+From S_13:
+q0'=q13=1
+q1'=q11=0
+q2'=q12=1
+q3'=q8=1
+q4'=q3=1
+q5'=q14=1
+q6'=q4=1
+q7'=q2=1
+q8'=q0=1
+q9'=in0=0
+q10'=q9=1
+q11'=q5=1
+q12'=q6=0
+q13'=in1=0
+q14'=q10=1
+
+S_14:
+q0=1,q1=0,q2=1,q3=1,q4=1,q5=1,q6=1,q7=1,q8=1,q9=0,q10=1,q11=1,q12=0,q13=0,q14=1.
+
+Outputs t=14: q0=1,q1=0,q10=1,q12=0,q14=1,q2=1,q5=1,q6=1.
+
+S_15 using in0[14]=0, in1[14]=0:
+From S_14:
+q0'=q13=0
+q1'=q11=1
+q2'=q12=0
+q3'=q8=1
+q4'=q3=1
+q5'=q14=1
+q6'=q4=1
+q7'=q2=1
+q8'=q0=1
+q9'=in0=0
+q10'=q9=0
+q11'=q5=1
+q12'=q6=1
+q13'=in1=0
+q14'=q10=1
+
+S_15:
+q0=0,q1=1,q2=0,q3=1,q4=1,q5=1,q6=1,q7=1,q8=1,q9=0,q10=0,q11=1,q12=1,q13=0,q14=1.
+
+Outputs t=15: q0=0,q1=1,q10=0,q12=1,q14=1,q2=0,q5=1,q6=1.
+
+S_16 using in0[15]=0, in1[15]=0:
+From S_15:
+q0'=q13=0
+q1'=q11=1
+q2'=q12=1
+q3'=q8=1
+q4'=q3=1
+q5'=q14=1
+q6'=q4=1
+q7'=q2=0
+q8'=q0=0
+q9'=in0=0
+q10'=q9=0
+q11'=q5=1
+q12'=q6=1
+q13'=in1=0
+q14'=q10=0
+
+S_16:
+q0=0,q1=1,q2=1,q3=1,q4=1,q5=1,q6=1,q7=0,q8=0,q9=0,q10=0,q11=1,q12=1,q13=0,q14=0.
+
+Outputs t=16: q0=0,q1=1,q10=0,q12=1,q14=0,q2=1,q5=1,q6=1.
+
+S_17 using in0[16]=1, in1[16]=1:
+From S_16:
+q0'=q13=0
+q1'=q11=1
+q2'=q12=1
+q3'=q8=0
+q4'=q3=1
+q5'=q14=0
+q6'=q4=1
+q7'=q2=1
+q8'=q0=0
+q9'=in0=1
+q10'=q9=0
+q11'=q5=1
+q12'=q6=1
+q13'=in1=1
+q14'=q10=0
+
+S_17:
+q0=0,q1=1,q2=1,q3=0,q4=1,q5=0,q6=1,q7=1,q8=0,q9=1,q10=0,q11=1,q12=1,q13=1,q14=0.
+
+Outputs t=17: q0=0,q1=1,q10=0,q12=1,q14=0,q2=1,q5=0,q6=1.
+
+S_18 using in0[17]=1, in1[17]=1:
+From S_17:
+q0'=q13=1
+q1'=q11=1
+q2'=q12=1
+q3'=q8=0
+q4'=q3=0
+q5'=q14=0
+q6'=q4=1
+q7'=q2=1
+q8'=q0=0
+q9'=in0=1
+q10'=q9=1
+q11'=q5=0
+q12'=q6=1
+q13'=in1=1
+q14'=q10=0
+
+S_18:
+q0=1,q1=1,q2=1,q3=0,q4=0,q5=0,q6=1,q7=1,q8=0,q9=1,q10=1,q11=0,q12=1,q13=1,q14=0.
+
+Outputs t=18: q0=1,q1=1,q10=1,q12=1,q14=0,q2=1,q5=0,q6=1.
+
+S_19 using in0[18]=1, in1[18]=0:
+From S_18:
+q0'=q13=1
+q1'=q11=0
+q2'=q12=1
+q3'=q8=0
+q4'=q3=0
+q5'=q14=0
+q6'=q4=0
+q7'=q2=1
+q8'=q0=1
+q9'=in0=1
+q10'=q9=1
+q11'=q5=0
+q12'=q6=1
+q13'=in1=0
+q14'=q10=1
+
+S_19:
+q0=1,q1=0,q2=1,q3=0,q4=0,q5=0,q6=0,q7=1,q8=1,q9=1,q10=1,q11=0,q12=1,q13=0,q14=1.
+
+Outputs t=19: q0=1,q1=0,q10=1,q12=1,q14=1,q2=1,q5=0,q6=0.
+
+S_20 using in0[19]=1, in1[19]=0:
+From S_19:
+q0'=q13=0
+q1'=q11=0
+q2'=q12=1
+q3'=q8=1
+q4'=q3=0
+q5'=q14=1
+q6'=q4=0
+q7'=q2=1
+q8'=q0=1
+q9'=in0=1
+q10'=q9=1
+q11'=q5=0
+q12'=q6=0
+q13'=in1=0
+q14'=q10=1
+
+S_20:
+q0=0,q1=0,q2=1,q3=1,q4=0,q5=1,q6=0,q7=1,q8=1,q9=1,q10=1,q11=0,q12=0,q13=0,q14=1.
+
+Outputs t=20: q0=0,q1=0,q10=1,q12=0,q14=1,q2=1,q5=1,q6=0.
+
+S_21 using in0[20]=0, in1[20]=0:
+From S_20:
+q0'=q13=0
+q1'=q11=0
+q2'=q12=0
+q3'=q8=1
+q4'=q3=1
+q5'=q14=1
+q6'=q4=0
+q7'=q2=1
+q8'=q0=0
+q9'=in0=0
+q10'=q9=1
+q11'=q5=1
+q12'=q6=0
+q13'=in1=0
+q14'=q10=1
+
+S_21:
+q0=0,q1=0,q2=0,q3=1,q4=1,q5=1,q6=0,q7=1,q8=0,q9=0,q10=1,q11=1,q12=0,q13=0,q14=1.
+
+Outputs t=21: q0=0,q1=0,q10=1,q12=0,q14=1,q2=0,q5=1,q6=0.
+
+S_22 using in0[21]=1, in1[21]=1:
+From S_21:
+q0'=q13=0
+q1'=q11=1
+q2'=q12=0
+q3'=q8=0
+q4'=q3=1
+q5'=q14=1
+q6'=q4=1
+q7'=q2=0
+q8'=q0=0
+q9'=in0=1
+q10'=q9=0
+q11'=q5=1
+q12'=q6=0
+q13'=in1=1
+q14'=q10=1
+
+S_22:
+q0=0,q1=1,q2=0,q3=0,q4=1,q5=1,q6=1,q7=0,q8=0,q9=1,q10=0,q11=1,q12=0,q13=1,q14=1.
+
+Outputs t=22: q0=0,q1=1,q10=0,q12=0,q14=1,q2=0,q5=1,q6=1.
+
+S_23 using in0[22]=0, in1[22]=0:
+From S_22:
+q0'=q13=1
+q1'=q11=1
+q2'=q12=0
+q3'=q8=0
+q4'=q3=0
+q5'=q14=1
+q6'=q4=1
+q7'=q2=0
+q8'=q0=0
+q9'=in0=0
+q10'=q9=1
+q11'=q5=1
+q12'=q6=1
+q13'=in1=0
+q14'=q10=0
+
+S_23:
+q0=1,q1=1,q2=0,q3=0,q4=0,q5=1,q6=1,q7=0,q8=0,q9=0,q10=1,q11=1,q12=1,q13=0,q14=0.
+
+Outputs t=23: q0=1,q1=1,q10=1,q12=1,q14=0,q2=0,q5=1,q6=1.
+
+S_24 using in0[23]=0, in1[23]=1:
+From S_23:
+q0'=q13=0
+q1'=q11=1
+q2'=q12=1
+q3'=q8=0
+q4'=q3=0
+q5'=q14=0
+q6'=q4=0
+q7'=q2=0
+q8'=q0=1
+q9'=in0=0
+q10'=q9=0
+q11'=q5=1
+q12'=q6=1
+q13'=in1=1
+q14'=q10=1
+
+S_24:
+q0=0,q1=1,q2=1,q3=0,q4=0,q5=0,q6=0,q7=0,q8=1,q9=0,q10=0,q11=1,q12=1,q13=1,q14=1.
+
+Outputs t=24: q0=0,q1=1,q10=0,q12=1,q14=1,q2=1,q5=0,q6=0.
+
+S_25 using in0[24]=1, in1[24]=0:
+From S_24:
+q0'=q13=1
+q1'=q11=1
+q2'=q12=1
+q3'=q8=1
+q4'=q3=0
+q5'=q14=1
+q6'=q4=0
+q7'=q2=1
+q8'=q0=0
+q9'=in0=1
+q10'=q9=0
+q11'=q5=0
+q12'=q6=0
+q13'=in1=0
+q14'=q10=0
+
+S_25:
+q0=1,q1=1,q2=1,q3=1,q4=0,q5=1,q6=0,q7=1,q8=0,q9=1,q10=0,q11=0,q12=0,q13=0,q14=0.
+
+Outputs t=25: q0=1,q1=1,q10=0,q12=0,q14=0,q2=1,q5=1,q6=0.
+
+S_26 using in0[25]=0, in1[25]=1:
+From S_25:
+q0'=q13=0
+q1'=q11=0
+q2'=q12=0
+q3'=q8=0
+q4'=q3=1
+q5'=q14=0
+q6'=q4=0
+q7'=q2=1
+q8'=q0=1
+q9'=in0=0
+q10'=q9=1
+q11'=q5=1
+q12'=q6=0
+q13'=in1=1
+q14'=q10=0
+
+S_26:
+q0=0,q1=0,q2=0,q3=0,q4=1,q5=0,q6=0,q7=1,q8=1,q9=0,q10=1,q11=1,q12=0,q13=1,q14=0.
+
+Outputs t=26: q0=0,q1=0,q10=1,q12=0,q14=0,q2=0,q5=0,q6=0.
+
+S_27 using in0[26]=1, in1[26]=1:
+From S_26:
+q0'=q13=1
+q1'=q11=1
+q2'=q12=0
+q3'=q8=1
+q4'=q3=0
+q5'=q14=0
+q6'=q4=1
+q7'=q2=0
+q8'=q0=0
+q9'=in0=1
+q10'=q9=0
+q11'=q5=0
+q12'=q6=0
+q13'=in1=1
+q14'=q10=1
+
+S_27:
+q0=1,q1=1,q2=0,q3=1,q4=0,q5=0,q6=1,q7=0,q8=0,q9=1,q10=0,q11=0,q12=0,q13=1,q14=1.
+
+Outputs t=27: q0=1,q1=1,q10=0,q12=0,q14=1,q2=0,q5=0,q6=1.
+
+S_28 using in0[27]=0, in1[27]=1:
+From S_27:
+q0'=q13=1
+q1'=q11=0
+q2'=q12=0
+q3'=q8=0
+q4'=q3=1
+q5'=q14=1
+q6'=q4=0
+q7'=q2=0
+q8'=q0=1
+q9'=in0=0
+q10'=q9=1
+q11'=q5=0
+q12'=q6=1
+q13'=in1=1
+q14'=q10=0
+
+S_28:
+q0=1,q1=0,q2=0,q3=0,q4=1,q5=1,q6=0,q7=0,q8=1,q9=0,q10=1,q11=0,q12=1,q13=1,q14=0.
+
+Outputs t=28: q0=1,q1=0,q10=1,q12=1,q14=0,q2=0,q5=1,q6=0.
+
+S_29 using in0[28]=0, in1[28]=1:
+From S_28:
+q0'=q13=1
+q1'=q11=0
+q2'=q12=1
+q3'=q8=1
+q4'=q3=0
+q5'=q14=0
+q6'=q4=1
+q7'=q2=0
+q8'=q0=1
+q9'=in0=0
+q10'=q9=0
+q11'=q5=1
+q12'=q6=0
+q13'=in1=1
+q14'=q10=1
+
+S_29:
+q0=1,q1=0,q2=1,q3=1,q4=0,q5=0,q6=1,q7=0,q8=1,q9=0,q10=0,q11=1,q12=0,q13=1,q14=1.
+
+Outputs t=29: q0=1,q1=0,q10=0,q12=0,q14=1,q2=1,q5=0,q6=1.
+
+S_30 using in0[29]=0, in1[29]=0:
+From S_29:
+q0'=q13=1
+q1'=q11=1
+q2'=q12=0
+q3'=q8=1
+q4'=q3=1
+q5'=q14=1
+q6'=q4=0
+q7'=q2=1
+q8'=q0=1
+q9'=in0=0
+q10'=q9=0
+q11'=q5=0
+q12'=q6=1
+q13'=in1=0
+q14'=q10=0
+
+S_30:
+q0=1,q1=1,q2=0,q3=1,q4=1,q5=1,q6=0,q7=1,q8=1,q9=0,q10=0,q11=0,q12=1,q13=0,q14=0.
+
+Outputs t=30: q0=1,q1=1,q10=0,q12=1,q14=0,q2=0,q5=1,q6=0.
+
+S_31 using in0[30]=1, in1[30]=0:
+From S_30:
+q0'=q13=0
+q1'=q11=0
+q2'=q12=1
+q3'=q8=1
+q4'=q3=1
+q5'=q14=0
+q6'=q4=1
+q7'=q2=0
+q8'=q0=1
+q9'=in0=1
+q10'=q9=0
+q11'=q5=1
+q12'=q6=0
+q13'=in1=0
+q14'=q10=0
+
+S_31:
+q0=0,q1=0,q2=1,q3=1,q4=1,q5=0,q6=1,q7=0,q8=1,q9=1,q10=0,q11=1,q12=0,q13=0,q14=0.
+
+Outputs t=31: q0=0,q1=0,q10=0,q12=0,q14=0,q2=1,q5=0,q6=1.
+
+S_32 using in0[31]=1, in1[31]=1:
+From S_31:
+q0'=q13=0
+q1'=q11=1
+q2'=q12=0
+q3'=q8=1
+q4'=q3=1
+q5'=q14=0
+q6'=q4=1
+q7'=q2=1
+q8'=q0=0
+q9'=in0=1
+q10'=q9=1
+q11'=q5=0
+q12'=q6=1
+q13'=in1=1
+q14'=q10=0
+
+S_32:
+q0=0,q1=1,q2=0,q3=1,q4=1,q5=0,q6=1,q7=1,q8=0,q9=1,q10=1,q11=0,q12=1,q13=1,q14=0.
+
+Outputs t=32: q0=0,q1=1,q10=1,q12=1,q14=0,q2=0,q5=0,q6=1.
+
+S_33 using in0[32]=0, in1[32]=0:
+From S_32:
+q0'=q13=1
+q1'=q11=0
+q2'=q12=1
+q3'=q8=0
+q4'=q3=1
+q5'=q14=0
+q6'=q4=1
+q7'=q2=0
+q8'=q0=0
+q9'=in0=0
+q10'=q9=1
+q11'=q5=0
+q12'=q6=1
+q13'=in1=0
+q14'=q10=1
+
+S_33:
+q0=1,q1=0,q2=1,q3=0,q4=1,q5=0,q6=1,q7=0,q8=0,q9=0,q10=1,q11=0,q12=1,q13=0,q14=1.
+
+Outputs t=33: q0=1,q1=0,q10=1,q12=1,q14=1,q2=1,q5=0,q6=1.
+
+S_34 using in0[33]=1, in1[33]=0:
+From S_33:
+q0'=q13=0
+q1'=q11=0
+q2'=q12=1
+q3'=q8=0
+q4'=q3=0
+q5'=q14=1
+q6'=q4=1
+q7'=q2=1
+q8'=q0=1
+q9'=in0=1
+q10'=q9=0
+q11'=q5=0
+q12'=q6=1
+q13'=in1=0
+q14'=q10=1
+
+S_34:
+q0=0,q1=0,q2=1,q3=0,q4=0,q5=1,q6=1,q7=1,q8=1,q9=1,q10=0,q11=0,q12=1,q13=0,q14=1.
+
+Outputs t=34: q0=0,q1=0,q10=0,q12=1,q14=1,q2=1,q5=1,q6=1.
+
+S_35 using in0[34]=1, in1[34]=1:
+From S_34:
+q0'=q13=0
+q1'=q11=0
+q2'=q12=1
+q3'=q8=1
+q4'=q3=0
+q5'=q14=1
+q6'=q4=0
+q7'=q2=1
+q8'=q0=0
+q9'=in0=1
+q10'=q9=1
+q11'=q5=1
+q12'=q6=1
+q13'=in1=1
+q14'=q10=0
+
+S_35:
+q0=0,q1=0,q2=1,q3=1,q4=0,q5=1,q6=0,q7=1,q8=0,q9=1,q10=1,q11=1,q12=1,q13=1,q14=0.
+
+Outputs t=35: q0=0,q1=0,q10=1,q12=1,q14=0,q2=1,q5=1,q6=0.
+
+S_36 using in0[35]=0, in1[35]=0:
+From S_35:
+q0'=q13=1
+q1'=q11=1
+q2'=q12=1
+q3'=q8=0
+q4'=q3=1
+q5'=q14=0
+q6'=q4=0
+q7'=q2=1
+q8'=q0=0
+q9'=in0=0
+q10'=q9=1
+q11'=q5=1
+q12'=q6=0
+q13'=in1=0
+q14'=q10=1
+
+S_36:
+q0=1,q1=1,q2=1,q3=0,q4=1,q5=0,q6=0,q7=1,q8=0,q9=0,q10=1,q11=1,q12=0,q13=0,q14=1.
+
+Outputs t=36: q0=1,q1=1,q10=1,q12=0,q14=1,q2=1,q5=0,q6=0.
+
+S_37 using in0[36]=0, in1[36]=0:
+From S_36:
+q0'=q13=0
+q1'=q11=1
+q2'=q12=0
+q3'=q8=0
+q4'=q3=0
+q5'=q14=1
+q6'=q4=1
+q7'=q2=1
+q8'=q0=1
+q9'=in0=0
+q10'=q9=0
+q11'=q5=0
+q12'=q6=0
+q13'=in1=0
+q14'=q10=1
+
+S_37:
+q0=0,q1=1,q2=0,q3=0,q4=0,q5=1,q6=1,q7=1,q8=1,q9=0,q10=0,q11=0,q12=0,q13=0,q14=1.
+
+Outputs t=37: q0=0,q1=1,q10=0,q12=0,q14=1,q2=0,q5=1,q6=1.
+
+S_38 using in0[37]=0, in1[37]=0:
+From S_37:
+q0'=q13=0
+q1'=q11=0
+q2'=q12=0
+q3'=q8=1
+q4'=q3=0
+q5'=q14=1
+q6'=q4=0
+q7'=q2=0
+q8'=q0=0
+q9'=in0=0
+q10'=q9=0
+q11'=q5=1
+q12'=q6=1
+q13'=in1=0
+q14'=q10=0
+
+S_38:
+q0=0,q1=0,q2=0,q3=1,q4=0,q5=1,q6=0,q7=0,q8=0,q9=0,q10=0,q11=1,q12=1,q13=0,q14=0.
+
+Outputs t=38: q0=0,q1=0,q10=0,q12=1,q14=0,q2=0,q5=1,q6=0.
+
+S_39 using in0[38]=1, in1[38]=0:
+From S_38:
+q0'=q13=0
+q1'=q11=1
+q2'=q12=1
+q3'=q8=0
+q4'=q3=1
+q5'=q14=0
+q6'=q4=0
+q7'=q2=0
+q8'=q0=0
+q9'=in0=1
+q10'=q9=0
+q11'=q5=1
+q12'=q6=0
+q13'=in1=0
+q14'=q10=0
+
+S_39:
+q0=0,q1=1,q2=1,q3=0,q4=1,q5=0,q6=0,q7=0,q8=0,q9=1,q10=0,q11=1,q12=0,q13=0,q14=0.
+
+Outputs t=39: q0=0,q1=1,q10=0,q12=0,q14=0,q2=1,q5=0,q6=0.
+
+Now I need to compile output lists. Let me re-verify each cycle's outputs carefully because it's easy to make an error. I'll reconstruct by tracking the needed signals perhaps with a more systematic approach. But let me first collect what I have and then double check via recurrence relations.
+
+Let me list per cycle t the recorded outputs (q0,q1,q10,q12,q14,q2,q5,q6):
+
+t0: S0: q0=0,q1=1,q10=1,q12=1,q14=1,q2=1,q5=1,q6=0.
+t1: q0=0,q1=0,q10=1,q12=0,q14=1,q2=1,q5=1,q6=1.
+t2: q0=0,q1=1,q10=1,q12=1,q14=1,q2=0,q5=1,q6=1.
+t3: q0=1,q1=1,q10=0,q12=1,q14=1,q2=1,q5=1,q6=1.
+t4: q0=1,q1=1,q10=1,q12=1,q14=0,q2=1,q5=1,q6=0.
+t5: q0=1,q1=1,q10=1,q12=0,q14=1,q2=1,q5=0,q6=0.
+t6: q0=1,q1=1,q10=0,q12=0,q14=1,q2=0,q5=1,q6=0.
+t7: q0=1,q1=0,q10=0,q12=0,q14=0,q2=0,q5=1,q6=1.
+t8: q0=1,q1=1,q10=0,q12=1,q14=0,q2=0,q5=0,q6=1.
+t9: q0=0,q1=1,q10=0,q12=1,q14=0,q2=1,q5=0,q6=1.
+t10: q0=1,q1=0,q10=0,q12=1,q14=0,q2=1,q5=0,q6=1.
+t11: q0=1,q1=0,q10=1,q12=1,q14=0,q2=1,q5=0,q6=1.
+t12: q0=1,q1=0,q10=1,q12=1,q14=1,q2=1,q5=0,q6=1.
+t13: q0=1,q1=0,q10=1,q12=1,q14=1,q2=1,q5=1,q6=0.
+t14: q0=1,q1=0,q10=1,q12=0,q14=1,q2=1,q5=1,q6=1.
+t15: q0=0,q1=1,q10=0,q12=1,q14=1,q2=0,q5=1,q6=1.
+t16: q0=0,q1=1,q10=0,q12=1,q14=0,q2=1,q5=1,q6=1.
+t17: q0=0,q1=1,q10=0,q12=1,q14=0,q2=1,q5=0,q6=1.
+t18: q0=1,q1=1,q10=1,q12=1,q14=0,q2=1,q5=0,q6=1.
+t19: q0=1,q1=0,q10=1,q12=1,q14=1,q2=1,q5=0,q6=0.
+t20: q0=0,q1=0,q10=1,q12=0,q14=1,q2=1,q5=1,q6=0.
+t21: q0=0,q1=0,q10=1,q12=0,q14=1,q2=0,q5=1,q6=0.
+t22: q0=0,q1=1,q10=0,q12=0,q14=1,q2=0,q5=1,q6=1.
+t23: q0=1,q1=1,q10=1,q12=1,q14=0,q2=0,q5=1,q6=1.
+t24: q0=0,q1=1,q10=0,q12=1,q14=1,q2=1,q5=0,q6=0.
+t25: q0=1,q1=1,q10=0,q12=0,q14=0,q2=1,q5=1,q6=0.
+t26: q0=0,q1=0,q10=1,q12=0,q14=0,q2=0,q5=0,q6=0.
+t27: q0=1,q1=1,q10=0,q12=0,q14=1,q2=0,q5=0,q6=1.
+t28: q0=1,q1=0,q10=1,q12=1,q14=0,q2=0,q5=1,q6=0.
+t29: q0=1,q1=0,q10=0,q12=0,q14=1,q2=1,q5=0,q6=1.
+t30: q0=1,q1=1,q10=0,q12=1,q14=0,q2=0,q5=1,q6=0.
+t31: q0=0,q1=0,q10=0,q12=0,q14=0,q2=1,q5=0,q6=1.
+t32: q0=0,q1=1,q10=1,q12=1,q14=0,q2=0,q5=0,q6=1.
+t33: q0=1,q1=0,q10=1,q12=1,q14=1,q2=1,q5=0,q6=1.
+t34: q0=0,q1=0,q10=0,q12=1,q14=1,q2=1,q5=1,q6=1.
+t35: q0=0,q1=0,q10=1,q12=1,q14=0,q2=1,q5=1,q6=0.
+t36: q0=1,q1=1,q10=1,q12=0,q14=1,q2=1,q5=0,q6=0.
+t37: q0=0,q1=1,q10=0,q12=0,q14=1,q2=0,q5=1,q6=1.
+t38: q0=0,q1=0,q10=0,q12=1,q14=0,q2=0,q5=1,q6=0.
+t39: q0=0,q1=1,q10=0,q12=0,q14=0,q2=1,q5=0,q6=0.
+
+Now I should verify. The relationships among the q's form chains. Let me double-check the consistency using recurrences, because a single mistake propagates.
+
+Let me note the structure: There's a permutation-like network. Let's derive direct recurrences for outputs in terms of inputs delayed, perhaps.
+
+Actually let's verify some invariants. Consider the mapping. The DFF connections (d <- q means q_next = d). Let's think of it as each cycle, the vector permutes and injects inputs.
+
+Let me define the "new" vector as a permutation of old plus inputs. The transition (ignoring inputs) is a permutation P on the 16 q's: which old index goes to which new index.
+
+new q0 = old q13
+new q1 = old q11
+new q2 = old q12
+new q3 = old q8
+new q4 = old q3
+new q5 = old q14
+new q6 = old q4
+new q7 = old q2
+new q8 = old q0
+new q9 = in0 (fresh)
+new q10 = old q9
+new q11 = old q5
+new q12 = old q6
+new q13 = in1 (fresh)
+new q14 = old q10
+new q15 = old q15
+
+So old q9 -> new q10 -> (next) new q14 -> (next) new q5 -> ... Let's trace value flow. A value entering at q9 (from in0) goes: at edge, q9:=in0. Next edge q10:=q9 (so value moves q9->q10). Next q14:=q10 (q10->q14). Next q5:=q14 (q14->q5). Next q11:=q5 (q5->q11). Next q1:=q11 (q11->q1). Then q1's old value goes where? new q? = old q1: looking at list, is there any d = q1? Scanning dffs: d values: q13,q11,q12,q8,q3,q14,q4,q2,q0,in0,q9,q5,q6,in1,q10,q15. q1 is not used as a d. So q1 is a sink (output only). Good: q1 is output, not fed back. So the in0 chain ends at q1 after 6 edges: in0 at cycle t -> q9 at S_{t+1} -> q10 at S_{t+2} -> q14 at S_{t+3} -> q5 at S_{t+4} -> q11 at S_{t+5} -> q1 at S_{t+6}. Let me verify with our data.
+
+in0[0]=1. q9 at S1 should =1 (yes S1 q9=1). q10 at S2 =1 (S2 q10=1 yes). q14 at S3 =1 (S3 q14=1 yes). q5 at S4 =1 (S4 q5=1 yes). q11 at S5 =1 (S5 q11=1 yes). q1 at S6 =1 (S6 q1=1 yes). 
+
+in0[1]=0 -> q1 at S7 should be 0. S7 q1=0 yes. Good.
+
+Now q1 output = in0 delayed by 6 cycles? Let's check: q1 at S_t = in0[t-6] for t>=6, and for t<6 determined by init chain. q1 output list from above: t0..: 1,0,1,1,1,1,0,1,0,0,0,0,0,1,1,1,0,1,0,0,1,1,1,1,0,1,0,0,0,1,0,1,0,0,1,0,0,0,0 (let me collect carefully later). For t>=6, q1[t] should equal in0[t-6]. in0[t-6] for t=6..39 = in0[0..33] = [1,0,1,1,0,0,0,0,0,1,1,1,1,0,0,0,1,1,1,1,0,1,0,0,1,0,1,0,0,0,1,1,0,1]. That's 34 values for t=6..39. Let's compare q1[t] for t=6..39 from table:
+t6 q1=1 (in0[0]=1 ok)
+t7 q1=0 (in0[1]=0 ok)
+t8 q1=1 (in0[2]=1 ok)
+t9 q1=1 (in0[3]=1 ok)
+t10 q1=0 (in0[4]=0 ok)
+t11 q1=0 (in0[5]=0 ok)
+t12 q1=0 (in0[6]=0 ok)
+t13 q1=0 (in0[7]=0 ok)
+t14 q1=0 (in0[8]=0 ok)
+t15 q1=1 (in0[9]=1 ok)
+t16 q1=1 (in0[10]=1 ok)
+t17 q1=1 (in0[11]=1 ok)
+t18 q1=1 (in0[12]=1 ok)
+t19 q1=0 (in0[13]=0 ok)
+t20 q1=0 (in0[14]=0 ok)
+t21 q1=0 (in0[15]=0 ok)
+t22 q1=1 (in0[16]=1 ok)
+t23 q1=1 (in0[17]=1 ok)
+t24 q1=1 (in0[18]=1 ok)
+t25 q1=1 (in0[19]=1 ok)
+t26 q1=0 (in0[20]=0 ok)
+t27 q1=1 (in0[21]=1 ok)
+t28 q1=0 (in0[22]=0 ok)
+t29 q1=0 (in0[23]=0 ok)
+t30 q1=1 (in0[24]=1 ok)
+t31 q1=0 (in0[25]=0 ok)
+t32 q1=1 (in0[26]=1 ok)
+t33 q1=0 (in0[27]=0 ok)
+t34 q1=0 (in0[28]=0 ok)
+t35 q1=0 (in0[29]=0 ok)
+t36 q1=1 (in0[30]=1 ok)
+t37 q1=1 (in0[31]=1 ok)
+t38 q1=0 (in0[32]=0 ok)
+t39 q1=1 (in0[33]=1 ok)
+
+All match. Great, so q1 (t>=6) is correct and consistent. For t0..t5 q1 comes from init chain: q1[0]=init q1=1. q1[1]=q11[0]=init q11=0. q1[2]=q11[1]. q11[1]=q5[0]=init q5=1. So q1[2]=1 (matches). q1[3]=q11[2]=q5[1]=q14[0]=init q14=1 ->1 (matches q1[3]=1). q1[4]=q11[3]=q5[2]=q14[1]=q10[0]=init q10=1 ->1 (matches). q1[5]=q11[4]=q5[3]=q14[2]=q10[1]=q9[0]=init q9=1 ->1 (matches q1[5]=1). Good. So q1 list is solid.
+
+Now similarly other outputs are on chains. Let's identify chains.
+
+The permutation part (excluding input injections q9,q13 and sink q15). Let's find cycles/paths.
+
+q13 <- in1 (fresh each cycle). q0 <- q13. q8 <- q0. q3 <- q8. q4 <- q3. q6 <- q4. q12 <- q6. q2 <- q12. q7 <- q2. Is q7 used? d values list doesn't include q7. So q7 sink. So in1 chain: in1 -> q13 -> q0 -> q8 -> q3 -> q4 -> q6 -> q12 -> q2 -> q7(sink). That's 9 edges to q7, 8 edges to q2. So q2[t] = in1[t-8] for t>=8. Let's verify.
+
+Edges: at edge end of cycle t, q13:=in1[t]. So q13 appears in S_{t+1}. Then q0 in S_{t+2}, q8 S_{t+3}, q3 S_{t+4}, q4 S_{t+5}, q6 S_{t+6}, q12 S_{t+7}, q2 S_{t+8}, q7 S_{t+9}. So q2[t] = in1[t-8] for t>=8. Let's check with table.
+
+in1[t-8] for t=8..39 = in1[0..31] = [0,1,1,1,1,1,1,0,1,1,1,1,1,0,0,0,1,1,0,0,0,1,0,1,0,1,1,1,1,0,0,1]. 32 values.
+
+q2[t] t=8..39 from table:
+t8 q2=0 (in1[0]=0 ok)
+t9 q2=1 (in1[1]=1 ok)
+t10 q2=1 (in1[2]=1)
+t11 q2=1 (in1[3]=1)
+t12 q2=1 (in1[4]=1)
+t13 q2=1 (in1[5]=1)
+t14 q2=1 (in1[6]=1)
+t15 q2=0 (in1[7]=0 ok)
+t16 q2=1 (in1[8]=1)
+t17 q2=1 (in1[9]=1)
+t18 q2=1 (in1[10]=1)
+t19 q2=1 (in1[11]=1)
+t20 q2=1 (in1[12]=1)
+t21 q2=0 (in1[13]=0)
+t22 q2=0 (in1[14]=0)
+t23 q2=0 (in1[15]=0)
+t24 q2=1 (in1[16]=1)
+t25 q2=1 (in1[17]=1)
+t26 q2=0 (in1[18]=0)
+t27 q2=0 (in1[19]=0)
+t28 q2=0 (in1[20]=0)
+t29 q2=1 (in1[21]=1)
+t30 q2=0 (in1[22]=0)
+t31 q2=1 (in1[23]=1)
+t32 q2=0 (in1[24]=0)
+t33 q2=1 (in1[25]=1)
+t34 q2=1 (in1[26]=1)
+t35 q2=1 (in1[27]=1)
+t36 q2=1 (in1[28]=1)
+t37 q2=0 (in1[29]=0)
+t38 q2=0 (in1[30]=0)
+t39 q2=1 (in1[31]=1)
+All match. Great, q2 solid for t>=8. For t<8, from init; we already have table and the q1 cross-check gives confidence. But let's double check q2[0..7] via chain from inits.
+
+q2[t] for t<8 = value that started at some init. q2[0]=init q2=1. q2[1]=q12[0]=init q12=1 -> matches t1 q2=1. q2[2]=q12[1]=q6[0]=init q6=0 -> q2[2]=0 matches. q2[3]=q6[1]=q4[0]=init q4=1 -> q2[3]=1 matches. q2[4]=q4[1]=q3[0]=init q3=1 -> q2[4]=1 matches. q2[5]=q3[1]=q8[0]=init q8=1 -> q2[5]=1 matches. q2[6]=q8[1]=q0[0]=init q0=0 -> q2[6]=0 matches (t6 q2=0). q2[7]=q0[1]=q13[0]=init q13=0 -> q2[7]=0 matches (t7 q2=0). Good.
+
+Now q0 chain: q0[t] = q13[t-1] = in1[t-2] for t>=2. Actually q0[t] = q13[t-1] (for t>=1) and q13[s]=in1[s-1] for s>=1, q13[0]=init=0. So q0[t] for t>=2 = in1[t-2]. Let's verify q0 output list. q0[t] from table t=0..39:
+0:0
+1:0
+2:0
+3:1
+4:1
+5:1
+6:1
+7:1
+8:1
+9:0
+10:1
+11:1
+12:1
+13:1
+14:1
+15:0
+16:0
+17:0
+18:1
+19:1
+20:0
+21:0
+22:0
+23:1
+24:0
+25:1
+26:0
+27:1
+28:1
+29:1
+30:1
+31:0
+32:0
+33:1
+34:0
+35:0
+36:1
+37:0
+38:0
+39:0
+
+Check q0[t]=in1[t-2] for t>=2:
+t2: in1[0]=0 -> q0=0 ok.
+t3: in1[1]=1 ok.
+t4: in1[2]=1 ok.
+t5: in1[3]=1 ok.
+t6: in1[4]=1 ok.
+t7: in1[5]=1 ok.
+t8: in1[6]=1 ok.
+t9: in1[7]=0 ok.
+t10: in1[8]=1 ok.
+t11: in1[9]=1 ok.
+t12: in1[10]=1 ok.
+t13: in1[11]=1 ok.
+t14: in1[12]=1 ok.
+t15: in1[13]=0 ok.
+t16: in1[14]=0 ok.
+t17: in1[15]=0 ok.
+t18: in1[16]=1 ok.
+t19: in1[17]=1 ok.
+t20: in1[18]=0 ok.
+t21: in1[19]=0 ok.
+t22: in1[20]=0 ok.
+t23: in1[21]=1 ok.
+t24: in1[22]=0 ok.
+t25: in1[23]=1 ok.
+t26: in1[24]=0 ok.
+t27: in1[25]=1 ok.
+t28: in1[26]=1 ok.
+t29: in1[27]=1 ok.
+t30: in1[28]=1 ok.
+t31: in1[29]=0 ok.
+t32: in1[30]=0 ok.
+t33: in1[31]=1 ok.
+t34: in1[32]=0 ok.
+t35: in1[33]=0 ok.
+t36: in1[34]=1 ok.
+t37: in1[35]=0 ok.
+t38: in1[36]=0 ok.
+t39: in1[37]=0 ok.
+And q0[0]=init0=0, q0[1]=q13[0]=init q13=0. Good, q0 solid.
+
+Now q12: q12[t] = q6[t-1]; chain in1 -> ... -> q12 at S_{t+7}. So q12[t] = in1[t-7] for t>=7. Let's verify a few: q12[7]=in1[0]=0 -> table t7 q12=0 ok. q12[8]=in1[1]=1 -> t8 q12=1 ok. q12[9]=in1[2]=1 -> t9 q12=1 ok. q12[14]=in1[7]=0 -> t14 q12=0 ok. q12[15]=in1[8]=1 -> t15 q12=1 ok. q12[20]=in1[13]=0 -> t20 q12=0 ok. q12[21]=in1[14]=0 -> t21 q12=0 ok. q12[22]=in1[15]=0 -> t22 q12=0 ok. q12[23]=in1[16]=1 -> t23 q12=1 ok. q12[24]=in1[17]=1 -> t24 q12=1 ok. q12[25]=in1[18]=0 -> t25 q12=0 ok. q12[26]=in1[19]=0 -> t26 q12=0 ok. q12[30]=in1[23]=1 -> t30 q12=1 ok. q12[31]=in1[24]=0 -> t31 q12=0 ok. q12[36]=in1[29]=0 -> t36 q12=0 ok. q12[37]=in1[30]=0 -> t37 q12=0 ok. q12[38]=in1[31]=1 -> t38 q12=1 ok. q12[39]=in1[32]=0 -> t39 q12=0 ok.
+
+For t<7, q12 from init chain: q12[0]=init=1. q12[1]=q6[0]=init q6=0 -> t1 q12=0 ok. q12[2]=q6[1]=q4[0]=init q4=1 -> t2 q12=1 ok. q12[3]=q4[1]=q3[0]=init q3=1 -> t3 q12=1 ok. q12[4]=q3[1]=q8[0]=init q8=1 -> t4 q12=1 ok. q12[5]=q8[1]=q0[0]=init q0=0 -> t5 q12=0 ok. q12[6]=q0[1]=q13[0]=init q13=0 -> t6 q12=0 ok. Good. q12 solid.
+
+Now q14: chain in0 -> q9(S_{t+1}) -> q10(S_{t+2}) -> q14(S_{t+3}). So q14[t] = in0[t-3] for t>=3. Check: q14[3]=in0[0]=1 -> t3 q14=1 ok. q14[4]=in0[1]=0 -> t4 q14=0 ok. q14[5]=in0[2]=1 -> t5 q14=1 ok. q14[6]=in0[3]=1 -> t6 q14=1 ok. q14[7]=in0[4]=0 -> t7 q14=0 ok. q14[8]=in0[5]=0 -> t8 q14=0 ok. q14[9]=in0[6]=0 -> t9 q14=0 ok. q14[10]=in0[7]=0 -> t10 q14=0 ok. q14[11]=in0[8]=0 -> t11 q14=0 ok. q14[12]=in0[9]=1 -> t12 q14=1 ok. q14[13]=in0[10]=1 ok. q14[14]=in0[11]=1 ok. q14[15]=in0[12]=1 ok. q14[16]=in0[13]=0 ok. q14[17]=in0[14]=0 ok. q14[18]=in0[15]=0 ok. q14[19]=in0[16]=1 -> t19 q14=1 ok. q14[20]=in0[17]=1 ok. q14[21]=in0[18]=1 ok. q14[22]=in0[19]=1 ok. q14[23]=in0[20]=0 -> t23 q14=0 ok. q14[24]=in0[21]=1 -> t24 q14=1 ok. q14[25]=in0[22]=0 -> t25 q14=0 ok. q14[26]=in0[23]=0 ok. q14[27]=in0[24]=1 -> t27 q14=1 ok. q14[28]=in0[25]=0 ok. q14[29]=in0[26]=1 -> t29 q14=1 ok. q14[30]=in0[27]=0 ok. q14[31]=in0[28]=0 ok. q14[32]=in0[29]=0 ok. q14[33]=in0[30]=1 -> t33 q14=1 ok. q14[34]=in0[31]=1 ok. q14[35]=in0[32]=0 ok. q14[36]=in0[33]=1 -> t36 q14=1 ok. q14[37]=in0[34]=1 ok. q14[38]=in0[35]=0 ok. q14[39]=in0[36]=0 ok.
+
+For t<3: q14[0]=init=1. q14[1]=q10[0]=init q10=1 -> t1 q14=1 ok. q14[2]=q10[1]=q9[0]=init q9=1 -> t2 q14=1 ok. Good. q14 solid.
+
+q5: chain in0 -> ... q14(S_{t+3}) -> q5(S_{t+4}). So q5[t]=in0[t-4] for t>=4. Check q5[4]=in0[0]=1 ok. q5[5]=in0[1]=0 ok. q5[6]=in0[2]=1 ok. q5[7]=in0[3]=1 ok. q5[8]=in0[4]=0 ok. q5[9]=in0[5]=0 ok. q5[10]=in0[6]=0 ok. q5[11]=in0[7]=0 ok. q5[12]=in0[8]=0 ok. q5[13]=in0[9]=1 ok. q5[14]=in0[10]=1 ok. q5[15]=in0[11]=1 ok. q5[16]=in0[12]=1 ok. q5[17]=in0[13]=0 ok. q5[18]=in0[14]=0 ok. q5[19]=in0[15]=0 ok. q5[20]=in0[16]=1 ok. q5[21]=in0[17]=1 ok. q5[22]=in0[18]=1 ok. q5[23]=in0[19]=1 ok. q5[24]=in0[20]=0 ok. q5[25]=in0[21]=1 ok. q5[26]=in0[22]=0 ok. q5[27]=in0[23]=0 ok. q5[28]=in0[24]=1 ok. q5[29]=in0[25]=0 ok. q5[30]=in0[26]=1 ok. q5[31]=in0[27]=0 ok. q5[32]=in0[28]=0 ok. q5[33]=in0[29]=0 ok. q5[34]=in0[30]=1 ok. q5[35]=in0[31]=1 ok. q5[36]=in0[32]=0 ok. q5[37]=in0[33]=1 ok. q5[38]=in0[34]=1 ok. q5[39]=in0[35]=0 ok.
+For t<4: q5[0]=init=1. q5[1]=q14[0]=init q14=1 ->1 ok. q5[2]=q14[1]=q10[0]=init q10=1 -> q5[2]=1 ok. q5[3]=q14[2]=q10[1]=q9[0]=init q9=1 -> q5[3]=1 ok. Good. q5 solid.
+
+q6: chain in1 -> ... q6 at S_{t+6}. So q6[t]=in1[t-6] for t>=6. Check q6[6]=in1[0]=0 -> t6 q6=0 ok. q6[7]=in1[1]=1 ok. q6[8]=in1[2]=1 ok. q6[9]=in1[3]=1 ok. q6[10]=in1[4]=1 ok. q6[11]=in1[5]=1 ok. q6[12]=in1[6]=1 ok. q6[13]=in1[7]=0 -> t13 q6=0 ok. q6[14]=in1[8]=1 ok. q6[15]=in1[9]=1 ok. q6[16]=in1[10]=1 ok. q6[17]=in1[11]=1 ok. q6[18]=in1[12]=1 ok. q6[19]=in1[13]=0 -> t19 q6=0 ok. q6[20]=in1[14]=0 ok. q6[21]=in1[15]=0 ok. q6[22]=in1[16]=1 ok. q6[23]=in1[17]=1 ok. q6[24]=in1[18]=0 -> t24 q6=0 ok. q6[25]=in1[19]=0 ok. q6[26]=in1[20]=0 ok. q6[27]=in1[21]=1 ok. q6[28]=in1[22]=0 -> t28 q6=0 ok. q6[29]=in1[23]=1 ok. q6[30]=in1[24]=0 ok. q6[31]=in1[25]=1 ok. q6[32]=in1[26]=1 ok. q6[33]=in1[27]=1 ok. q6[34]=in1[28]=1 ok. q6[35]=in1[29]=0 ok. q6[36]=in1[30]=0 ok. q6[37]=in1[31]=1 ok. q6[38]=in1[32]=0 ok. q6[39]=in1[33]=0 ok.
+For t<6: q6[0]=init q6=0. q6[1]=q4[0]=init q4=1 -> t1 q6=1 ok. q6[2]=q4[1]=q3[0]=init q3=1 -> t2 q6=1 ok. q6[3]=q3[1]=q8[0]=init q8=1 -> t3 q6=1 ok. q6[4]=q8[1]=q0[0]=init q0=0 -> t4 q6=0 ok. q6[5]=q0[1]=q13[0]=init q13=0 -> t5 q6=0 ok. Good. q6 solid.
+
+q10: chain in0 -> q9(S_{t+1}) -> q10(S_{t+2}). So q10[t]=in0[t-2] for t>=2. Check q10[2]=in0[0]=1 ok. q10[3]=in0[1]=0 -> t3 q10=0 ok. q10[4]=in0[2]=1 ok. q10[5]=in0[3]=1 ok. q10[6]=in0[4]=0 ok. q10[7]=in0[5]=0 ok. q10[8]=in0[6]=0 ok. q10[9]=in0[7]=0 ok. q10[10]=in0[8]=0 ok. q10[11]=in0[9]=1 ok. q10[12]=in0[10]=1 ok. q10[13]=in0[11]=1 ok. q10[14]=in0[12]=1 ok. q10[15]=in0[13]=0 ok. q10[16]=in0[14]=0 ok. q10[17]=in0[15]=0 ok. q10[18]=in0[16]=1 ok. q10[19]=in0[17]=1 ok. q10[20]=in0[18]=1 ok. q10[21]=in0[19]=1 ok. q10[22]=in0[20]=0 ok. q10[23]=in0[21]=1 ok. q10[24]=in0[22]=0 ok. q10[25]=in0[23]=0 ok. q10[26]=in0[24]=1 ok. q10[27]=in0[25]=0 ok. q10[28]=in0[26]=1 ok. q10[29]=in0[27]=0 ok. q10[30]=in0[28]=0 ok. q10[31]=in0[29]=0 ok. q10[32]=in0[30]=1 ok. q10[33]=in0[31]=1 ok. q10[34]=in0[32]=0 ok. q10[35]=in0[33]=1 ok. q10[36]=in0[34]=1 ok. q10[37]=in0[35]=0 ok. q10[38]=in0[36]=0 ok. q10[39]=in0[37]=0 ok.
+For t<2: q10[0]=init q10=1 ok. q10[1]=q9[0]=init q9=1 -> t1 q10=1 ok. Good. q10 solid.
+
+All outputs verified via independent recurrence. Excellent. Now compile final lists in the output order: q0, q1, q10, q12, q14, q2, q5, q6.
+
+q0 list (t0..39):
+0,0,0,1,1,1,1,1,1,0,1,1,1,1,1,0,0,0,1,1,0,0,0,1,0,1,0,1,1,1,1,0,0,1,0,0,1,0,0,0,0
+Let me write with indices to ensure 40:
+t0 0
+t1 0
+t2 0
+t3 1
+t4 1
+t5 1
+t6 1
+t7 1
+t8 1
+t9 0
+t10 1
+t11 1
+t12 1
+t13 1
+t14 1
+t15 0
+t16 0
+t17 0
+t18 1
+t19 1
+t20 0
+t21 0
+t22 0
+t23 1
+t24 0
+t25 1
+t26 0
+t27 1
+t28 1
+t29 1
+t30 1
+t31 0
+t32 0
+t33 1
+t34 0
+t35 0
+t36 1
+t37 0
+t38 0
+t39 0
+Count =40. As list: [0,0,0,1,1,1,1,1,1,0,1,1,1,1,1,0,0,0,1,1,0,0,0,1,0,1,0,1,1,1,1,0,0,1,0,0,1,0,0,0,0]
+Let me count entries in that list: group in 10s:
+[0,0,0,1,1,1,1,1,1,0] (10)
+[1,1,1,1,1,0,0,0,1,1] (20)
+[0,0,0,1,0,1,0,1,1,1] (30)
+[1,0,0,1,0,0,1,0,0,0,0] — that's 11! Problem. Let me recount.
+
+I think I mis-grouped. Let me carefully write q0 40 values in groups of 10 by index.
+
+Indices 0-9: t0..t9 = 0,0,0,1,1,1,1,1,1,0. (values: 0,0,0,1,1,1,1,1,1,0) yes 10.
+Indices 10-19: t10..t19 = 1,1,1,1,1,0,0,0,1,1. (t10=1,t11=1,t12=1,t13=1,t14=1,t15=0,t16=0,t17=0,t18=1,t19=1) yes 10.
+Indices 20-29: t20..t29 = 0,0,0,1,0,1,0,1,1,1. (t20=0,t21=0,t22=0,t23=1,t24=0,t25=1,t26=0,t27=1,t28=1,t29=1) yes 10.
+Indices 30-39: t30..t39 = 1,0,0,1,0,0,1,0,0,0. Wait need 10 values t30..t39: t30=1,t31=0,t32=0,t33=1,t34=0,t35=0,t36=1,t37=0,t38=0,t39=0. That's [1,0,0,1,0,0,1,0,0,0] = 10. Earlier I wrote an extra 0. Good. So q0 = 
+[0,0,0,1,1,1,1,1,1,0, 1,1,1,1,1,0,0,0,1,1, 0,0,0,1,0,1,0,1,1,1, 1,0,0,1,0,0,1,0,0,0]
+Concatenate: 0,0,0,1,1,1,1,1,1,0,1,1,1,1,1,0,0,0,1,1,0,0,0,1,0,1,0,1,1,1,1,0,0,1,0,0,1,0,0,0.
+Let me count total: 10+10+10+10=40. The flat list: positions: I'll just present as the 40 in order.
+
+Flat q0: 
+1:0
+2:0
+3:0
+4:1
+5:1
+6:1
+7:1
+8:1
+9:1
+10:0
+11:1
+12:1
+13:1
+14:1
+15:1
+16:0
+17:0
+18:0
+19:1
+20:1
+21:0
+22:0
+23:0
+24:1
+25:0
+26:1
+27:0
+28:1
+29:1
+30:1
+31:1
+32:0
+33:0
+34:1
+35:0
+36:0
+37:1
+38:0
+39:0
+40:0
+This 1-indexed matches t=index-1. Good. So q0 list (0-indexed t) = [0,0,0,1,1,1,1,1,1,0,1,1,1,1,1,0,0,0,1,1,0,0,0,1,0,1,0,1,1,1,1,0,0,1,0,0,1,0,0,0]. Count: let me count this flat list literally: 
+0(1),0(2),0(3),1(4),1(5),1(6),1(7),1(8),1(9),0(10),1(11),1(12),1(13),1(14),1(15),0(16),0(17),0(18),1(19),1(20),0(21),0(22),0(23),1(24),0(25),1(26),0(27),1(28),1(29),1(30),1(31),0(32),0(33),1(34),0(35),0(36),1(37),0(38),0(39),0(40). 40 items. Good. Wait item31=1 (t30=1), item32=0(t31), item33=0(t32), item34=1(t33), item35=0(t34), item36=0(t35), item37=1(t36), item38=0(t37), item39=0(t38), item40=0(t39). Matches. 
+
+q1 list (t0..39):
+t0 1
+t1 0
+t2 1
+t3 1
+t4 1
+t5 1
+t6 1
+t7 0
+t8 1
+t9 1
+t10 0
+t11 0
+t12 0
+t13 0
+t14 0
+t15 1
+t16 1
+t17 1
+t18 1
+t19 0
+t20 0
+t21 0
+t22 1
+t23 1
+t24 1
+t25 1
+t26 0
+t27 1
+t28 0
+t29 0
+t30 1
+t31 0
+t32 1
+t33 0
+t34 0
+t35 0
+t36 1
+t37 1
+t38 0
+t39 1
+Let's verify t>=6 equals in0[t-6]: we already did. And t0..5 = 1,0,1,1,1,1. Good.
+Groups of 10:
+0-9: 1,0,1,1,1,1,1,0,1,1
+10-19: 0,0,0,0,0,1,1,1,1,0
+20-29: 0,0,1,1,1,1,0,1,0,0
+30-39: 1,0,1,0,0,0,1,1,0,1
+Check t30=1,t31=0,t32=1,t33=0,t34=0,t35=0,t36=1,t37=1,t38=0,t39=1. yes.
+Flat q1: [1,0,1,1,1,1,1,0,1,1,0,0,0,0,0,1,1,1,1,0,0,0,1,1,1,1,0,1,0,0,1,0,1,0,0,0,1,1,0,1]. Count 40. Let me double check positions 20-29: t20=0,t21=0,t22=1,t23=1,t24=1,t25=1,t26=0,t27=1,t28=0,t29=0. In flat, after first 20 (positions1-20), positions21-30 should be t20..t29 = 0,0,1,1,1,1,0,1,0,0. In my flat list positions21-30: I wrote "...,1,0,0,0,1,1,1,1,0,1,0,0,1,..." Let's index flat q1:
+1:1(t0)
+2:0(t1)
+3:1(t2)
+4:1(t3)
+5:1(t4)
+6:1(t5)
+7:1(t6)
+8:0(t7)
+9:1(t8)
+10:1(t9)
+11:0(t10)
+12:0(t11)
+13:0(t12)
+14:0(t13)
+15:0(t14)
+16:1(t15)
+17:1(t16)
+18:1(t17)
+19:1(t18)
+20:0(t19)
+21:0(t20)
+22:0(t21)
+23:1(t22)
+24:1(t23)
+25:1(t24)
+26:1(t25)
+27:0(t26)
+28:1(t27)
+29:0(t28)
+30:0(t29)
+31:1(t30)
+32:0(t31)
+33:1(t32)
+34:0(t33)
+35:0(t34)
+36:0(t35)
+37:1(t36)
+38:1(t37)
+39:0(t38)
+40:1(t39)
+Now check t20 (pos21)=0 ok, t21(pos22)=0 ok, t22(pos23)=1 ok, t23=1,t24=1,t25=1,t26=0(pos27),t27=1(pos28),t28=0(pos29),t29=0(pos30). Good. Matches groups. 
+
+q10 list (t0..39): q10[t]=in0[t-2] for t>=2; q10[0]=1,q10[1]=1.
+in0 shifted by 2: for t=2..39 = in0[0..37] = 
+in0[0..37]: 1,0,1,1,0,0,0,0,0,1,1,1,1,0,0,0,1,1,1,1,0,1,0,0,1,0,1,0,0,0,1,1,0,1,1,0,0,0. That's 38 values (indices0..37). Prepend q10[0]=1,q10[1]=1.
+So q10 = [1,1] + [1,0,1,1,0,0,0,0,0,1,1,1,1,0,0,0,1,1,1,1,0,1,0,0,1,0,1,0,0,0,1,1,0,1,1,0,0,0].
+Let's count: 2+38=40. Good. Let's verify against table for some: t0=1,t1=1,t2=1 (in0[0]=1) ok table t2 q10=1. t3 = in0[1]=0 table q10 t3=0 ok. t4=in0[2]=1 table q10 t4=1 ok. t39=in0[37]=0 table q10 t39=0 ok.
+
+Let me write q10 fully with indices:
+t0=1
+t1=1
+t2=1
+t3=0
+t4=1
+t5=1
+t6=0
+t7=0
+t8=0
+t9=0
+t10=0
+t11=1
+t12=1
+t13=1
+t14=1
+t15=0
+t16=0
+t17=0
+t18=1
+t19=1
+t20=1
+t21=1
+t22=0
+t23=1
+t24=0
+t25=0
+t26=1
+t27=0
+t28=1
+t29=0
+t30=0
+t31=0
+t32=1
+t33=1
+t34=0
+t35=1
+t36=1
+t37=0
+t38=0
+t39=0
+Cross-check with table: t11 q10=1 ok, t12=1 ok, t13=1, t14=1, t15=0, t18=1,t19=1,t20=1,t21=1, t23=1, t26=1,t28=1, t32=1,t33=1,t35=1,t36=1. Matches table (e.g., t35 q10=1 yes, t36 q10=1 yes, t33 q10=1 yes). Good.
+
+q10 flat: [1,1,1,0,1,1,0,0,0,0,0,1,1,1,1,0,0,0,1,1,1,1,0,1,0,0,1,0,1,0,0,0,1,1,0,1,1,0,0,0]. Count: let's count: 1(1),1(2),1(3),0(4),1(5),1(6),0(7),0(8),0(9),0(10),0(11),1(12),1(13),1(14),1(15),0(16),0(17),0(18),1(19),1(20),1(21),1(22),0(23),1(24),0(25),0(26),1(27),0(28),1(29),0(30),0(31),0(32),1(33),1(34),0(35),1(36),1(37),0(38),0(39),0(40). 40. Good. (pos11 corresponds t10=0; in0[8]=0 yes.)
+
+q12 list: q12[t]=in1[t-7] for t>=7; init part t0..t6 = [1,0,1,1,1,0,0] (we computed q12[0..6]=1,0,1,1,1,0,0). Let's verify: q12[0]=1,q12[1]=0,q12[2]=1,q12[3]=1,q12[4]=1,q12[5]=0,q12[6]=0. Yes.
+For t=7..39 = in1[0..32] = in1 indices0..32: [0,1,1,1,1,1,1,0,1,1,1,1,1,0,0,0,1,1,0,0,0,1,0,1,0,1,1,1,1,0,0,1]. That's 33 values (0..32). Prepend 7 => 40.
+So q12:
+t0=1
+t1=0
+t2=1
+t3=1
+t4=1
+t5=0
+t6=0
+t7=in1[0]=0
+t8=in1[1]=1
+t9=in1[2]=1
+t10=in1[3]=1
+t11=in1[4]=1
+t12=in1[5]=1
+t13=in1[6]=1
+t14=in1[7]=0
+t15=in1[8]=1
+t16=in1[9]=1
+t17=in1[10]=1
+t18=in1[11]=1
+t19=in1[12]=1
+t20=in1[13]=0
+t21=in1[14]=0
+t22=in1[15]=0
+t23=in1[16]=1
+t24=in1[17]=1
+t25=in1[18]=0
+t26=in1[19]=0
+t27=in1[20]=0
+t28=in1[21]=1
+t29=in1[22]=0
+t30=in1[23]=1
+t31=in1[24]=0
+t32=in1[25]=1
+t33=in1[26]=1
+t34=in1[27]=1
+t35=in1[28]=1
+t36=in1[29]=0
+t37=in1[30]=0
+t38=in1[31]=1
+t39=in1[32]=0
+Cross-check table: t0 q12=1 ok,t1=0 ok,t2=1,t3=1,t4=1,t5=0,t6=0,t7=0,t8=1,t9=1,t10=1,t11=1,t12=1,t13=1,t14=0,t15=1,t16=1,t17=1,t18=1,t19=1,t20=0,t21=0,t22=0,t23=1,t24=1,t25=0,t26=0,t27=0,t28=1,t29=0,t30=1,t31=0,t32=1,t33=1,t34=1,t35=1,t36=0,t37=0,t38=1,t39=0. Matches table exactly. 
+
+q12 flat: [1,0,1,1,1,0,0,0,1,1,1,1,1,1,0,1,1,1,1,1,0,0,0,1,1,0,0,0,1,0,1,0,1,1,1,1,0,0,1,0]. Count: 1(1),0(2),1(3),1(4),1(5),0(6),0(7),0(8),1(9),1(10),1(11),1(12),1(13),1(14),0(15),1(16),1(17),1(18),1(19),1(20),0(21),0(22),0(23),1(24),1(25),0(26),0(27),0(28),1(29),0(30),1(31),0(32),1(33),1(34),1(35),1(36),0(37),0(38),1(39),0(40). 40. Check pos8=t7=0 ok; pos9=t8=1 ok. Good.
+
+q14 list: q14[t]=in0[t-3] for t>=3; q14[0..2]= init chain = [1,1,1] (q14[0]=1,q14[1]=1,q14[2]=1). Indeed q14[0]=init q14=1, q14[1]=q10[0]=1, q14[2]=q10[1]=q9[0]=1. So [1,1,1]. Then t=3..39 = in0[0..36] (37 values): in0[0..36] = [1,0,1,1,0,0,0,0,0,1,1,1,1,0,0,0,1,1,1,1,0,1,0,0,1,0,1,0,0,0,1,1,0,1,1,0,0]. Count 37 (indices0..36). Prepend 3 => 40.
+q14:
+t0=1,t1=1,t2=1,
+t3=in0[0]=1
+t4=in0[1]=0
+t5=in0[2]=1
+t6=in0[3]=1
+t7=in0[4]=0
+t8=in0[5]=0
+t9=in0[6]=0
+t10=in0[7]=0
+t11=in0[8]=0
+t12=in0[9]=1
+t13=in0[10]=1
+t14=in0[11]=1
+t15=in0[12]=1
+t16=in0[13]=0
+t17=in0[14]=0
+t18=in0[15]=0
+t19=in0[16]=1
+t20=in0[17]=1
+t21=in0[18]=1
+t22=in0[19]=1
+t23=in0[20]=0
+t24=in0[21]=1
+t25=in0[22]=0
+t26=in0[23]=0
+t27=in0[24]=1
+t28=in0[25]=0
+t29=in0[26]=1
+t30=in0[27]=0
+t31=in0[28]=0
+t32=in0[29]=0
+t33=in0[30]=1
+t34=in0[31]=1
+t35=in0[32]=0
+t36=in0[33]=1
+t37=in0[34]=1
+t38=in0[35]=0
+t39=in0[36]=0
+Cross-check table: matches (t3=1,t4=0,t5=1,t6=1,t7=0,...; t33=1,t34=1,t35=0,t36=1,t37=1,t38=0,t39=0). Table t36 q14=1 yes, t37 q14=1 yes. Good.
+
+q14 flat: [1,1,1,1,0,1,1,0,0,0,0,0,1,1,1,1,0,0,0,1,1,1,1,0,1,0,0,1,0,1,0,0,0,1,1,0,1,1,0,0]. Count: 1(1),1(2),1(3),1(4),0(5),1(6),1(7),0(8),0(9),0(10),0(11),0(12),1(13),1(14),1(15),1(16),0(17),0(18),0(19),1(20),1(21),1(22),1(23),0(24),1(25),0(26),0(27),1(28),0(29),1(30),0(31),0(32),0(33),1(34),1(35),0(36),1(37),1(38),0(39),0(40). 40. Check pos4=t3=1 ok, pos5=t4=0 ok, pos13=t12=1 ok. Good.
+
+q2 list: q2[t]=in1[t-8] for t>=8; q2[0..7] = [1,1,0,1,1,1,0,0] (computed: q2[0]=1,q2[1]=1,q2[2]=0,q2[3]=1,q2[4]=1,q2[5]=1,q2[6]=0,q2[7]=0). Then t=8..39 = in1[0..31] (32 values): [0,1,1,1,1,1,1,0,1,1,1,1,1,0,0,0,1,1,0,0,0,1,0,1,0,1,1,1,1,0,0,1]. Prepend 8 => 40.
+q2:
+t0=1,t1=1,t2=0,t3=1,t4=1,t5=1,t6=0,t7=0,
+t8=in1[0]=0
+t9=1,t10=1,t11=1,t12=1,t13=1,t14=1,t15=in1[7]=0,
+t16=in1[8]=1,t17=1,t18=1,t19=1,t20=1,t21=in1[13]=0,t22=in1[14]=0,t23=in1[15]=0,t24=in1[16]=1,t25=in1[17]=1,t26=in1[18]=0,t27=in1[19]=0,t28=in1[20]=0,t29=in1[21]=1,t30=in1[22]=0,t31=in1[23]=1,t32=in1[24]=0,t33=in1[25]=1,t34=in1[26]=1,t35=in1[27]=1,t36=in1[28]=1,t37=in1[29]=0,t38=in1[30]=0,t39=in1[31]=1.
+Wait I need to be careful: q2[t]=in1[t-8]. So t8->in1[0]=0; t9->in1[1]=1; t10->in1[2]=1; t11->in1[3]=1; t12->in1[4]=1; t13->in1[5]=1; t14->in1[6]=1; t15->in1[7]=0; t16->in1[8]=1; t17->in1[9]=1; t18->in1[10]=1; t19->in1[11]=1; t20->in1[12]=1; t21->in1[13]=0; t22->in1[14]=0; t23->in1[15]=0; t24->in1[16]=1; t25->in1[17]=1; t26->in1[18]=0; t27->in1[19]=0; t28->in1[20]=0; t29->in1[21]=1; t30->in1[22]=0; t31->in1[23]=1; t32->in1[24]=0; t33->in1[25]=1; t34->in1[26]=1; t35->in1[27]=1; t36->in1[28]=1; t37->in1[29]=0; t38->in1[30]=0; t39->in1[31]=1.
+
+Compare with table q2: t0=1,t1=1,t2=0,t3=1,t4=1,t5=1,t6=0,t7=0,t8=0,t9=1,t10=1,t11=1,t12=1,t13=1,t14=1,t15=0,t16=1,t17=1,t18=1,t19=1,t20=1,t21=0,t22=0,t23=0,t24=1,t25=1,t26=0,t27=0,t28=0,t29=1,t30=0,t31=1,t32=0,t33=1,t34=1,t35=1,t36=1,t37=0,t38=0,t39=1. Matches table. Good.
+
+q2 flat: [1,1,0,1,1,1,0,0,0,1,1,1,1,1,1,0,1,1,1,1,1,0,0,0,1,1,0,0,0,1,0,1,0,1,1,1,1,0,0,1]. Count: 1,1,0,1,1,1,0,0 (8), then 0,1,1,1,1,1,1,0 (16), 1,1,1,1,1,0,0,0 (24), 1,1,0,0,0,1,0,1 (32), 0,1,1,1,1,0,0,1 (40). Let me just present flat and count: 
+1:1,2:1,3:0,4:1,5:1,6:1,7:0,8:0,9:0,10:1,11:1,12:1,13:1,14:1,15:1,16:0,17:1,18:1,19:1,20:1,21:1,22:0,23:0,24:0,25:1,26:1,27:0,28:0,29:0,30:1,31:0,32:1,33:0,34:1,35:1,36:1,37:1,38:0,39:0,40:1.
+Check pos9=t8=0 ok; pos16=t15=0 ok; pos17=t16=1 ok; pos21=t20=1 ok; pos22=t21=0 ok; pos25=t24=1 ok; pos30=t29=1; pos31=t30=0; pos40=t39=1. Good.
+
+q5 list: q5[t]=in0[t-4] for t>=4; q5[0..3]=[1,1,1,1] (all init chain gave 1). Let's verify q5[0]=1,q5[1]=1,q5[2]=1,q5[3]=1. Yes. Then t=4..39 = in0[0..35] (36 values): in0[0..35]=[1,0,1,1,0,0,0,0,0,1,1,1,1,0,0,0,1,1,1,1,0,1,0,0,1,0,1,0,0,0,1,1,0,1,1,0]. Count 36. Prepend 4 =>40.
+q5:
+t0=1,t1=1,t2=1,t3=1,
+t4=in0[0]=1
+t5=in0[1]=0
+t6=in0[2]=1
+t7=in0[3]=1
+t8=in0[4]=0
+t9=in0[5]=0
+t10=in0[6]=0
+t11=in0[7]=0
+t12=in0[8]=0
+t13=in0[9]=1
+t14=in0[10]=1
+t15=in0[11]=1
+t16=in0[12]=1
+t17=in0[13]=0
+t18=in0[14]=0
+t19=in0[15]=0
+t20=in0[16]=1
+t21=in0[17]=1
+t22=in0[18]=1
+t23=in0[19]=1
+t24=in0[20]=0
+t25=in0[21]=1
+t26=in0[22]=0
+t27=in0[23]=0
+t28=in0[24]=1
+t29=in0[25]=0
+t30=in0[26]=1
+t31=in0[27]=0
+t32=in0[28]=0
+t33=in0[29]=0
+t34=in0[30]=1
+t35=in0[31]=1
+t36=in0[32]=0
+t37=in0[33]=1
+t38=in0[34]=1
+t39=in0[35]=0
+Compare table q5: t0=1,t1=1,t2=1,t3=1,t4=1,t5=0,t6=1,t7=1,t8=0,t9=0,t10=0,t11=0,t12=0,t13=1,t14=1,t15=1,t16=1,t17=0,t18=0,t19=0,t20=1,t21=1,t22=1,t23=1,t24=0,t25=1,t26=0,t27=0,t28=1,t29=0,t30=1,t31=0,t32=0,t33=0,t34=1,t35=1,t36=0,t37=1,t38=1,t39=0. Matches table (e.g., t34 q5=1 yes, t36 q5=0 yes, t37 q5=1). Good.
+
+q5 flat: [1,1,1,1,1,0,1,1,0,0,0,0,0,1,1,1,1,0,0,0,1,1,1,1,0,1,0,0,1,0,1,0,0,0,1,1,0,1,1,0]. Count: 1,1,1,1 (4), 1,0,1,1,0,0 (10), 0,0,0,1,1,1 (16), 1,0,0,0,1,1 (22), 1,1,0,1,0,0 (28), 1,0,1,0,0,0 (34), 1,1,0,1,1,0 (40). Hmm let me just carefully index flat:
+1:1(t0),2:1(t1),3:1(t2),4:1(t3),5:1(t4),6:0(t5),7:1(t6),8:1(t7),9:0(t8),10:0(t9),11:0(t10),12:0(t11),13:0(t12),14:1(t13),15:1(t14),16:1(t15),17:1(t16),18:0(t17),19:0(t18),20:0(t19),21:1(t20),22:1(t21),23:1(t22),24:1(t23),25:0(t24),26:1(t25),27:0(t26),28:0(t27),29:1(t28),30:0(t29),31:1(t30),32:0(t31),33:0(t32),34:0(t33),35:1(t34),36:1(t35),37:0(t36),38:1(t37),39:1(t38),40:0(t39).
+Check pos5=t4=1 ok; pos13=t12=0 ok; pos14=t13=1; pos21=t20=1; pos29=t28=1; pos31=t30=1; pos35=t34=1; pos37=t36=0; pos38=t37=1; pos39=t38=1; pos40=t39=0. Matches. Good.
+
+q6 list: q6[t]=in1[t-6] for t>=6; q6[0..5]=[0,1,1,1,0,0] (computed q6[0]=0,q6[1]=1,q6[2]=1,q6[3]=1,q6[4]=0,q6[5]=0). Then t=6..39 = in1[0..33] (34 values): in1[0..33]=[0,1,1,1,1,1,1,0,1,1,1,1,1,0,0,0,1,1,0,0,0,1,0,1,0,1,1,1,1,0,0,1,0,0]. Count 34 (indices0..33). Prepend 6 =>40.
+q6:
+t0=0,t1=1,t2=1,t3=1,t4=0,t5=0,
+t6=in1[0]=0
+t7=in1[1]=1
+t8=in1[2]=1
+t9=in1[3]=1
+t10=in1[4]=1
+t11=in1[5]=1
+t12=in1[6]=1
+t13=in1[7]=0
+t14=in1[8]=1
+t15=in1[9]=1
+t16=in1[10]=1
+t17=in1[11]=1
+t18=in1[12]=1
+t19=in1[13]=0
+t20=in1[14]=0
+t21=in1[15]=0
+t22=in1[16]=1
+t23=in1[17]=1
+t24=in1[18]=0
+t25=in1[19]=0
+t26=in1[20]=0
+t27=in1[21]=1
+t28=in1[22]=0
+t29=in1[23]=1
+t30=in1[24]=0
+t31=in1[25]=1
+t32=in1[26]=1
+t33=in1[27]=1
+t34=in1[28]=1
+t35=in1[29]=0
+t36=in1[30]=0
+t37=in1[31]=1
+t38=in1[32]=0
+t39=in1[33]=0
+Compare table q6: t0=0,t1=1,t2=1,t3=1,t4=0,t5=0,t6=0,t7=1,t8=1,t9=1,t10=1,t11=1,t12=1,t13=0,t14=1,t15=1,t16=1,t17=1,t18=1,t19=0,t20=0,t21=0,t22=1,t23=1,t24=0,t25=0,t26=0,t27=1,t28=0,t29=1,t30=0,t31=1,t32=1,t33=1,t34=1,t35=0,t36=0,t37=1,t38=0,t39=0. Matches table. 
+
+q6 flat: [0,1,1,1,0,0,0,1,1,1,1,1,1,0,1,1,1,1,1,0,0,0,1,1,0,0,0,1,0,1,0,1,1,1,1,0,0,1,0]. Count: index them:
+1:0(t0),2:1(t1),3:1(t2),4:1(t3),5:0(t4),6:0(t5),7:0(t6),8:1(t7),9:1(t8),10:1(t9),11:1(t10),12:1(t11),13:1(t12),14:0(t13),15:1(t14),16:1(t15),17:1(t16),18:1(t17),19:1(t18),20:0(t19),21:0(t20),22:0(t21),23:1(t22),24:1(t23),25:0(t24),26:0(t25),27:0(t26),28:1(t27),29:0(t28),30:1(t29),31:0(t30),32:1(t31),33:1(t32),34:1(t33),35:1(t34),36:0(t35),37:0(t36),38:1(t37),39:0(t38),40:0(t39).
+Check pos7=t6=0 ok; pos14=t13=0; pos23=t22=1; pos28=t27=1; pos30=t29=1; pos38=t37=1. Good.
+
+Everything cross-verified. Now produce final JSON with keys in the order given in outputs: q0, q1, q10, q12, q14, q2, q5, q6. (Order doesn't matter for JSON object but I'll use that order.)
+
+Let me assemble final lists cleanly (0-indexed cycle order):
+
+q0: [0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0]
+q1: [1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1]
+q10: [1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0]
+q12: [1, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 0, 1, 0]
+q14: [1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0]
+q2: [1, 1, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 0, 1]
+q5: [1, 1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1, 1, 0]
+q6: [0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 0, 1, 0]
+
+Let me re-verify q0 count once more by counting the final list entries: 
+q0: 0,0,0,1,1,1,1,1,1,0 (10) | 1,1,1,1,1,0,0,0,1,1 (20) | 0,0,0,1,0,1,0,1,1,1 (30) | 1,0,0,1,0,0,1,0,0,0 (40). Good.
+
+I'm confident. Final answer with a brief note then the single JSON block. The user said end reply with single fenced json code block and no other json code block after it. I can include explanation before, but safer to keep minimal. I'll provide the block. Maybe a short line before is fine, but to be safe and follow "End your reply with a single fenced json code block", I'll just output the code block (optionally a one-line lead). I'll just output the fenced block alone to be safe. Actually they said "End your reply with a single fenced json code block containing exactly one object... Put no other json code block after it." Having text before is okay. I'll keep a tiny lead then block. To be safest, only the block.
+
+
+=== response ===
+```json
+{"q0": [0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0], "q1": [1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1], "q10": [1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0], "q12": [1, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 0, 1, 0], "q14": [1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0], "q2": [1, 1, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 0, 1], "q5": [1, 1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1, 1, 0], "q6": [0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 0, 1, 0]}
+```

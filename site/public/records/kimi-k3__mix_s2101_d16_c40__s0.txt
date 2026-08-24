@@ -1,0 +1,1511 @@
+model: moonshotai/kimi-k3
+circuit: mix_s2101_d16_c40
+score: {'status': 'ok', 'prefix_cycles': 40, 'pointwise': 1.0, 'exact': True}
+
+=== reasoning ===
+We need solve simulation carefully. Need do complete reasoning in tool. We need output final with single fenced json block only at end? The user requests work through carefully but final reply end with single fenced json block containing object. We can include some explanation? They specifically say end your reply with single fenced json code block... Put no other json code block after it. We can provide just code block likely safest. But need compute correct traces.
+
+We need simulate 40 cycles. Circuit has 16 DFFs q0..q15 with init bits: q0=0,q1=0,q2=0,q3=0,q4=1,q5=1,q6=1,q7=1,q8=0,q9=1,q10=0,q11=1,q12=0,q13=1,q14=0,q15=1.
+
+Inputs in0,in1 length 40 given.
+
+Gates are grouped chains c0..c15, each 5 NANDs. For each group i, final c{i}_4 feeds dff q{i} at clock edge (so next state's q_i = combinational function of current q's and current inputs). Need record outputs [q0,q1,q11,q14,q5,q7] each cycle before edge = current state. Thus output trace for cycle t is simply state at beginning of cycle t for those q's. Then update all q to cX_4 computed from current state/input.
+
+Need compute state evolution for 40 cycles. We can derive Boolean functions for next q_i = NAND chain. Since NAND of a,b = ~(a&b). Chains of 5 with repeated signals simplify. Let's derive next-state functions symbolically in terms of current q and inputs to ease. Let for group k:
+
+General pattern c_k_0 = NAND(x0,x1)=~(x0 x1). c_k_1=NAND(c0, x2)= ~(c0 x2)= ~c0 + ~x2 = (x0 x1) + ~x2. Because ~c0 = x0 x1. Then c2=NAND(c1,x3)= ~c1 + ~x3 = ~( (x0x1)+~x2 ) + ~x3 = (~(x0x1) & x2) + ~x3? Let's systematically. A chain of NANDs with inputs s0,s1,s2,s3,s4: n0=~(s0 s1); n1=~(n0 s2)=~n0 + ~s2 = s0 s1 + ~s2. n2=~(n1 s3)= ~n1 + ~s3 = ~(s0s1 + ~s2)+~s3 = (~(s0s1) & s2) + ~s3. n3=~(n2 s4)= ~n2 + ~s4 = ~( (~(s0s1)&s2) + ~s3 ) + ~s4 = ( (s0s1)+~s2 ) & s3 + ~s4? Wait ~(A + ~s3)=~A & s3. A=(~(s0s1)&s2). ~A = (s0s1)+~s2. So n3 = ((s0s1)+~s2) & s3 + ~s4. Then n4=~(n3 s5?) Actually group has 5 NANDs: c0 with inputs a,b; c1 with c0 and third; c2 with c1 and fourth; c3 with c2 and fifth; c4 with c3 and sixth. Yes six input signals s0..s5 (some repeated). Final n4 = ~(n3 s5)= ~n3 + ~s5 = ~( (((s0s1)+~s2)&s3) + ~s4 ) + ~s5 = [~( ((s0s1)+~s2)&s3 ) & s4] + ~s5 = [ ( ~((s0s1)+~s2) + ~s3 ) & s4] + ~s5 = [ ((~(s0s1)&s2) + ~s3) & s4] + ~s5.
+So final F(s0..s5)= ( ((~(s0&s1) & s2) | ~s3) & s4 ) | ~s5. Where ~ is NOT, & AND, | OR. Check by iterative maybe easier. Let's verify with direct recurrence for 5 NANDs:
+n0 = ~ (s0 s1)
+n1 = ~ (n0 s2) = ~n0 ∨ ~s2 = (s0s1) ∨ ~s2.
+n2 = ~ (n1 s3)= ~n1 ∨ ~s3 = ~(s0s1 ∨ ~s2) ∨ ~s3 = (~(s0s1) ∧ s2) ∨ ~s3.
+n3 = ~ (n2 s4)= ~n2 ∨ ~s4 = ~( (~(s0s1)∧s2) ∨ ~s3) ∨ ~s4 = ( (s0s1 ∨ ~s2) ∧ s3) ∨ ~s4. (matches earlier with s3)
+n4 = ~ (n3 s5)= ~n3 ∨ ~s5 = ~( ((s0s1 ∨ ~s2) ∧ s3) ∨ ~s4) ∨ ~s5 = ( ~( (s0s1∨~s2)∧s3) ∧ s4) ∨ ~s5 = ( ( ~(s0s1∨~s2) ∨ ~s3) ∧ s4) ∨ ~s5 = ( ((~(s0s1)∧s2) ∨ ~s3) ∧ s4) ∨ ~s5. Yes.
+
+For each group map s0..s5:
+Group0 (d q0): c0_0 a=q11 (s0), b=q5(s1); c0_1 b=q1(s2); c0_2 b=q8(s3); c0_3 b=q4(s4); c0_4 b=q4(s5). Note s4=s5=q4. Then F0 = ( ((~(q11&q5)&q1) | ~q8) & q4) | ~q4. Since s4=s5=q4. Simplify: (X & q4) | ~q4 = X | ~q4? Because (X&q4) ∨ ~q4 = (X ∨ ~q4) & (q4∨~q4)= X∨~q4. Yes F0 = X ∨ ~q4 where X= ((~(q11 q5)&q1) | ~q8). Actually (X & q4)|~q4 = X | ~q4 (if q4=0 ->1; if q4=1 -> X). Good. X = (~(q11 q5) q1) ∨ ~q8. So next q0 = [ (~(q11&q5) & q1) ∨ ~q8 ] ∨ ~q4. Equivalent if q4=0 =>1; else q0next = (~(q11 q5)&q1) | ~q8.
+
+Group1 (d q1): s0=in1,s1=q1,s2=in0,s3=q6,s4=q2,s5=q14. F1 = ( ((~(in1&q1)&in0) | ~q6) & q2) | ~q14.
+
+Group2 (d q2): s0=q5,s1=q2,s2=q12,s3=q6,s4=q11,s5=q9. F2=( ((~(q5&q2)&q12)|~q6)&q11)|~q9.
+
+Group3 (d q3): s0=in1,s1=q14,s2=q14,s3=in0,s4=q9,s5=q9. s4=s5=q9, s1=s2=q14. F3 = X | ~q9 with X = ((~(in1&q14)&q14) | ~in0) because s2=q14. ~(in1 q14)&q14: if q14=1 -> ~in1 &1 = ~in1; if q14=0 ->0. So X = (q14 & ~in1) | ~in0. Then F3 = (q14&~in1) | ~in0 | ~q9. Since (X&q9)|~q9 = X|~q9. Good.
+
+Group4 (d q4): s0=q4,s1=q13,s2=q9,s3=q8,s4=q4,s5=q8. F4=( ((~(q4&q13)&q9)|~q8)&q4)|~q8. Note s5=q8 same as s3? s3=q8, s5=q8. Formula with s3=s5=r=q8: ((A | ~r)&s4)|~r. If r=0: ~r=1 => A|1=1; (1&s4)|1 =1. If r=1: ~r=0 => A; (A&s4)|0 = A&s4. So F4 = if q8=0 then 1 else (A & q4) where A=~(q4&q13)&q9. If q8=1, F4 = ~(q4&q13)&q9&q4. Since q4 factor: if q4=0 ->0; if q4=1 -> ~q13 & q9. Thus F4 = (q8? (q4 & ~q13 & q9) : 1). Equivalent ~q8 | (q4 & ~q13 & q9). Wait if q8=1 and q4=1 q13=0 q9=1 =>1; formula ~q8 (0) | (1&1&1)=1. Good. But check when q8=1, expression (A&s4)|~s5 = A&q4. A includes ~(q4 q13) q9. If q4=1 A=~q13&q9, times q4 same. yes.
+
+Group5 (d q5): s0=q9,s1=q15,s2=q4,s3=q14,s4=q12,s5=q0. F5=( ((~(q9&q15)&q4)|~q14)&q12)|~q0.
+
+Group6 (d q6): s0=q8,s1=q4,s2=in0,s3=q13,s4=q2,s5=in1. F6=( ((~(q8&q4)&in0)|~q13)&q2)|~in1.
+
+Group7 (d q7): s0=q0,s1=q3,s2=in1,s3=q14,s4=q6,s5=q5. F7=( ((~(q0&q3)&in1)|~q14)&q6)|~q5.
+
+Group8 (d q8): s0=q0,s1=q12,s2=in0,s3=q11,s4=q13,s5=in0. Note s2=s5=in0. F8=( ((~(q0&q12)&in0)|~q11)&q13)|~in0. If in0=0: first term (~(...) &0)=0; A=~q11. F8=(~q11 & q13)|1 =1 (since ~in0=1). If in0=1: F8 = ((~(q0 q12)|~q11)&q13) |0. Since ~in0=0. But ~(q0 q12) | ~q11 = ~(q0 q12 q11)? Actually OR of neg = ~(q0 q12 q11). Then & q13. So for in0=1 F8 = q13 & ~(q0&q12&q11). For in0=0 F8=1. Equivalent ~in0 | (q13 & ~(q0 q12 q11)). Wait if in0=0, formula has (~q11&q13)|1=1 yes.
+
+Group9 (d q9): s0=q9,s1=q1,s2=q5,s3=q13,s4=q13,s5=q4. s3=s4=q13. F9 = ( ((~(q9&q1)&q5)|~q13)&q13)|~q4. Since s3=s4=r=q13: if r=0: A=(...|1)=1; (1&0)|~q4 = ~q4. Wait carefully: expression ((B | ~r)&r)|~q4. If r=0: (B|1)&0 =0; |~q4 => ~q4. If r=1: (B|0)&1 = B; |~q4 = B | ~q4, where B=~(q9 q1)&q5. So F9 = if q13=0 then ~q4 else ( (~(q9&q1)&q5) | ~q4 ). Equivalent (q13 & ~(q9 q1) & q5) | ~q4 | ~q13? Let's derive: result = (B & q13) | ~q4? Wait because ((B | ~r)&r) = B&r (since (B∨~r)∧r = B∧r). Yes simpler! For s3=s4=r, n3? In final expression ((B ∨ ~r) ∧ r) = B∧r. Then F9 = (B & q13) | ~q4. Where B = ~(q9&q1)&q5. Nice. I mistakenly included ~q13; but (B∨~r)&r = B&r, no ~r remains. Check group0 s4=s5=q4 gave (X&q4)|~q4 = X|~q4 (different because last OR ~s5). For group9 s3=s4=q13, s5=q4. The subexpression before final OR is ((B|~q13)&q13) = B&q13. Then final |~q4. So F9 = ( ~(q9&q1) & q5 & q13 ) | ~q4. Good. Need be careful for groups with repeated signals.
+
+Group10 (d q10): s0=q6,s1=q4,s2=q11,s3=q10,s4=q5,s5=q9. F10=( ((~(q6&q4)&q11)|~q10)&q5)|~q9.
+
+Group11 (d q11): s0=q13,s1=q1,s2=q0,s3=in1,s4=q11,s5=q6. F11=( ((~(q13&q1)&q0)|~in1)&q11)|~q6.
+
+Group12 (d q12): s0=q0,s1=q5,s2=q6,s3=q5,s4=q11,s5=q4. s3=q5. F12=( ((~(q0&q5)&q6)|~q5)&q11)|~q4. We can simplify B = ~(q0 q5)&q6 | ~q5. If q5=0: ~(0)=1, B= q6 |1 =1. If q5=1: B= ~q0 & q6 |0 = ~q0&q6. Then F12 = (B&q11)|~q4.
+
+Group13 (d q13): s0=q4,s1=q13,s2=q14,s3=q7,s4=in0,s5=q15. F13=( ((~(q4&q13)&q14)|~q7)&in0)|~q15.
+
+Group14 (d q14): s0=q5,s1=q3,s2=q13,s3=q4,s4=in1,s5=q0. F14=( ((~(q5&q3)&q13)|~q4)&in1)|~q0.
+
+Group15 (d q15): s0=q14,s1=q14,s2=q2,s3=q14,s4=q8,s5=q13. s0=s1=q14, s3=q14. F15=( ((~(q14&q14)&q2)|~q14)&q8)|~q13. Since ~(q14&q14)=~q14. B=(~q14 & q2)|~q14 = ~q14 (because if q14=0 ->1 regardless q2? if q14=0: ~q14=1, B=1|1=1. if q14=1: ~q14=0, B=0|0=0) yes B=~q14. Then F15=(~q14 & q8)|~q13.
+
+Need verify simplifications by maybe direct evaluation for each cycle. Safer to evaluate group functions directly from gate chain per cycle with current state. 40 cycles x 16 groups x 5 gates = 3200 NAND evaluations; possible but error-prone. Simplified formulas reduce. But must be exact. Let's maybe derive all next-state functions cleanly and then compute with a table. Need output only q0,q1,q11,q14,q5,q7 per cycle (current state before update). We can compute state cycles and record.
+
+Because outputs are just current q's, the recorded list for q0 is initial q0 followed by next q0 computed at cycles 0..38? More precisely out[t]=state_t; state_{t+1}=F(state_t,input_t). We need state_t for t=0..39. So compute initial state S0, record selected; for t=0 compute S1 from S0,input0; record S1 at cycle1; etc. Need compute through S39 (recorded cycle39). We need compute updates for t=0..38 to get S39; no need update from S39. But to record q at cycle39 need S39. Good.
+
+Let's define inputs arrays index 0..39:
+in0: [0,0,0,0,1,1,1,1,1,1,0,0,0,0,1,0,1,1,0,0,1,0,1,1,1,0,1,0,1,0,1,1,1,1,0,1,1,0,1,1]
+in1: [0,1,0,1,0,1,1,0,1,0,1,0,1,1,0,0,1,0,0,0,1,1,1,0,1,0,0,1,1,1,1,0,1,0,1,0,1,0,1,0]
+Let's index verify length 40. I'll create table with t, a=in0, b=in1.
+0: a0 b0
+1: 0 1
+2: 0 0
+3: 0 1
+4: 1 0
+5: 1 1
+6: 1 1
+7: 1 0
+8: 1 1
+9: 1 0
+10:0 1
+11:0 0
+12:0 1
+13:0 1
+14:1 0
+15:0 0
+16:1 1
+17:1 0
+18:0 0
+19:0 0
+20:1 1
+21:0 1
+22:1 1
+23:1 0
+24:1 1
+25:0 0
+26:1 0
+27:0 1
+28:1 1
+29:0 1
+30:1 1
+31:1 0
+32:1 1
+33:1 0
+34:0 1
+35:1 0
+36:1 1
+37:0 0
+38:1 1
+39:1 0
+Need check in0 positions: Given in0 list: indices 0 0;1 0;2 0;3 0;4 1;5 1;6 1;7 1;8 1;9 1;10 0;11 0;12 0;13 0;14 1;15 0;16 1;17 1;18 0;19 0;20 1;21 0;22 1;23 1;24 1;25 0;26 1;27 0;28 1;29 0;30 1;31 1;32 1;33 1;34 0;35 1;36 1;37 0;38 1;39 1. Yes.
+in1 list: 0 0;1 1;2 0;3 1;4 0;5 1;6 1;7 0;8 1;9 0;10 1;11 0;12 1;13 1;14 0;15 0;16 1;17 0;18 0;19 0;20 1;21 1;22 1;23 0;24 1;25 0;26 0;27 1;28 1;29 1;30 1;31 0;32 1;33 0;34 1;35 0;36 1;37 0;38 1;39 0. Good.
+
+Initial S0 (t=0): q0 0, q1 0, q2 0, q3 0, q4 1, q5 1, q6 1, q7 1, q8 0, q9 1, q10 0, q11 1, q12 0, q13 1, q14 0, q15 1.
+Record cycle0 outputs: q0=0 q1=0 q11=1 q14=0 q5=1 q7=1.
+
+Now compute next-state functions. Let's finalize formulas for next q (N0..N15) in terms of current S and inputs a=in0, b=in1. Use notation and=*, or=+, not=!. I'll rederive each with direct recurrence maybe and simplify but also keep unsimplified expression to evaluate. Could evaluate using chain formula per group with six signals; that's straightforward and less risk if formula correct. We can compute F_k with expression E = (((( ~(s0&s1) & s2) | ~s3) & s4) | ~s5). This is compact and derived. Let's adopt this expression for all groups; evaluate manually. For repeated signals okay. This formula is exact for 5-NAND chain. Let's test formula with a small example: if s0=s1=1,s2=1,s3=1,s4=1,s5=1. Gate chain: n0=~(1&1)=0; n1=~(0&1)=1; n2=~(1&1)=0; n3=~(0&1)=1; n4=~(1&1)=0. Formula: ~(s0s1)=0 &s2=0 |~s3=0 =>0 &s4=0 |~s5=0 =>0. good. If s5=0 final ~s5=1 output1; chain n4=~(n3&0)=1 yes. Good.
+
+So for each group, define six signals and compute E. I can evaluate using expression. Let's list group signals:
+G0 -> q0 next: s=[q11,q5,q1,q8,q4,q4]
+G1 -> q1 next: [b,q1,a,q6,q2,q14]
+G2 -> q2: [q5,q2,q12,q6,q11,q9]
+G3 -> q3: [b,q14,q14,a,q9,q9]
+G4 -> q4: [q4,q13,q9,q8,q4,q8]
+G5 -> q5: [q9,q15,q4,q14,q12,q0]
+G6 -> q6: [q8,q4,a,q13,q2,b]
+G7 -> q7: [q0,q3,b,q14,q6,q5]
+G8 -> q8: [q0,q12,a,q11,q13,a]
+G9 -> q9: [q9,q1,q5,q13,q13,q4]
+G10 -> q10:[q6,q4,q11,q10,q5,q9]
+G11 -> q11:[q13,q1,q0,b,q11,q6]
+G12 -> q12:[q0,q5,q6,q5,q11,q4]
+G13 -> q13:[q4,q13,q14,q7,a,q15]
+G14 -> q14:[q5,q3,q13,q4,b,q0]
+G15 -> q15:[q14,q14,q2,q14,q8,q13]
+
+Expression E(s): p = (~(s0&s1) & s2) | (~s3); E = (p & s4) | (~s5). All bits. This is simple. We'll compute for each cycle. Need track full state because many dependencies. We'll create state table S_t for t=0..39. Compute S_{t+1} from S_t and input_t. Let's proceed meticulously. I can maybe use further simplifications per group to speed, but expression fine. Need avoid mistakes. Use bit operations. I'll denote state as string q0..q15 maybe. Initial S0 = q0..q15: 0 0 0 0 1 1 1 1 0 1 0 1 0 1 0 1. As string positions 0-15: "0000111101010101"? Let's concatenate: q0 0; q1 0 ->00; q2 0 000; q3 0 0000; q4 1 ->00001; q5 1 ->000011; q6 1 ->0000111; q7 1 ->00001111; q8 0 ->000011110; q9 1 ->0000111101; q10 0 ->00001111010; q11 1 ->000011110101; q12 0 ->0000111101010; q13 1 ->00001111010101; q14 0 ->000011110101010; q15 1 ->0000111101010101. Yes S0 string = 0000111101010101 (length16). Good. But I'll track individual.
+
+Maybe we can derive transition using current state and inputs; do cycle by cycle. I will make a table with t, input (a,b), current selected outputs, and next state string. Need record selected outputs for all t. I'll also compute full next state string.
+
+Let's define for expression E(s): compute u = s0&s1; v = (1-u)&s2; w = v | (1-s3); E = (w & s4) | (1-s5). Since bits. This formula: if s5=0, E=1 regardless. If s5=1, E = w&s4 = s4 & ( ((~(s0s1))&s2) | ~s3 ). Good. This helps: E=1 if s5=0; else E = s4 & [ (~(s0&s1)&s2) | ~s3 ]. Nice. Use that.
+
+For each group, if last signal s5=0 then next=1; else compute.
+
+Let's compute cycle t=0 -> S1.
+Current S0: q0=0 q1=0 q2=0 q3=0 q4=1 q5=1 q6=1 q7=1 q8=0 q9=1 q10=0 q11=1 q12=0 q13=1 q14=0 q15=1. input a=0,b=0.
+Evaluate each G:
+G0 s=[q11=1,q5=1,q1=0,q8=0,q4=1,q4=1]. s5=1 so E= s4(1) & [ (~(1&1)=0 & q1=0 ->0) | ~s3=~0=1 ] =1&(0|1)=1. N0=1. (matches q4=1, q8=0 -> ~q8=1)
+G1 s=[b0,q1=0,a0,q6=1,q2=0,q14=0]. s5=q14=0 -> N1=1. (Even though q2=0; final OR ~q14=1) N1=1.
+G2 s=[q5=1,q2=0,q12=0,q6=1,q11=1,q9=1]. s5=1; s0&s1=1&0=0 ~=1; &s2 q12=0 =>0; |~s3=~q6=0 =>0; &s4 q11=1 =>0. N2=0.
+G3 s=[b0,q14=0,q14=0,a0,q9=1,q9=1]. s5=q9=1; s0&s1=0&0=0 ~=1; &s2 q14=0 =>0; |~s3=~a=1 =>1; &s4 q9=1 =>1. N3=1. (formula q14&~b=0 | ~a=1 |~q9=0 =1)
+G4 s=[q4=1,q13=1,q9=1,q8=0,q4=1,q8=0]. s5=q8=0 -> N4=1.
+G5 s=[q9=1,q15=1,q4=1,q14=0,q12=0,q0=0]. s5=q0=0 -> N5=1.
+G6 s=[q8=0,q4=1,a0,q13=1,q2=0,b0]. s5=b=0 -> N6=1.
+G7 s=[q0=0,q3=0,b0,q14=0,q6=1,q5=1]. s5=q5=1; s0&s1=0; ~=1 & s2 b0=0 =>0; |~s3=~q14=1 =>1; &s4 q6=1=>1. N7=1.
+G8 s=[q0=0,q12=0,a0,q11=1,q13=1,a0]. s5=a=0 -> N8=1.
+G9 s=[q9=1,q1=0,q5=1,q13=1,q13=1,q4=1]. s5=q4=1; s0&s1=1&0=0 ~=1 &s2 q5=1=>1; |~s3=~q13=0 =>1; &s4 q13=1=>1. N9=1.
+G10 s=[q6=1,q4=1,q11=1,q10=0,q5=1,q9=1]. s5=1; s0&s1=1&1=1 ~=0 &s2 q11=1=>0; |~s3=~q10=1 =>1; &s4 q5=1=>1. N10=1.
+G11 s=[q13=1,q1=0,q0=0,b0,q11=1,q6=1]. s5=q6=1; s0&s1=1&0=0 ~=1 &s2 q0=0=>0; |~s3=~b=1 =>1; &s4 q11=1=>1. N11=1.
+G12 s=[q0=0,q5=1,q6=1,q5=1,q11=1,q4=1]. s5=q4=1; s0&s1=0&1=0 ~=1 &s2 q6=1=>1; |~s3=~q5=0 =>1; &s4 q11=1=>1. N12=1.
+G13 s=[q4=1,q13=1,q14=0,q7=1,a0,q15=1]. s5=q15=1; s0&s1=1&1=1 ~=0 &s2 q14=0=>0; |~s3=~q7=0=>0; &s4 a0=0=>0. N13=0.
+G14 s=[q5=1,q3=0,q13=1,q4=1,b0,q0=0]. s5=q0=0 -> N14=1.
+G15 s=[q14=0,q14=0,q2=0,q14=0,q8=0,q13=1]. s5=q13=1; s0&s1=0; ~=1 &s2 q2=0=>0; |~s3=~q14=1=>1; &s4 q8=0=>0. N15=0. (simplified ~q14=1 & q8=0 |~q13=0 =>0)
+S1: q0=1,q1=1,q2=0,q3=1,q4=1,q5=1,q6=1,q7=1,q8=1,q9=1,q10=1,q11=1,q12=1,q13=0,q14=1,q15=0. String q0..15: 1 1 0 1 1 1 1 1 1 1 1 1 1 0 1 0 = "1101111111111010"? Count: positions:0=1,1=1 (11),2=0 (110),3=1 (1101),4=1 (11011),5=1 (110111),6=1 (1101111),7=1 (11011111),8=1 (110111111),9=1 (1101111111),10=1 (11011111111),11=1 (110111111111),12=1 (1101111111111),13=0 (11011111111110),14=1 (110111111111101),15=0 ->1101111111111010. yes.
+Record cycle1 outputs from S1: q0=1 q1=1 q11=1 q14=1 q5=1 q7=1.
+
+t=1: input a=in0[1]=0, b=in1[1]=1. Current S1 as above. Compute S2.
+State S1: q0 1 q1 1 q2 0 q3 1 q4 1 q5 1 q6 1 q7 1 q8 1 q9 1 q10 1 q11 1 q12 1 q13 0 q14 1 q15 0.
+G0 s=[q11=1,q5=1,q1=1,q8=1,q4=1,q4=1]. s5=1; s0&s1=1 ~=0 &s2 q1=1=>0; |~s3=~q8=0 =>0; &s4=1 =>0. N0=0.
+G1 s=[b=1,q1=1,a=0,q6=1,q2=0,q14=1]. s5=q14=1; s0&s1=1&1=1 ~=0 &s2 a0=>0; |~s3=~q6=0 =>0; &s4 q2=0=>0. N1=0.
+G2 s=[q5=1,q2=0,q12=1,q6=1,q11=1,q9=1]. s5=1; s0&s1=1&0=0 ~=1 &s2 q12=1=>1; |~s3=~q6=0 =>1; &s4 q11=1=>1. N2=1.
+G3 s=[b=1,q14=1,q14=1,a=0,q9=1,q9=1]. s5=1; s0&s1=1&1=1 ~=0 &s2 q14=1=>0; |~s3=~a=1 =>1; &s4 q9=1=>1. N3=1. (q14&~b=0 |~a=1)
+G4 s=[q4=1,q13=0,q9=1,q8=1,q4=1,q8=1]. s5=q8=1; s0&s1=1&0=0 ~=1 &s2 q9=1=>1; |~s3=~q8=0=>1; &s4 q4=1=>1. N4=1. (q8=1, q4&~q13&q9=1)
+G5 s=[q9=1,q15=0,q4=1,q14=1,q12=1,q0=1]. s5=q0=1; s0&s1=1&0=0 ~=1 &s2 q4=1=>1; |~s3=~q14=0=>1; &s4 q12=1=>1. N5=1.
+G6 s=[q8=1,q4=1,a=0,q13=0,q2=0,b=1]. s5=b=1; s0&s1=1&1=1 ~=0 &s2 a0=>0; |~s3=~q13=1=>1; &s4 q2=0=>0. N6=0.
+G7 s=[q0=1,q3=1,b=1,q14=1,q6=1,q5=1]. s5=q5=1; s0&s1=1&1=1 ~=0 &s2 b1=>0; |~s3=~q14=0=>0; &s4 q6=1=>0. N7=0.
+G8 s=[q0=1,q12=1,a=0,q11=1,q13=0,a=0]. s5=a=0 -> N8=1.
+G9 s=[q9=1,q1=1,q5=1,q13=0,q13=0,q4=1]. s5=q4=1; s0&s1=1&1=1 ~=0 &s2 q5=1=>0; |~s3=~q13=1=>1; &s4 q13=0=>0. N9=0. (formula B&q13=0 |~q4=0)
+G10 s=[q6=1,q4=1,q11=1,q10=1,q5=1,q9=1]. s5=q9=1; s0&s1=1 ~=0 &q11=1=>0; |~q10=0=>0; &q5=1=>0. N10=0.
+G11 s=[q13=0,q1=1,q0=1,b=1,q11=1,q6=1]. s5=q6=1; s0&s1=0&1=0 ~=1 &s2 q0=1=>1; |~s3=~b=0=>1; &s4 q11=1=>1. N11=1.
+G12 s=[q0=1,q5=1,q6=1,q5=1,q11=1,q4=1]. s5=q4=1; s0&s1=1&1=1 ~=0 &s2 q6=1=>0; |~s3=~q5=0=>0; &s4 q11=1=>0. N12=0.
+G13 s=[q4=1,q13=0,q14=1,q7=1,a=0,q15=0]. s5=q15=0 -> N13=1.
+G14 s=[q5=1,q3=1,q13=0,q4=1,b=1,q0=1]. s5=q0=1; s0&s1=1&1=1 ~=0 &s2 q13=0=>0; |~s3=~q4=0=>0; &s4 b=1=>0. N14=0.
+G15 s=[q14=1,q14=1,q2=0,q14=1,q8=1,q13=0]. s5=q13=0 -> N15=1.
+S2: q0 0,q1 0,q2 1,q3 1,q4 1,q5 1,q6 0,q7 0,q8 1,q9 0,q10 0,q11 1,q12 0,q13 1,q14 0,q15 1. String: positions 0 0;1 0 =>00;2 1=>001;3 1=>0011;4 1=>00111;5 1=>001111;6 0=>0011110;7 0=>00111100;8 1=>001111001;9 0=>0011110010;10 0=>00111100100;11 1=>001111001001;12 0=>0011110010010;13 1=>00111100100101;14 0=>001111001001010;15 1=>0011110010010101. String "0011110010010101". Check q13=1 q15=1.
+Record cycle2 outputs S2: q0=0,q1=0,q11=1,q14=0,q5=1,q7=0.
+
+t=2: input a=0,b=0. Current S2 above. Compute S3.
+S2: q0=0 q1=0 q2=1 q3=1 q4=1 q5=1 q6=0 q7=0 q8=1 q9=0 q10=0 q11=1 q12=0 q13=1 q14=0 q15=1.
+G0 s=[q11=1,q5=1,q1=0,q8=1,q4=1,q4=1]. s5=1; s0&s1=1 ~=0 &q1=0=>0 |~q8=0 =>0 &q4=1=>0. N0=0.
+G1 s=[b0,q1=0,a0,q6=0,q2=1,q14=0]. s5=q14=0 -> N1=1.
+G2 s=[q5=1,q2=1,q12=0,q6=0,q11=1,q9=0]. s5=q9=0 -> N2=1.
+G3 s=[b0,q14=0,q14=0,a0,q9=0,q9=0]. s5=q9=0 -> N3=1.
+G4 s=[q4=1,q13=1,q9=0,q8=1,q4=1,q8=1]. s5=q8=1; s0&s1=1&1=1 ~=0 &s2 q9=0=>0 |~s3=~q8=0=>0 &s4 q4=1=>0. N4=0.
+G5 s=[q9=0,q15=1,q4=1,q14=0,q12=0,q0=0]. s5=q0=0 -> N5=1.
+G6 s=[q8=1,q4=1,a0,q13=1,q2=1,b0]. s5=b=0 -> N6=1.
+G7 s=[q0=0,q3=1,b0,q14=0,q6=0,q5=1]. s5=q5=1; s0&s1=0&1=0 ~=1 &s2 b0=0=>0 |~s3=~q14=1=>1 &s4 q6=0=>0. N7=0.
+G8 s=[q0=0,q12=0,a0,q11=1,q13=1,a0]. s5=a=0 -> N8=1.
+G9 s=[q9=0,q1=0,q5=1,q13=1,q13=1,q4=1]. s5=q4=1; s0&s1=0 ~=1 &q5=1=>1 |~q13=0=>1 &q13=1=>1. N9=1. (B=1)
+G10 s=[q6=0,q4=1,q11=1,q10=0,q5=1,q9=1]. s5=q9=1; s0&s1=0&1=0 ~=1 &q11=1=>1 |~q10=1=>1 &q5=1=>1. N10=1.
+G11 s=[q13=1,q1=0,q0=0,b0,q11=1,q6=0]. s5=q6=0 -> N11=1.
+G12 s=[q0=0,q5=1,q6=0,q5=1,q11=1,q4=1]. s5=q4=1; s0&s1=0&1=0 ~=1 &s2 q6=0=>0 |~s3=~q5=0=>0 &s4 q11=1=>0. N12=0.
+G13 s=[q4=1,q13=1,q14=0,q7=0,a0,q15=1]. s5=q15=1; s0&s1=1&1=1 ~=0 &s2 q14=0=>0 |~s3=~q7=1=>1 &s4 a0=0=>0. N13=0.
+G14 s=[q5=1,q3=1,q13=1,q4=1,b0,q0=0]. s5=q0=0 -> N14=1.
+G15 s=[q14=0,q14=0,q2=1,q14=0,q8=1,q13=1]. s5=q13=1; s0&s1=0 ~=1 &s2 q2=1=>1 |~s3=~q14=1=>1 &s4 q8=1=>1. N15=1. (simplified ~q14=1&q8=1 |~q13=0 =1)
+S3: q0=0,q1=1,q2=1,q3=1,q4=0,q5=1,q6=1,q7=0,q8=1,q9=1,q10=1,q11=1,q12=0,q13=0,q14=1,q15=1. String: 0 1 1 1 0 1 1 0 1 1 1 1 0 0 1 1 = "0111011011110011"? Let's concatenate carefully: q0 0; q1 1 ->01; q2 1 ->011; q3 1 ->0111; q4 0 ->01110; q5 1 ->011101; q6 1 ->0111011; q7 0 ->01110110; q8 1 ->011101101; q9 1 ->0111011011; q10 1 ->01110110111; q11 1 ->011101101111; q12 0 ->0111011011110; q13 0 ->01110110111100; q14 1 ->011101101111001; q15 1 ->0111011011110011. yes.
+Record cycle3 outputs S3: q0=0,q1=1,q11=1,q14=1,q5=1,q7=0.
+
+t=3: input a=0,b=1. Current S3. Compute S4.
+S3: q0=0 q1=1 q2=1 q3=1 q4=0 q5=1 q6=1 q7=0 q8=1 q9=1 q10=1 q11=1 q12=0 q13=0 q14=1 q15=1.
+G0 s=[q11=1,q5=1,q1=1,q8=1,q4=0,q4=0]. s5=q4=0 -> N0=1.
+G1 s=[b=1,q1=1,a=0,q6=1,q2=1,q14=1]. s5=q14=1; s0&s1=1&1=1 ~=0 &s2 a0=>0 |~s3=~q6=0=>0 &s4 q2=1=>0. N1=0.
+G2 s=[q5=1,q2=1,q12=0,q6=1,q11=1,q9=1]. s5=q9=1; s0&s1=1&1=1 ~=0 &s2 q12=0=>0 |~s3=~q6=0=>0 &s4 q11=1=>0. N2=0.
+G3 s=[b=1,q14=1,q14=1,a=0,q9=1,q9=1]. s5=q9=1; s0&s1=1&1=1 ~=0 &s2 q14=1=>0 |~s3=~a=1=>1 &s4 q9=1=>1. N3=1.
+G4 s=[q4=0,q13=0,q9=1,q8=1,q4=0,q8=1]. s5=q8=1; s0&s1=0&0=0 ~=1 &s2 q9=1=>1 |~s3=~q8=0=>1 &s4 q4=0=>0. N4=0.
+G5 s=[q9=1,q15=1,q4=0,q14=1,q12=0,q0=0]. s5=q0=0 -> N5=1.
+G6 s=[q8=1,q4=0,a=0,q13=0,q2=1,b=1]. s5=b=1; s0&s1=1&0=0 ~=1 &s2 a0=0=>0 |~s3=~q13=1=>1 &s4 q2=1=>1. N6=1.
+G7 s=[q0=0,q3=1,b=1,q14=1,q6=1,q5=1]. s5=q5=1; s0&s1=0&1=0 ~=1 &s2 b=1=>1 |~s3=~q14=0=>1 &s4 q6=1=>1. N7=1.
+G8 s=[q0=0,q12=0,a=0,q11=1,q13=0,a=0]. s5=a=0 -> N8=1.
+G9 s=[q9=1,q1=1,q5=1,q13=0,q13=0,q4=0]. s5=q4=0 -> N9=1.
+G10 s=[q6=1,q4=0,q11=1,q10=1,q5=1,q9=1]. s5=q9=1; s0&s1=1&0=0 ~=1 &q11=1=>1 |~q10=0=>1 &q5=1=>1. N10=1.
+G11 s=[q13=0,q1=1,q0=0,b=1,q11=1,q6=1]. s5=q6=1; s0&s1=0&1=0 ~=1 &s2 q0=0=>0 |~s3=~b=0=>0 &s4 q11=1=>0. N11=0.
+G12 s=[q0=0,q5=1,q6=1,q5=1,q11=1,q4=0]. s5=q4=0 -> N12=1.
+G13 s=[q4=0,q13=0,q14=1,q7=0,a=0,q15=1]. s5=q15=1; s0&s1=0 ~=1 &s2 q14=1=>1 |~s3=~q7=1=>1 &s4 a=0=>0. N13=0.
+G14 s=[q5=1,q3=1,q13=0,q4=0,b=1,q0=0]. s5=q0=0 -> N14=1.
+G15 s=[q14=1,q14=1,q2=1,q14=1,q8=1,q13=0]. s5=q13=0 -> N15=1.
+S4: q0=1,q1=0,q2=0,q3=1,q4=0,q5=1,q6=1,q7=1,q8=1,q9=1,q10=1,q11=0,q12=1,q13=0,q14=1,q15=1. String: 1 0 0 1 0 1 1 1 1 1 1 0 1 0 1 1 = "1001011111101011"? Concatenate: q0 1; q1 0=10; q2 0=100; q3 1=1001; q4 0=10010; q5 1=100101; q6 1=1001011; q7 1=10010111; q8 1=100101111; q9 1=1001011111; q10 1=10010111111; q11 0=100101111110; q12 1=1001011111101; q13 0=10010111111010; q14 1=100101111110101; q15 1=1001011111101011. yes.
+Record cycle4 outputs S4: q0=1,q1=0,q11=0,q14=1,q5=1,q7=1.
+
+t=4: input a=1,b=0. Current S4. Compute S5.
+S4: q0 1 q1 0 q2 0 q3 1 q4 0 q5 1 q6 1 q7 1 q8 1 q9 1 q10 1 q11 0 q12 1 q13 0 q14 1 q15 1.
+G0 s=[q11=0,q5=1,q1=0,q8=1,q4=0,q4=0]. s5=q4=0 -> N0=1.
+G1 s=[b=0,q1=0,a=1,q6=1,q2=0,q14=1]. s5=q14=1; s0&s1=0&0=0 ~=1 &s2 a=1=>1 |~s3=~q6=0=>1 &s4 q2=0=>0. N1=0.
+G2 s=[q5=1,q2=0,q12=1,q6=1,q11=0,q9=1]. s5=q9=1; s0&s1=1&0=0 ~=1 &s2 q12=1=>1 |~s3=~q6=0=>1 &s4 q11=0=>0. N2=0.
+G3 s=[b=0,q14=1,q14=1,a=1,q9=1,q9=1]. s5=q9=1; s0&s1=0&1=0 ~=1 &s2 q14=1=>1 |~s3=~a=0=>1 &s4 q9=1=>1. N3=1. (q14&~b=1 |~a=0)
+G4 s=[q4=0,q13=0,q9=1,q8=1,q4=0,q8=1]. s5=q8=1; s0&s1=0 ~=1 &q9=1=>1 |~q8=0=>1 &s4 q4=0=>0. N4=0.
+G5 s=[q9=1,q15=1,q4=0,q14=1,q12=1,q0=1]. s5=q0=1; s0&s1=1&1=1 ~=0 &s2 q4=0=>0 |~s3=~q14=0=>0 &s4 q12=1=>0. N5=0.
+G6 s=[q8=1,q4=0,a=1,q13=0,q2=0,b=0]. s5=b=0 -> N6=1.
+G7 s=[q0=1,q3=1,b=0,q14=1,q6=1,q5=1]. s5=q5=1; s0&s1=1&1=1 ~=0 &s2 b0=>0 |~s3=~q14=0=>0 &s4 q6=1=>0. N7=0.
+G8 s=[q0=1,q12=1,a=1,q11=0,q13=0,a=1]. s5=a=1; s0&s1=1&1=1 ~=0 &s2 a=1=>0 |~s3=~q11=1=>1 &s4 q13=0=>0. N8=0. (formula in0=1: q13=0 so 0)
+G9 s=[q9=1,q1=0,q5=1,q13=0,q13=0,q4=0]. s5=q4=0 -> N9=1.
+G10 s=[q6=1,q4=0,q11=0,q10=1,q5=1,q9=1]. s5=q9=1; s0&s1=1&0=0 ~=1 &s2 q11=0=>0 |~s3=~q10=0=>0 &s4 q5=1=>0. N10=0.
+G11 s=[q13=0,q1=0,q0=1,b=0,q11=0,q6=1]. s5=q6=1; s0&s1=0 ~=1 &s2 q0=1=>1 |~s3=~b=1=>1 &s4 q11=0=>0. N11=0.
+G12 s=[q0=1,q5=1,q6=1,q5=1,q11=0,q4=0]. s5=q4=0 -> N12=1.
+G13 s=[q4=0,q13=0,q14=1,q7=1,a=1,q15=1]. s5=q15=1; s0&s1=0 ~=1 &s2 q14=1=>1 |~s3=~q7=0=>1 &s4 a=1=>1. N13=1.
+G14 s=[q5=1,q3=1,q13=0,q4=0,b=0,q0=1]. s5=q0=1; s0&s1=1&1=1 ~=0 &s2 q13=0=>0 |~s3=~q4=1=>1 &s4 b=0=>0. N14=0.
+G15 s=[q14=1,q14=1,q2=0,q14=1,q8=1,q13=1]. s5=q13=1; s0&s1=1&1=1 ~=0 &s2 q2=0=>0 |~s3=~q14=0=>0 &s4 q8=1=>0. N15=0. (simplified ~q14=0 &... |~q13=0 =>0)
+S5: q0=1,q1=0,q2=0,q3=1,q4=0,q5=0,q6=1,q7=0,q8=0,q9=1,q10=0,q11=0,q12=1,q13=1,q14=0,q15=0. String: 1 0 0 1 0 0 1 0 0 1 0 0 1 1 0 0 = "1001001001001100"? Concatenate: q0 1; q1 0=10; q2 0=100; q3 1=1001; q4 0=10010; q5 0=100100; q6 1=1001001; q7 0=10010010; q8 0=100100100; q9 1=1001001001; q10 0=10010010010; q11 0=100100100100; q12 1=1001001001001; q13 1=10010010010011; q14 0=100100100100110; q15 0=1001001001001100. yes.
+Record cycle5 outputs S5: q0=1,q1=0,q11=0,q14=0,q5=0,q7=0.
+
+t=5: input a=1,b=1. Current S5. Compute S6.
+S5: q0=1 q1=0 q2=0 q3=1 q4=0 q5=0 q6=1 q7=0 q8=0 q9=1 q10=0 q11=0 q12=1 q13=1 q14=0 q15=0.
+G0 s=[q11=0,q5=0,q1=0,q8=0,q4=0,q4=0]. s5=q4=0 -> N0=1.
+G1 s=[b=1,q1=0,a=1,q6=1,q2=0,q14=0]. s5=q14=0 -> N1=1.
+G2 s=[q5=0,q2=0,q12=1,q6=1,q11=0,q9=1]. s5=q9=1; s0&s1=0 ~=1 &s2 q12=1=>1 |~s3=~q6=0=>1 &s4 q11=0=>0. N2=0.
+G3 s=[b=1,q14=0,q14=0,a=1,q9=1,q9=1]. s5=q9=1; s0&s1=1&0=0 ~=1 &s2 q14=0=>0 |~s3=~a=0=>0 &s4 q9=1=>0. N3=0. (q14&~b=0 |~a=0 |~q9=0)
+G4 s=[q4=0,q13=1,q9=1,q8=0,q4=0,q8=0]. s5=q8=0 -> N4=1.
+G5 s=[q9=1,q15=0,q4=0,q14=0,q12=1,q0=1]. s5=q0=1; s0&s1=1&0=0 ~=1 &s2 q4=0=>0 |~s3=~q14=1=>1 &s4 q12=1=>1. N5=1.
+G6 s=[q8=0,q4=0,a=1,q13=1,q2=0,b=1]. s5=b=1; s0&s1=0 ~=1 &s2 a=1=>1 |~s3=~q13=0=>1 &s4 q2=0=>0. N6=0.
+G7 s=[q0=1,q3=1,b=1,q14=0,q6=1,q5=0]. s5=q5=0 -> N7=1.
+G8 s=[q0=1,q12=1,a=1,q11=0,q13=1,a=1]. s5=a=1; s0&s1=1&1=1 ~=0 &s2 a=1=>0 |~s3=~q11=1=>1 &s4 q13=1=>1. N8=1.
+G9 s=[q9=1,q1=0,q5=0,q13=1,q13=1,q4=0]. s5=q4=0 -> N9=1.
+G10 s=[q6=1,q4=0,q11=0,q10=0,q5=0,q9=1]. s5=q9=1; s0&s1=1&0=0 ~=1 &s2 q11=0=>0 |~s3=~q10=1=>1 &s4 q5=0=>0. N10=0.
+G11 s=[q13=1,q1=0,q0=1,b=1,q11=0,q6=1]. s5=q6=1; s0&s1=1&0=0 ~=1 &s2 q0=1=>1 |~s3=~b=0=>1 &s4 q11=0=>0. N11=0.
+G12 s=[q0=1,q5=0,q6=1,q5=0,q11=0,q4=0]. s5=q4=0 -> N12=1.
+G13 s=[q4=0,q13=1,q14=0,q7=0,a=1,q15=0]. s5=q15=0 -> N13=1.
+G14 s=[q5=0,q3=1,q13=1,q4=0,b=1,q0=1]. s5=q0=1; s0&s1=0&1=0 ~=1 &s2 q13=1=>1 |~s3=~q4=1=>1 &s4 b=1=>1. N14=1.
+G15 s=[q14=0,q14=0,q2=0,q14=0,q8=0,q13=1]. s5=q13=1; s0&s1=0 ~=1 &s2 q2=0=>0 |~s3=~q14=1=>1 &s4 q8=0=>0. N15=0.
+S6: q0=1,q1=1,q2=0,q3=0,q4=1,q5=1,q6=0,q7=1,q8=1,q9=1,q10=0,q11=0,q12=1,q13=1,q14=1,q15=0. String: 1 1 0 0 1 1 0 1 1 1 0 0 1 1 1 0 = "1100110111001110"? Concatenate: 1;1=11;0=110;0=1100;1=11001;1=110011;0=1100110;1=11001101;1=110011011;1=1100110111;0=11001101110;0=110011011100;1=1100110111001;1=11001101110011;1=110011011100111;0=1100110111001110. yes.
+Record cycle6 outputs S6: q0=1,q1=1,q11=0,q14=1,q5=1,q7=1.
+
+t=6: input a=1,b=1. Current S6. Compute S7.
+S6: q0=1 q1=1 q2=0 q3=0 q4=1 q5=1 q6=0 q7=1 q8=1 q9=1 q10=0 q11=0 q12=1 q13=1 q14=1 q15=0.
+G0 s=[q11=0,q5=1,q1=1,q8=1,q4=1,q4=1]. s5=1; s0&s1=0&1=0 ~=1 &s2 q1=1=>1 |~s3=~q8=0=>1 &s4 q4=1=>1. N0=1.
+G1 s=[b=1,q1=1,a=1,q6=0,q2=0,q14=1]. s5=q14=1; s0&s1=1&1=1 ~=0 &s2 a=1=>0 |~s3=~q6=1=>1 &s4 q2=0=>0. N1=0.
+G2 s=[q5=1,q2=0,q12=1,q6=0,q11=0,q9=1]. s5=q9=1; s0&s1=1&0=0 ~=1 &s2 q12=1=>1 |~s3=~q6=1=>1 &s4 q11=0=>0. N2=0.
+G3 s=[b=1,q14=1,q14=1,a=1,q9=1,q9=1]. s5=q9=1; s0&s1=1&1=1 ~=0 &s2 q14=1=>0 |~s3=~a=0=>0 &s4 q9=1=>0. N3=0.
+G4 s=[q4=1,q13=1,q9=1,q8=1,q4=1,q8=1]. s5=q8=1; s0&s1=1&1=1 ~=0 &s2 q9=1=>0 |~s3=~q8=0=>0 &s4 q4=1=>0. N4=0.
+G5 s=[q9=1,q15=0,q4=1,q14=1,q12=1,q0=1]. s5=q0=1; s0&s1=1&0=0 ~=1 &s2 q4=1=>1 |~s3=~q14=0=>1 &s4 q12=1=>1. N5=1.
+G6 s=[q8=1,q4=1,a=1,q13=1,q2=0,b=1]. s5=b=1; s0&s1=1&1=1 ~=0 &s2 a=1=>0 |~s3=~q13=0=>0 &s4 q2=0=>0. N6=0.
+G7 s=[q0=1,q3=0,b=1,q14=1,q6=0,q5=1]. s5=q5=1; s0&s1=1&0=0 ~=1 &s2 b=1=>1 |~s3=~q14=0=>1 &s4 q6=0=>0. N7=0.
+G8 s=[q0=1,q12=1,a=1,q11=0,q13=1,a=1]. s5=a=1; s0&s1=1&1=1 ~=0 &s2 a=1=>0 |~s3=~q11=1=>1 &s4 q13=1=>1. N8=1.
+G9 s=[q9=1,q1=1,q5=1,q13=1,q13=1,q4=1]. s5=q4=1; s0&s1=1&1=1 ~=0 &s2 q5=1=>0 |~s3=~q13=0=>0 &s4 q13=1=>0. N9=0.
+G10 s=[q6=0,q4=1,q11=0,q10=0,q5=1,q9=1]. s5=q9=1; s0&s1=0&1=0 ~=1 &s2 q11=0=>0 |~s3=~q10=1=>1 &s4 q5=1=>1. N10=1.
+G11 s=[q13=1,q1=1,q0=1,b=1,q11=0,q6=0]. s5=q6=0 -> N11=1.
+G12 s=[q0=1,q5=1,q6=0,q5=1,q11=0,q4=1]. s5=q4=1; s0&s1=1&1=1 ~=0 &s2 q6=0=>0 |~s3=~q5=0=>0 &s4 q11=0=>0. N12=0.
+G13 s=[q4=1,q13=1,q14=1,q7=1,a=1,q15=0]. s5=q15=0 -> N13=1.
+G14 s=[q5=1,q3=0,q13=1,q4=1,b=1,q0=1]. s5=q0=1; s0&s1=1&0=0 ~=1 &s2 q13=1=>1 |~s3=~q4=0=>1 &s4 b=1=>1. N14=1.
+G15 s=[q14=1,q14=1,q2=0,q14=1,q8=1,q13=1]. s5=q13=1; s0&s1=1 ~=0 &s2 q2=0=>0 |~s3=~q14=0=>0 &s4 q8=1=>0. N15=0.
+S7: q0=1,q1=0,q2=0,q3=0,q4=0,q5=1,q6=0,q7=0,q8=1,q9=0,q10=1,q11=1,q12=0,q13=1,q14=1,q15=0. String: 1 0 0 0 0 1 0 0 1 0 1 1 0 1 1 0 = "1000010010110110"? Concatenate: q0 1; q1 0=10; q2 0=100; q3 0=1000; q4 0=10000; q5 1=100001; q6 0=1000010; q7 0=10000100; q8 1=100001001; q9 0=1000010010; q10 1=10000100101; q11 1=100001001011; q12 0=1000010010110; q13 1=10000100101101; q14 1=100001001011011; q15 0=1000010010110110. yes.
+Record cycle7 outputs S7: q0=1,q1=0,q11=1,q14=1,q5=1,q7=0.
+
+t=7: input a=1,b=0. Current S7. Compute S8.
+S7: q0=1 q1=0 q2=0 q3=0 q4=0 q5=1 q6=0 q7=0 q8=1 q9=0 q10=1 q11=1 q12=0 q13=1 q14=1 q15=0.
+G0 s=[q11=1,q5=1,q1=0,q8=1,q4=0,q4=0]. s5=q4=0 -> N0=1.
+G1 s=[b=0,q1=0,a=1,q6=0,q2=0,q14=1]. s5=q14=1; s0&s1=0 ~=1 &s2 a=1=>1 |~s3=~q6=1=>1 &s4 q2=0=>0. N1=0.
+G2 s=[q5=1,q2=0,q12=0,q6=0,q11=1,q9=0]. s5=q9=0 -> N2=1.
+G3 s=[b=0,q14=1,q14=1,a=1,q9=0,q9=0]. s5=q9=0 -> N3=1.
+G4 s=[q4=0,q13=1,q9=0,q8=1,q4=0,q8=1]. s5=q8=1; s0&s1=0&1=0 ~=1 &s2 q9=0=>0 |~s3=~q8=0=>0 &s4 q4=0=>0. N4=0.
+G5 s=[q9=0,q15=0,q4=0,q14=1,q12=0,q0=1]. s5=q0=1; s0&s1=0 ~=1 &s2 q4=0=>0 |~s3=~q14=0=>0 &s4 q12=0=>0. N5=0.
+G6 s=[q8=1,q4=0,a=1,q13=1,q2=0,b=0]. s5=b=0 -> N6=1.
+G7 s=[q0=1,q3=0,b=0,q14=1,q6=0,q5=1]. s5=q5=1; s0&s1=1&0=0 ~=1 &s2 b0=>0 |~s3=~q14=0=>0 &s4 q6=0=>0. N7=0.
+G8 s=[q0=1,q12=0,a=1,q11=1,q13=1,a=1]. s5=a=1; s0&s1=1&0=0 ~=1 &s2 a=1=>1 |~s3=~q11=0=>1 &s4 q13=1=>1. N8=1.
+G9 s=[q9=0,q1=0,q5=1,q13=1,q13=1,q4=0]. s5=q4=0 -> N9=1.
+G10 s=[q6=0,q4=0,q11=1,q10=1,q5=1,q9=0]. s5=q9=0 -> N10=1.
+G11 s=[q13=1,q1=0,q0=1,b=0,q11=1,q6=0]. s5=q6=0 -> N11=1.
+G12 s=[q0=1,q5=1,q6=0,q5=1,q11=1,q4=0]. s5=q4=0 -> N12=1.
+G13 s=[q4=0,q13=1,q14=1,q7=0,a=1,q15=0]. s5=q15=0 -> N13=1.
+G14 s=[q5=1,q3=0,q13=1,q4=0,b=0,q0=1]. s5=q0=1; s0&s1=1&0=0 ~=1 &s2 q13=1=>1 |~s3=~q4=1=>1 &s4 b=0=>0. N14=0.
+G15 s=[q14=1,q14=1,q2=0,q14=1,q8=1,q13=1]. s5=q13=1; s0&s1=1 ~=0 &s2 q2=0=>0 |~q14=0=>0 &q8=1=>0. N15=0.
+S8: q0=1,q1=0,q2=1,q3=1,q4=0,q5=0,q6=1,q7=0,q8=1,q9=1,q10=1,q11=1,q12=1,q13=1,q14=0,q15=0. String: 1 0 1 1 0 0 1 0 1 1 1 1 1 1 0 0 = "1011001011111100"? Concatenate: 1;0=10;1=101;1=1011;0=10110;0=101100;1=1011001;0=10110010;1=101100101;1=1011001011;1=10110010111;1=101100101111;1=1011001011111;1=10110010111111;0=101100101111110;0=1011001011111100. yes.
+Record cycle8 outputs S8: q0=1,q1=0,q11=1,q14=0,q5=0,q7=0.
+
+t=8: input a=1,b=1. Current S8. Compute S9.
+S8: q0=1 q1=0 q2=1 q3=1 q4=0 q5=0 q6=1 q7=0 q8=1 q9=1 q10=1 q11=1 q12=1 q13=1 q14=0 q15=0.
+G0 s=[q11=1,q5=0,q1=0,q8=1,q4=0,q4=0]. s5=q4=0 -> N0=1.
+G1 s=[b=1,q1=0,a=1,q6=1,q2=1,q14=0]. s5=q14=0 -> N1=1.
+G2 s=[q5=0,q2=1,q12=1,q6=1,q11=1,q9=1]. s5=q9=1; s0&s1=0&1=0 ~=1 &s2 q12=1=>1 |~s3=~q6=0=>1 &s4 q11=1=>1. N2=1.
+G3 s=[b=1,q14=0,q14=0,a=1,q9=1,q9=1]. s5=q9=1; s0&s1=1&0=0 ~=1 &s2 q14=0=>0 |~s3=~a=0=>0 &s4 q9=1=>0. N3=0.
+G4 s=[q4=0,q13=1,q9=1,q8=1,q4=0,q8=1]. s5=q8=1; s0&s1=0&1=0 ~=1 &s2 q9=1=>1 |~s3=~q8=0=>1 &s4 q4=0=>0. N4=0.
+G5 s=[q9=1,q15=0,q4=0,q14=0,q12=1,q0=1]. s5=q0=1; s0&s1=1&0=0 ~=1 &s2 q4=0=>0 |~s3=~q14=1=>1 &s4 q12=1=>1. N5=1.
+G6 s=[q8=1,q4=0,a=1,q13=1,q2=1,b=1]. s5=b=1; s0&s1=1&0=0 ~=1 &s2 a=1=>1 |~s3=~q13=0=>1 &s4 q2=1=>1. N6=1.
+G7 s=[q0=1,q3=1,b=1,q14=0,q6=1,q5=0]. s5=q5=0 -> N7=1.
+G8 s=[q0=1,q12=1,a=1,q11=1,q13=1,a=1]. s5=a=1; s0&s1=1&1=1 ~=0 &s2 a=1=>0 |~s3=~q11=0=>0 &s4 q13=1=>0. N8=0.
+G9 s=[q9=1,q1=0,q5=0,q13=1,q13=1,q4=0]. s5=q4=0 -> N9=1.
+G10 s=[q6=1,q4=0,q11=1,q10=1,q5=0,q9=1]. s5=q9=1; s0&s1=1&0=0 ~=1 &s2 q11=1=>1 |~s3=~q10=0=>1 &s4 q5=0=>0. N10=0.
+G11 s=[q13=1,q1=0,q0=1,b=1,q11=1,q6=1]. s5=q6=1; s0&s1=1&0=0 ~=1 &s2 q0=1=>1 |~s3=~b=0=>1 &s4 q11=1=>1. N11=1.
+G12 s=[q0=1,q5=0,q6=1,q5=0,q11=1,q4=0]. s5=q4=0 -> N12=1.
+G13 s=[q4=0,q13=1,q14=0,q7=0,a=1,q15=0]. s5=q15=0 -> N13=1.
+G14 s=[q5=0,q3=1,q13=1,q4=0,b=1,q0=1]. s5=q0=1; s0&s1=0&1=0 ~=1 &s2 q13=1=>1 |~s3=~q4=1=>1 &s4 b=1=>1. N14=1.
+G15 s=[q14=0,q14=0,q2=1,q14=0,q8=1,q13=1]. s5=q13=1; s0&s1=0 ~=1 &s2 q2=1=>1 |~s3=~q14=1=>1 &s4 q8=1=>1. N15=1.
+S9: q0=1,q1=1,q2=1,q3=0,q4=0,q5=1,q6=1,q7=1,q8=0,q9=1,q10=0,q11=1,q12=1,q13=1,q14=1,q15=1. String: 1 1 1 0 0 1 1 1 0 1 0 1 1 1 1 1 = "1110011101011111"? Concatenate: 1;1=11;1=111;0=1110;0=11100;1=111001;1=1110011;1=11100111;0=111001110;1=1110011101;0=11100111010;1=111001110101;1=1110011101011;1=11100111010111;1=111001110101111;1=1110011101011111. yes.
+Record cycle9 outputs S9: q0=1,q1=1,q11=1,q14=1,q5=1,q7=1.
+
+t=9: input a=1,b=0. Current S9. Compute S10.
+S9: q0=1 q1=1 q2=1 q3=0 q4=0 q5=1 q6=1 q7=1 q8=0 q9=1 q10=0 q11=1 q12=1 q13=1 q14=1 q15=1.
+G0 s=[q11=1,q5=1,q1=1,q8=0,q4=0,q4=0]. s5=q4=0 -> N0=1.
+G1 s=[b=0,q1=1,a=1,q6=1,q2=1,q14=1]. s5=q14=1; s0&s1=0&1=0 ~=1 &s2 a=1=>1 |~s3=~q6=0=>1 &s4 q2=1=>1. N1=1.
+G2 s=[q5=1,q2=1,q12=1,q6=1,q11=1,q9=1]. s5=q9=1; s0&s1=1&1=1 ~=0 &s2 q12=1=>0 |~s3=~q6=0=>0 &s4 q11=1=>0. N2=0.
+G3 s=[b=0,q14=1,q14=1,a=1,q9=1,q9=1]. s5=q9=1; s0&s1=0&1=0 ~=1 &s2 q14=1=>1 |~s3=~a=0=>1 &s4 q9=1=>1. N3=1.
+G4 s=[q4=0,q13=1,q9=1,q8=0,q4=0,q8=0]. s5=q8=0 -> N4=1.
+G5 s=[q9=1,q15=1,q4=0,q14=1,q12=1,q0=1]. s5=q0=1; s0&s1=1&1=1 ~=0 &s2 q4=0=>0 |~s3=~q14=0=>0 &s4 q12=1=>0. N5=0.
+G6 s=[q8=0,q4=0,a=1,q13=1,q2=1,b=0]. s5=b=0 -> N6=1.
+G7 s=[q0=1,q3=0,b=0,q14=1,q6=1,q5=1]. s5=q5=1; s0&s1=1&0=0 ~=1 &s2 b0=0=>0 |~s3=~q14=0=>0 &s4 q6=1=>0. N7=0.
+G8 s=[q0=1,q12=1,a=1,q11=1,q13=1,a=1]. s5=a=1; s0&s1=1&1=1 ~=0 &s2 a=1=>0 |~s3=~q11=0=>0 &s4 q13=1=>0. N8=0.
+G9 s=[q9=1,q1=1,q5=1,q13=1,q13=1,q4=0]. s5=q4=0 -> N9=1.
+G10 s=[q6=1,q4=0,q11=1,q10=0,q5=1,q9=1]. s5=q9=1; s0&s1=1&0=0 ~=1 &s2 q11=1=>1 |~s3=~q10=1=>1 &s4 q5=1=>1. N10=1.
+G11 s=[q13=1,q1=1,q0=1,b=0,q11=1,q6=1]. s5=q6=1; s0&s1=1&1=1 ~=0 &s2 q0=1=>0 |~s3=~b=1=>1 &s4 q11=1=>1. N11=1.
+G12 s=[q0=1,q5=1,q6=1,q5=1,q11=1,q4=0]. s5=q4=0 -> N12=1.
+G13 s=[q4=0,q13=1,q14=1,q7=1,a=1,q15=1]. s5=q15=1; s0&s1=0&1=0 ~=1 &s2 q14=1=>1 |~s3=~q7=0=>1 &s4 a=1=>1. N13=1.
+G14 s=[q5=1,q3=0,q13=1,q4=0,b=0,q0=1]. s5=q0=1; s0&s1=1&0=0 ~=1 &s2 q13=1=>1 |~s3=~q4=1=>1 &s4 b=0=>0. N14=0.
+G15 s=[q14=1,q14=1,q2=1,q14=1,q8=0,q13=1]. s5=q13=1; s0&s1=1 ~=0 &s2 q2=1=>0 |~s3=~q14=0=>0 &s4 q8=0=>0. N15=0.
+S10: q0=1,q1=1,q2=0,q3=1,q4=1,q5=0,q6=1,q7=0,q8=0,q9=1,q10=1,q11=1,q12=1,q13=1,q14=0,q15=0. String: 1 1 0 1 1 0 1 0 0 1 1 1 1 1 0 0 = "1101101001111100"? Concatenate: 1;1=11;0=110;1=1101;1=11011;0=110110;1=1101101;0=11011010;0=110110100;1=1101101001;1=11011010011;1=110110100111;1=1101101001111;1=11011010011111;0=110110100111110;0=1101101001111100. yes.
+Record cycle10 outputs S10: q0=1,q1=1,q11=1,q14=0,q5=0,q7=0.
+
+t=10: input a=0,b=1. Current S10. Compute S11.
+S10: q0=1 q1=1 q2=0 q3=1 q4=1 q5=0 q6=1 q7=0 q8=0 q9=1 q10=1 q11=1 q12=1 q13=1 q14=0 q15=0.
+G0 s=[q11=1,q5=0,q1=1,q8=0,q4=1,q4=1]. s5=q4=1; s0&s1=1&0=0 ~=1 &s2 q1=1=>1 |~s3=~q8=1=>1 &s4 q4=1=>1. N0=1.
+G1 s=[b=1,q1=1,a=0,q6=1,q2=0,q14=0]. s5=q14=0 -> N1=1.
+G2 s=[q5=0,q2=0,q12=1,q6=1,q11=1,q9=1]. s5=q9=1; s0&s1=0 ~=1 &s2 q12=1=>1 |~s3=~q6=0=>1 &s4 q11=1=>1. N2=1.
+G3 s=[b=1,q14=0,q14=0,a=0,q9=1,q9=1]. s5=q9=1; s0&s1=1&0=0 ~=1 &s2 q14=0=>0 |~s3=~a=1=>1 &s4 q9=1=>1. N3=1.
+G4 s=[q4=1,q13=1,q9=1,q8=0,q4=1,q8=0]. s5=q8=0 -> N4=1.
+G5 s=[q9=1,q15=0,q4=1,q14=0,q12=1,q0=1]. s5=q0=1; s0&s1=1&0=0 ~=1 &s2 q4=1=>1 |~s3=~q14=1=>1 &s4 q12=1=>1. N5=1.
+G6 s=[q8=0,q4=1,a=0,q13=1,q2=0,b=1]. s5=b=1; s0&s1=0&1=0 ~=1 &s2 a0=0=>0 |~s3=~q13=0=>0 &s4 q2=0=>0. N6=0.
+G7 s=[q0=1,q3=1,b=1,q14=0,q6=1,q5=0]. s5=q5=0 -> N7=1.
+G8 s=[q0=1,q12=1,a=0,q11=1,q13=1,a=0]. s5=a=0 -> N8=1.
+G9 s=[q9=1,q1=1,q5=0,q13=1,q13=1,q4=1]. s5=q4=1; s0&s1=1&1=1 ~=0 &s2 q5=0=>0 |~s3=~q13=0=>0 &s4 q13=1=>0. N9=0.
+G10 s=[q6=1,q4=1,q11=1,q10=1,q5=0,q9=1]. s5=q9=1; s0&s1=1&1=1 ~=0 &s2 q11=1=>0 |~s3=~q10=0=>0 &s4 q5=0=>0. N10=0.
+G11 s=[q13=1,q1=1,q0=1,b=1,q11=1,q6=1]. s5=q6=1; s0&s1=1&1=1 ~=0 &s2 q0=1=>0 |~s3=~b=0=>0 &s4 q11=1=>0. N11=0.
+G12 s=[q0=1,q5=0,q6=1,q5=0,q11=1,q4=1]. s5=q4=1; s0&s1=1&0=0 ~=1 &s2 q6=1=>1 |~s3=~q5=1=>1 &s4 q11=1=>1. N12=1.
+G13 s=[q4=1,q13=1,q14=0,q7=0,a=0,q15=0]. s5=q15=0 -> N13=1.
+G14 s=[q5=0,q3=1,q13=1,q4=1,b=1,q0=1]. s5=q0=1; s0&s1=0&1=0 ~=1 &s2 q13=1=>1 |~s3=~q4=0=>1 &s4 b=1=>1. N14=1.
+G15 s=[q14=0,q14=0,q2=0,q14=0,q8=0,q13=1]. s5=q13=1; s0&s1=0 ~=1 &s2 q2=0=>0 |~s3=~q14=1=>1 &s4 q8=0=>0. N15=0.
+S11: q0=1,q1=1,q2=1,q3=1,q4=1,q5=1,q6=0,q7=1,q8=1,q9=0,q10=0,q11=0,q12=1,q13=1,q14=1,q15=0. String: 1 1 1 1 1 1 0 1 1 0 0 0 1 1 1 0 = "1111110110001110"? Concatenate: q0 1;1=11;1=111;1=1111;1=11111;1=111111; q6 0=1111110; q7 1=11111101; q8 1=111111011; q9 0=1111110110; q10 0=11111101100; q11 0=111111011000; q12 1=1111110110001; q13 1=11111101100011; q14 1=111111011000111; q15 0=1111110110001110. yes.
+Record cycle11 outputs S11: q0=1,q1=1,q11=0,q14=1,q5=1,q7=1.
+
+t=11: input a=0,b=0. Current S11. Compute S12.
+S11: q0=1 q1=1 q2=1 q3=1 q4=1 q5=1 q6=0 q7=1 q8=1 q9=0 q10=0 q11=0 q12=1 q13=1 q14=1 q15=0.
+G0 s=[q11=0,q5=1,q1=1,q8=1,q4=1,q4=1]. s5=1; s0&s1=0&1=0 ~=1 &s2 q1=1=>1 |~s3=~q8=0=>1 &s4 q4=1=>1. N0=1.
+G1 s=[b=0,q1=1,a=0,q6=0,q2=1,q14=1]. s5=q14=1; s0&s1=0&1=0 ~=1 &s2 a0=0=>0 |~s3=~q6=1=>1 &s4 q2=1=>1. N1=1.
+G2 s=[q5=1,q2=1,q12=1,q6=0,q11=0,q9=0]. s5=q9=0 -> N2=1.
+G3 s=[b=0,q14=1,q14=1,a=0,q9=0,q9=0]. s5=q9=0 -> N3=1.
+G4 s=[q4=1,q13=1,q9=0,q8=1,q4=1,q8=1]. s5=q8=1; s0&s1=1&1=1 ~=0 &s2 q9=0=>0 |~s3=~q8=0=>0 &s4 q4=1=>0. N4=0.
+G5 s=[q9=0,q15=0,q4=1,q14=1,q12=1,q0=1]. s5=q0=1; s0&s1=0 ~=1 &s2 q4=1=>1 |~s3=~q14=0=>1 &s4 q12=1=>1. N5=1.
+G6 s=[q8=1,q4=1,a=0,q13=1,q2=1,b=0]. s5=b=0 -> N6=1.
+G7 s=[q0=1,q3=1,b=0,q14=1,q6=0,q5=1]. s5=q5=1; s0&s1=1&1=1 ~=0 &s2 b0=0=>0 |~s3=~q14=0=>0 &s4 q6=0=>0. N7=0.
+G8 s=[q0=1,q12=1,a=0,q11=0,q13=1,a=0]. s5=a=0 -> N8=1.
+G9 s=[q9=0,q1=1,q5=1,q13=1,q13=1,q4=1]. s5=q4=1; s0&s1=0&1=0 ~=1 &s2 q5=1=>1 |~s3=~q13=0=>1 &s4 q13=1=>1. N9=1.
+G10 s=[q6=0,q4=1,q11=0,q10=0,q5=1,q9=0]. s5=q9=0 -> N10=1.
+G11 s=[q13=1,q1=1,q0=1,b=0,q11=0,q6=0]. s5=q6=0 -> N11=1.
+G12 s=[q0=1,q5=1,q6=0,q5=1,q11=0,q4=1]. s5=q4=1; s0&s1=1&1=1 ~=0 &s2 q6=0=>0 |~s3=~q5=0=>0 &s4 q11=0=>0. N12=0.
+G13 s=[q4=1,q13=1,q14=1,q7=1,a=0,q15=0]. s5=q15=0 -> N13=1.
+G14 s=[q5=1,q3=1,q13=1,q4=1,b=0,q0=1]. s5=q0=1; s0&s1=1&1=1 ~=0 &s2 q13=1=>0 |~s3=~q4=0=>0 &s4 b=0=>0. N14=0.
+G15 s=[q14=1,q14=1,q2=1,q14=1,q8=1,q13=1]. s5=q13=1; s0&s1=1 ~=0 &s2 q2=1=>0 |~s3=~q14=0=>0 &s4 q8=1=>0. N15=0.
+S12: q0=1,q1=1,q2=1,q3=1,q4=0,q5=1,q6=1,q7=0,q8=1,q9=1,q10=1,q11=1,q12=0,q13=1,q14=0,q15=0. String: 1 1 1 1 0 1 1 0 1 1 1 1 0 1 0 0 = "1111011011110100"? Concatenate: 1;1=11;1=111;1=1111;0=11110;1=111101;1=1111011;0=11110110;1=111101101;1=1111011011;1=11110110111;1=111101101111;0=1111011011110;1=11110110111101;0=111101101111010;0=1111011011110100. yes.
+Record cycle12 outputs S12: q0=1,q1=1,q11=1,q14=0,q5=1,q7=0.
+
+t=12: input a=0,b=1. Current S12. Compute S13.
+S12: q0=1 q1=1 q2=1 q3=1 q4=0 q5=1 q6=1 q7=0 q8=1 q9=1 q10=1 q11=1 q12=0 q13=1 q14=0 q15=0.
+G0 s=[q11=1,q5=1,q1=1,q8=1,q4=0,q4=0]. s5=q4=0 -> N0=1.
+G1 s=[b=1,q1=1,a=0,q6=1,q2=1,q14=0]. s5=q14=0 -> N1=1.
+G2 s=[q5=1,q2=1,q12=0,q6=1,q11=1,q9=1]. s5=q9=1; s0&s1=1&1=1 ~=0 &s2 q12=0=>0 |~s3=~q6=0=>0 &s4 q11=1=>0. N2=0.
+G3 s=[b=1,q14=0,q14=0,a=0,q9=1,q9=1]. s5=q9=1; s0&s1=1&0=0 ~=1 &s2 q14=0=>0 |~s3=~a=1=>1 &s4 q9=1=>1. N3=1.
+G4 s=[q4=0,q13=1,q9=1,q8=1,q4=0,q8=1]. s5=q8=1; s0&s1=0&1=0 ~=1 &s2 q9=1=>1 |~s3=~q8=0=>1 &s4 q4=0=>0. N4=0.
+G5 s=[q9=1,q15=0,q4=0,q14=0,q12=0,q0=1]. s5=q0=1; s0&s1=1&0=0 ~=1 &s2 q4=0=>0 |~s3=~q14=1=>1 &s4 q12=0=>0. N5=0.
+G6 s=[q8=1,q4=0,a=0,q13=1,q2=1,b=1]. s5=b=1; s0&s1=1&0=0 ~=1 &s2 a0=0=>0 |~s3=~q13=0=>0 &s4 q2=1=>0. N6=0.
+G7 s=[q0=1,q3=1,b=1,q14=0,q6=1,q5=1]. s5=q5=1; s0&s1=1&1=1 ~=0 &s2 b=1=>0 |~s3=~q14=1=>1 &s4 q6=1=>1. N7=1.
+G8 s=[q0=1,q12=0,a=0,q11=1,q13=1,a=0]. s5=a=0 -> N8=1.
+G9 s=[q9=1,q1=1,q5=1,q13=1,q13=1,q4=0]. s5=q4=0 -> N9=1.
+G10 s=[q6=1,q4=0,q11=1,q10=1,q5=1,q9=1]. s5=q9=1; s0&s1=1&0=0 ~=1 &s2 q11=1=>1 |~s3=~q10=0=>1 &s4 q5=1=>1. N10=1.
+G11 s=[q13=1,q1=1,q0=1,b=1,q11=1,q6=1]. s5=q6=1; s0&s1=1&1=1 ~=0 &s2 q0=1=>0 |~s3=~b=0=>0 &s4 q11=1=>0. N11=0.
+G12 s=[q0=1,q5=1,q6=1,q5=1,q11=1,q4=0]. s5=q4=0 -> N12=1.
+G13 s=[q4=0,q13=1,q14=0,q7=0,a=0,q15=0]. s5=q15=0 -> N13=1.
+G14 s=[q5=1,q3=1,q13=1,q4=0,b=1,q0=1]. s5=q0=1; s0&s1=1&1=1 ~=0 &s2 q13=1=>0 |~s3=~q4=1=>1 &s4 b=1=>1. N14=1.
+G15 s=[q14=0,q14=0,q2=1,q14=0,q8=1,q13=1]. s5=q13=1; s0&s1=0 ~=1 &s2 q2=1=>1 |~s3=~q14=1=>1 &s4 q8=1=>1. N15=1.
+S13: q0=1,q1=1,q2=0,q3=1,q4=0,q5=0,q6=0,q7=1,q8=1,q9=1,q10=1,q11=0,q12=1,q13=1,q14=1,q15=1. String: 1 1 0 1 0 0 0 1 1 1 1 0 1 1 1 1 = "1101000111011111"? Concatenate: 1;1=11;0=110;1=1101;0=11010;0=110100;0=1101000;1=11010001;1=110100011;1=1101000111;1=11010001111;0=110100011110;1=1101000111101;1=11010001111011;1=110100011110111;1=1101000111101111. yes.
+Record cycle13 outputs S13: q0=1,q1=1,q11=0,q14=1,q5=0,q7=1.
+
+t=13: input a=0,b=1. Current S13. Compute S14.
+S13: q0=1 q1=1 q2=0 q3=1 q4=0 q5=0 q6=0 q7=1 q8=1 q9=1 q10=1 q11=0 q12=1 q13=1 q14=1 q15=1.
+G0 s=[q11=0,q5=0,q1=1,q8=1,q4=0,q4=0]. s5=q4=0 -> N0=1.
+G1 s=[b=1,q1=1,a=0,q6=0,q2=0,q14=1]. s5=q14=1; s0&s1=1&1=1 ~=0 &s2 a0=0=>0 |~s3=~q6=1=>1 &s4 q2=0=>0. N1=0.
+G2 s=[q5=0,q2=0,q12=1,q6=0,q11=0,q9=1]. s5=q9=1; s0&s1=0 ~=1 &s2 q12=1=>1 |~s3=~q6=1=>1 &s4 q11=0=>0. N2=0.
+G3 s=[b=1,q14=1,q14=1,a=0,q9=1,q9=1]. s5=q9=1; s0&s1=1&1=1 ~=0 &s2 q14=1=>0 |~s3=~a=1=>1 &s4 q9=1=>1. N3=1.
+G4 s=[q4=0,q13=1,q9=1,q8=1,q4=0,q8=1]. s5=q8=1; s0&s1=0&1=0 ~=1 &s2 q9=1=>1 |~s3=~q8=0=>1 &s4 q4=0=>0. N4=0.
+G5 s=[q9=1,q15=1,q4=0,q14=1,q12=1,q0=1]. s5=q0=1; s0&s1=1&1=1 ~=0 &s2 q4=0=>0 |~s3=~q14=0=>0 &s4 q12=1=>0. N5=0.
+G6 s=[q8=1,q4=0,a=0,q13=1,q2=0,b=1]. s5=b=1; s0&s1=1&0=0 ~=1 &s2 a0=0=>0 |~s3=~q13=0=>0 &s4 q2=0=>0. N6=0.
+G7 s=[q0=1,q3=1,b=1,q14=1,q6=0,q5=0]. s5=q5=0 -> N7=1.
+G8 s=[q0=1,q12=1,a=0,q11=0,q13=1,a=0]. s5=a=0 -> N8=1.
+G9 s=[q9=1,q1=1,q5=0,q13=1,q13=1,q4=0]. s5=q4=0 -> N9=1.
+G10 s=[q6=0,q4=0,q11=0,q10=1,q5=0,q9=1]. s5=q9=1; s0&s1=0 ~=1 &s2 q11=0=>0 |~s3=~q10=0=>0 &s4 q5=0=>0. N10=0.
+G11 s=[q13=1,q1=1,q0=1,b=1,q11=0,q6=0]. s5=q6=0 -> N11=1.
+G12 s=[q0=1,q5=0,q6=0,q5=0,q11=0,q4=0]. s5=q4=0 -> N12=1.
+G13 s=[q4=0,q13=1,q14=1,q7=1,a=0,q15=1]. s5=q15=1; s0&s1=0&1=0 ~=1 &s2 q14=1=>1 |~s3=~q7=0=>1 &s4 a=0=>0. N13=0.
+G14 s=[q5=0,q3=1,q13=1,q4=0,b=1,q0=1]. s5=q0=1; s0&s1=0&1=0 ~=1 &s2 q13=1=>1 |~s3=~q4=1=>1 &s4 b=1=>1. N14=1.
+G15 s=[q14=1,q14=1,q2=0,q14=1,q8=1,q13=1]. s5=q13=1; s0&s1=1 ~=0 &s2 q2=0=>0 |~s3=~q14=0=>0 &s4 q8=1=>0. N15=0.
+S14: q0=1,q1=0,q2=0,q3=1,q4=0,q5=0,q6=0,q7=1,q8=1,q9=1,q10=0,q11=1,q12=1,q13=0,q14=1,q15=0. String: 1 0 0 1 0 0 0 1 1 1 0 1 1 0 1 0 = "1001000111011010"? Concatenate: 1;0=10;0=100;1=1001;0=10010;0=100100;0=1001000;1=10010001;1=100100011;1=1001000111;0=10010001110;1=100100011101;1=1001000111011;0=10010001110110;1=100100011101101;0=1001000111011010. yes.
+Record cycle14 outputs S14: q0=1,q1=0,q11=1,q14=1,q5=0,q7=1.
+
+t=14: input a=1,b=0. Current S14. Compute S15.
+S14: q0=1 q1=0 q2=0 q3=1 q4=0 q5=0 q6=0 q7=1 q8=1 q9=1 q10=0 q11=1 q12=1 q13=0 q14=1 q15=0.
+G0 s=[q11=1,q5=0,q1=0,q8=1,q4=0,q4=0]. s5=q4=0 -> N0=1.
+G1 s=[b=0,q1=0,a=1,q6=0,q2=0,q14=1]. s5=q14=1; s0&s1=0 ~=1 &s2 a=1=>1 |~s3=~q6=1=>1 &s4 q2=0=>0. N1=0.
+G2 s=[q5=0,q2=0,q12=1,q6=0,q11=1,q9=1]. s5=q9=1; s0&s1=0 ~=1 &s2 q12=1=>1 |~s3=~q6=1=>1 &s4 q11=1=>1. N2=1.
+G3 s=[b=0,q14=1,q14=1,a=1,q9=1,q9=1]. s5=q9=1; s0&s1=0&1=0 ~=1 &s2 q14=1=>1 |~s3=~a=0=>1 &s4 q9=1=>1. N3=1.
+G4 s=[q4=0,q13=0,q9=1,q8=1,q4=0,q8=1]. s5=q8=1; s0&s1=0 ~=1 &s2 q9=1=>1 |~s3=~q8=0=>1 &s4 q4=0=>0. N4=0.
+G5 s=[q9=1,q15=0,q4=0,q14=1,q12=1,q0=1]. s5=q0=1; s0&s1=1&0=0 ~=1 &s2 q4=0=>0 |~s3=~q14=0=>0 &s4 q12=1=>0. N5=0.
+G6 s=[q8=1,q4=0,a=1,q13=0,q2=0,b=0]. s5=b=0 -> N6=1.
+G7 s=[q0=1,q3=1,b=0,q14=1,q6=0,q5=0]. s5=q5=0 -> N7=1.
+G8 s=[q0=1,q12=1,a=1,q11=1,q13=0,a=1]. s5=a=1; s0&s1=1&1=1 ~=0 &s2 a=1=>0 |~s3=~q11=0=>0 &s4 q13=0=>0. N8=0.
+G9 s=[q9=1,q1=0,q5=0,q13=0,q13=0,q4=0]. s5=q4=0 -> N9=1.
+G10 s=[q6=0,q4=0,q11=1,q10=0,q5=0,q9=1]. s5=q9=1; s0&s1=0 ~=1 &s2 q11=1=>1 |~s3=~q10=1=>1 &s4 q5=0=>0. N10=0.
+G11 s=[q13=0,q1=0,q0=1,b=0,q11=1,q6=0]. s5=q6=0 -> N11=1.
+G12 s=[q0=1,q5=0,q6=0,q5=0,q11=1,q4=0]. s5=q4=0 -> N12=1.
+G13 s=[q4=0,q13=0,q14=1,q7=1,a=1,q15=0]. s5=q15=0 -> N13=1.
+G14 s=[q5=0,q3=1,q13=0,q4=0,b=0,q0=1]. s5=q0=1; s0&s1=0&1=0 ~=1 &s2 q13=0=>0 |~s3=~q4=1=>1 &s4 b=0=>0. N14=0.
+G15 s=[q14=1,q14=1,q2=0,q14=1,q8=1,q13=0]. s5=q13=0 -> N15=1.
+S15: q0=1,q1=0,q2=1,q3=1,q4=0,q5=0,q6=1,q7=1,q8=0,q9=1,q10=0,q11=1,q12=1,q13=1,q14=0,q15=1. String: 1 0 1 1 0 0 1 1 0 1 0 1 1 1 0 1 = "1011001101011101"? Concatenate: 1;0=10;1=101;1=1011;0=10110;0=101100;1=1011001;1=10110011;0=101100110;1=1011001101;0=10110011010;1=101100110101;1=1011001101011;1=10110011010111;0=101100110101110;1=1011001101011101. yes.
+Record cycle15 outputs S15: q0=1,q1=0,q11=1,q14=0,q5=0,q7=1.
+
+t=15: input a=0,b=0. Current S15. Compute S16.
+S15: q0=1 q1=0 q2=1 q3=1 q4=0 q5=0 q6=1 q7=1 q8=0 q9=1 q10=0 q11=1 q12=1 q13=1 q14=0 q15=1.
+G0 s=[q11=1,q5=0,q1=0,q8=0,q4=0,q4=0]. s5=q4=0 -> N0=1.
+G1 s=[b=0,q1=0,a=0,q6=1,q2=1,q14=0]. s5=q14=0 -> N1=1.
+G2 s=[q5=0,q2=1,q12=1,q6=1,q11=1,q9=1]. s5=q9=1; s0&s1=0&1=0 ~=1 &s2 q12=1=>1 |~s3=~q6=0=>1 &s4 q11=1=>1. N2=1.
+G3 s=[b=0,q14=0,q14=0,a=0,q9=1,q9=1]. s5=q9=1; s0&s1=0 ~=1 &s2 q14=0=>0 |~s3=~a=1=>1 &s4 q9=1=>1. N3=1.
+G4 s=[q4=0,q13=1,q9=1,q8=0,q4=0,q8=0]. s5=q8=0 -> N4=1.
+G5 s=[q9=1,q15=1,q4=0,q14=0,q12=1,q0=1]. s5=q0=1; s0&s1=1&1=1 ~=0 &s2 q4=0=>0 |~s3=~q14=1=>1 &s4 q12=1=>1. N5=1.
+G6 s=[q8=0,q4=0,a=0,q13=1,q2=1,b=0]. s5=b=0 -> N6=1.
+G7 s=[q0=1,q3=1,b=0,q14=0,q6=1,q5=0]. s5=q5=0 -> N7=1.
+G8 s=[q0=1,q12=1,a=0,q11=1,q13=1,a=0]. s5=a=0 -> N8=1.
+G9 s=[q9=1,q1=0,q5=0,q13=1,q13=1,q4=0]. s5=q4=0 -> N9=1.
+G10 s=[q6=1,q4=0,q11=1,q10=0,q5=0,q9=1]. s5=q9=1; s0&s1=1&0=0 ~=1 &s2 q11=1=>1 |~s3=~q10=1=>1 &s4 q5=0=>0. N10=0.
+G11 s=[q13=1,q1=0,q0=1,b=0,q11=1,q6=1]. s5=q6=1; s0&s1=1&0=0 ~=1 &s2 q0=1=>1 |~s3=~b=1=>1 &s4 q11=1=>1. N11=1.
+G12 s=[q0=1,q5=0,q6=1,q5=0,q11=1,q4=0]. s5=q4=0 -> N12=1.
+G13 s=[q4=0,q13=1,q14=0,q7=1,a=0,q15=1]. s5=q15=1; s0&s1=0&1=0 ~=1 &s2 q14=0=>0 |~s3=~q7=0=>0 &s4 a=0=>0. N13=0.
+G14 s=[q5=0,q3=1,q13=1,q4=0,b=0,q0=1]. s5=q0=1; s0&s1=0&1=0 ~=1 &s2 q13=1=>1 |~s3=~q4=1=>1 &s4 b=0=>0. N14=0.
+G15 s=[q14=0,q14=0,q2=1,q14=0,q8=0,q13=1]. s5=q13=1; s0&s1=0 ~=1 &s2 q2=1=>1 |~s3=~q14=1=>1 &s4 q8=0=>0. N15=0.
+S16: q0=1,q1=1,q2=1,q3=1,q4=1,q5=1,q6=1,q7=1,q8=1,q9=1,q10=0,q11=1,q12=1,q13=0,q14=0,q15=0. String: 1 1 1 1 1 1 1 1 1 1 0 1 1 0 0 0 = "1111111111011000"? Concatenate: q0-9 ten? q0=1 q1=1 q2=1 q3=1 q4=1 q5=1 q6=1 q7=1 q8=1 q9=1 = ten 1s; q10=0; q11=1; q12=1; q13=0; q14=0; q15=0. String = "1111111111"+"0"+"11"+"000" = 1111111111011000. Count 16: ten ones (positions0-9), pos10 0, pos11 1, pos12 1, pos13 0,pos14 0,pos15 0 -> 1111111111011000 (there are? 10 ones then 0 then 11 then 000 = 10+1+2+3=16). yes.
+Record cycle16 outputs S16: q0=1,q1=1,q11=1,q14=0,q5=1,q7=1.
+
+t=16: input a=1,b=1. Current S16. Compute S17.
+S16: q0=1 q1=1 q2=1 q3=1 q4=1 q5=1 q6=1 q7=1 q8=1 q9=1 q10=0 q11=1 q12=1 q13=0 q14=0 q15=0.
+G0 s=[q11=1,q5=1,q1=1,q8=1,q4=1,q4=1]. s5=1; s0&s1=1 ~=0 &q1=1=>0 |~q8=0=>0 &q4=1=>0. N0=0.
+G1 s=[b=1,q1=1,a=1,q6=1,q2=1,q14=0]. s5=q14=0 -> N1=1.
+G2 s=[q5=1,q2=1,q12=1,q6=1,q11=1,q9=1]. s5=q9=1; s0&s1=1 ~=0 &q12=1=>0 |~q6=0=>0 &q11=1=>0. N2=0.
+G3 s=[b=1,q14=0,q14=0,a=1,q9=1,q9=1]. s5=q9=1; s0&s1=1&0=0 ~=1 &s2 q14=0=>0 |~s3=~a=0=>0 &s4 q9=1=>0. N3=0.
+G4 s=[q4=1,q13=0,q9=1,q8=1,q4=1,q8=1]. s5=q8=1; s0&s1=1&0=0 ~=1 &s2 q9=1=>1 |~s3=~q8=0=>1 &s4 q4=1=>1. N4=1.
+G5 s=[q9=1,q15=0,q4=1,q14=0,q12=1,q0=1]. s5=q0=1; s0&s1=1&0=0 ~=1 &s2 q4=1=>1 |~s3=~q14=1=>1 &s4 q12=1=>1. N5=1.
+G6 s=[q8=1,q4=1,a=1,q13=0,q2=1,b=1]. s5=b=1; s0&s1=1&1=1 ~=0 &s2 a=1=>0 |~s3=~q13=1=>1 &s4 q2=1=>1. N6=1.
+G7 s=[q0=1,q3=1,b=1,q14=0,q6=1,q5=1]. s5=q5=1; s0&s1=1&1=1 ~=0 &s2 b=1=>0 |~s3=~q14=1=>1 &s4 q6=1=>1. N7=1.
+G8 s=[q0=1,q12=1,a=1,q11=1,q13=0,a=1]. s5=a=1; s0&s1=1&1=1 ~=0 &s2 a=1=>0 |~s3=~q11=0=>0 &s4 q13=0=>0. N8=0.
+G9 s=[q9=1,q1=1,q5=1,q13=0,q13=0,q4=1]. s5=q4=1; s0&s1=1&1=1 ~=0 &s2 q5=1=>0 |~s3=~q13=1=>1 &s4 q13=0=>0. N9=0. (B&q13=0 |~q4=0)
+G10 s=[q6=1,q4=1,q11=1,q10=0,q5=1,q9=1]. s5=q9=1; s0&s1=1 ~=0 &q11=1=>0 |~q10=1=>1 &q5=1=>1. N10=1.
+G11 s=[q13=0,q1=1,q0=1,b=1,q11=1,q6=1]. s5=q6=1; s0&s1=0&1=0 ~=1 &s2 q0=1=>1 |~s3=~b=0=>1 &s4 q11=1=>1. N11=1.
+G12 s=[q0=1,q5=1,q6=1,q5=1,q11=1,q4=1]. s5=q4=1; s0&s1=1 ~=0 &q6=1=>0 |~q5=0=>0 &q11=1=>0. N12=0.
+G13 s=[q4=1,q13=0,q14=0,q7=1,a=1,q15=0]. s5=q15=0 -> N13=1.
+G14 s=[q5=1,q3=1,q13=0,q4=1,b=1,q0=1]. s5=q0=1; s0&s1=1&1=1 ~=0 &s2 q13=0=>0 |~s3=~q4=0=>0 &s4 b=1=>0. N14=0.
+G15 s=[q14=0,q14=0,q2=1,q14=0,q8=1,q13=0]. s5=q13=0 -> N15=1.
+S17: q0=0,q1=1,q2=0,q3=0,q4=1,q5=1,q6=1,q7=1,q8=0,q9=0,q10=1,q11=1,q12=0,q13=1,q14=0,q15=1. String: 0 1 0 0 1 1 1 1 0 0 1 1 0 1 0 1 = "0100111100110101"? Concatenate: q0 0; q1 1=01; q2 0=010; q3 0=0100; q4 1=01001; q5 1=010011; q6 1=0100111; q7 1=01001111; q8 0=010011110; q9 0=0100111100; q10 1=01001111001; q11 1=010011110011; q12 0=0100111100110; q13 1=01001111001101; q14 0=010011110011010; q15 1=0100111100110101. yes.
+Record cycle17 outputs S17: q0=0,q1=1,q11=1,q14=0,q5=1,q7=1.
+
+t=17: input a=1,b=0. Current S17. Compute S18.
+S17: q0=0 q1=1 q2=0 q3=0 q4=1 q5=1 q6=1 q7=1 q8=0 q9=0 q10=1 q11=1 q12=0 q13=1 q14=0 q15=1.
+G0 s=[q11=1,q5=1,q1=1,q8=0,q4=1,q4=1]. s5=q4=1; s0&s1=1&1=1 ~=0 &s2 q1=1=>0 |~s3=~q8=1=>1 &s4 q4=1=>1. N0=1.
+G1 s=[b=0,q1=1,a=1,q6=1,q2=0,q14=0]. s5=q14=0 -> N1=1.
+G2 s=[q5=1,q2=0,q12=0,q6=1,q11=1,q9=0]. s5=q9=0 -> N2=1.
+G3 s=[b=0,q14=0,q14=0,a=1,q9=0,q9=0]. s5=q9=0 -> N3=1.
+G4 s=[q4=1,q13=1,q9=0,q8=0,q4=1,q8=0]. s5=q8=0 -> N4=1.
+G5 s=[q9=0,q15=1,q4=1,q14=0,q12=0,q0=0]. s5=q0=0 -> N5=1.
+G6 s=[q8=0,q4=1,a=1,q13=1,q2=0,b=0]. s5=b=0 -> N6=1.
+G7 s=[q0=0,q3=0,b=0,q14=0,q6=1,q5=1]. s5=q5=1; s0&s1=0 ~=1 &s2 b0=0=>0 |~s3=~q14=1=>1 &s4 q6=1=>1. N7=1.
+G8 s=[q0=0,q12=0,a=1,q11=1,q13=1,a=1]. s5=a=1; s0&s1=0 ~=1 &s2 a=1=>1 |~s3=~q11=0=>1 &s4 q13=1=>1. N8=1. (in0=1, q0&q12&q11=0 so q13=1)
+G9 s=[q9=0,q1=1,q5=1,q13=1,q13=1,q4=1]. s5=q4=1; s0&s1=0&1=0 ~=1 &s2 q5=1=>1 |~s3=~q13=0=>1 &s4 q13=1=>1. N9=1.
+G10 s=[q6=1,q4=1,q11=1,q10=1,q5=1,q9=0]. s5=q9=0 -> N10=1.
+G11 s=[q13=1,q1=1,q0=0,b=0,q11=1,q6=1]. s5=q6=1; s0&s1=1&1=1 ~=0 &s2 q0=0=>0 |~s3=~b=1=>1 &s4 q11=1=>1. N11=1.
+G12 s=[q0=0,q5=1,q6=1,q5=1,q11=1,q4=1]. s5=q4=1; s0&s1=0&1=0 ~=1 &s2 q6=1=>1 |~s3=~q5=0=>1 &s4 q11=1=>1. N12=1.
+G13 s=[q4=1,q13=1,q14=0,q7=1,a=1,q15=1]. s5=q15=1; s0&s1=1&1=1 ~=0 &s2 q14=0=>0 |~s3=~q7=0=>0 &s4 a=1=>0. N13=0.
+G14 s=[q5=1,q3=0,q13=1,q4=1,b=0,q0=0]. s5=q0=0 -> N14=1.
+G15 s=[q14=0,q14=0,q2=0,q14=0,q8=0,q13=1]. s5=q13=1; s0&s1=0 ~=1 &s2 q2=0=>0 |~s3=~q14=1=>1 &s4 q8=0=>0. N15=0.
+S18: q0=1,q1=1,q2=1,q3=1,q4=1,q5=1,q6=1,q7=1,q8=1,q9=1,q10=1,q11=1,q12=1,q13=0,q14=1,q15=0. String: 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 = "1111111111111010" (thirteen? positions0-12 =1 (13 ones), q13=0,q14=1,q15=0). Let's count: q0..q12 all 1 = 13 ones; q13 0; q14 1; q15 0 -> string 1111111111111 0 1 0 = "1111111111111010" (13 ones then 010). Yes.
+Record cycle18 outputs S18: q0=1,q1=1,q11=1,q14=1,q5=1,q7=1.
+
+t=18: input a=0,b=0. Current S18. Compute S19.
+S18: q0=1 q1=1 q2=1 q3=1 q4=1 q5=1 q6=1 q7=1 q8=1 q9=1 q10=1 q11=1 q12=1 q13=0 q14=1 q15=0.
+G0 s=[q11=1,q5=1,q1=1,q8=1,q4=1,q4=1]. s5=1; s0&s1=1 ~=0 &q1=1=>0 |~q8=0=>0 &q4=1=>0. N0=0.
+G1 s=[b=0,q1=1,a=0,q6=1,q2=1,q14=1]. s5=q14=1; s0&s1=0&1=0 ~=1 &s2 a0=0=>0 |~s3=~q6=0=>0 &s4 q2=1=>0. N1=0.
+G2 s=[q5=1,q2=1,q12=1,q6=1,q11=1,q9=1]. s5=q9=1; all s0&s1=1 ~=0 &q12=1=0 |~q6=0=0 &q11=1=0. N2=0.
+G3 s=[b=0,q14=1,q14=1,a=0,q9=1,q9=1]. s5=q9=1; s0&s1=0&1=0 ~=1 &s2 q14=1=>1 |~s3=~a=1=>1 &s4 q9=1=>1. N3=1.
+G4 s=[q4=1,q13=0,q9=1,q8=1,q4=1,q8=1]. s5=q8=1; s0&s1=1&0=0 ~=1 &s2 q9=1=>1 |~s3=~q8=0=>1 &s4 q4=1=>1. N4=1.
+G5 s=[q9=1,q15=0,q4=1,q14=1,q12=1,q0=1]. s5=q0=1; s0&s1=1&0=0 ~=1 &s2 q4=1=>1 |~s3=~q14=0=>1 &s4 q12=1=>1. N5=1.
+G6 s=[q8=1,q4=1,a=0,q13=0,q2=1,b=0]. s5=b=0 -> N6=1.
+G7 s=[q0=1,q3=1,b=0,q14=1,q6=1,q5=1]. s5=q5=1; s0&s1=1&1=1 ~=0 &s2 b0=0=>0 |~s3=~q14=0=>0 &s4 q6=1=>0. N7=0.
+G8 s=[q0=1,q12=1,a=0,q11=1,q13=0,a=0]. s5=a=0 -> N8=1.
+G9 s=[q9=1,q1=1,q5=1,q13=0,q13=0,q4=1]. s5=q4=1; s0&s1=1 ~=0 &q5=1=>0 |~q13=1=>1 &s4 q13=0=>0. N9=0.
+G10 s=[q6=1,q4=1,q11=1,q10=1,q5=1,q9=1]. s5=q9=1; s0&s1=1 ~=0 &q11=1=>0 |~q10=0=>0 &q5=1=>0. N10=0.
+G11 s=[q13=0,q1=1,q0=1,b=0,q11=1,q6=1]. s5=q6=1; s0&s1=0&1=0 ~=1 &s2 q0=1=>1 |~s3=~b=1=>1 &s4 q11=1=>1. N11=1.
+G12 s=[q0=1,q5=1,q6=1,q5=1,q11=1,q4=1]. s5=q4=1; s0&s1=1 ~=0 &q6=1=>0 |~q5=0=>0 &q11=1=>0. N12=0.
+G13 s=[q4=1,q13=0,q14=1,q7=1,a=0,q15=0]. s5=q15=0 -> N13=1.
+G14 s=[q5=1,q3=1,q13=0,q4=1,b=0,q0=1]. s5=q0=1; s0&s1=1&1=1 ~=0 &s2 q13=0=>0 |~s3=~q4=0=>0 &s4 b=0=>0. N14=0.
+G15 s=[q14=1,q14=1,q2=1,q14=1,q8=1,q13=0]. s5=q13=0 -> N15=1.
+S19: q0=0,q1=0,q2=0,q3=1,q4=1,q5=1,q6=1,q7=0,q8=1,q9=0,q10=0,q11=1,q12=0,q13=1,q14=0,q15=1. String: 0 0 0 1 1 1 1 0 1 0 0 1 0 1 0 1 = "0001111010010101"? Concatenate: 0;0=00;0=000;1=0001;1=00011;1=000111;1=0001111;0=00011110;1=000111101;0=0001111010;0=00011110100;1=000111101001;0=0001111010010;1=00011110100101;0=000111101001010;1=0001111010010101. yes.
+Record cycle19 outputs S19: q0=0,q1=0,q11=1,q14=0,q5=1,q7=0.
+
+t=19: input a=0,b=0. Current S19. Compute S20.
+S19: q0=0 q1=0 q2=0 q3=1 q4=1 q5=1 q6=1 q7=0 q8=1 q9=0 q10=0 q11=1 q12=0 q13=1 q14=0 q15=1.
+G0 s=[q11=1,q5=1,q1=0,q8=1,q4=1,q4=1]. s5=1; s0&s1=1 ~=0 &q1=0=>0 |~q8=0=>0 &q4=1=>0. N0=0.
+G1 s=[b=0,q1=0,a=0,q6=1,q2=0,q14=0]. s5=q14=0 -> N1=1.
+G2 s=[q5=1,q2=0,q12=0,q6=1,q11=1,q9=0]. s5=q9=0 -> N2=1.
+G3 s=[b=0,q14=0,q14=0,a=0,q9=0,q9=0]. s5=q9=0 -> N3=1.
+G4 s=[q4=1,q13=1,q9=0,q8=1,q4=1,q8=1]. s5=q8=1; s0&s1=1&1=1 ~=0 &s2 q9=0=>0 |~s3=~q8=0=>0 &s4 q4=1=>0. N4=0.
+G5 s=[q9=0,q15=1,q4=1,q14=0,q12=0,q0=0]. s5=q0=0 -> N5=1.
+G6 s=[q8=1,q4=1,a=0,q13=1,q2=0,b=0]. s5=b=0 -> N6=1.
+G7 s=[q0=0,q3=1,b=0,q14=0,q6=1,q5=1]. s5=q5=1; s0&s1=0&1=0 ~=1 &s2 b0=0=>0 |~s3=~q14=1=>1 &s4 q6=1=>1. N7=1.
+G8 s=[q0=0,q12=0,a=0,q11=1,q13=1,a=0]. s5=a=0 -> N8=1.
+G9 s=[q9=0,q1=0,q5=1,q13=1,q13=1,q4=1]. s5=q4=1; s0&s1=0 ~=1 &q5=1=>1 |~q13=0=>1 &q13=1=>1. N9=1.
+G10 s=[q6=1,q4=1,q11=1,q10=0,q5=1,q9=0]. s5=q9=0 -> N10=1.
+G11 s=[q13=1,q1=0,q0=0,b=0,q11=1,q6=1]. s5=q6=1; s0&s1=1&0=0 ~=1 &s2 q0=0=>0 |~s3=~b=1=>1 &s4 q11=1=>1. N11=1.
+G12 s=[q0=0,q5=1,q6=1,q5=1,q11=1,q4=1]. s5=q4=1; s0&s1=0&1=0 ~=1 &s2 q6=1=>1 |~s3=~q5=0=>1 &s4 q11=1=>1. N12=1.
+G13 s=[q4=1,q13=1,q14=0,q7=0,a=0,q15=1]. s5=q15=1; s0&s1=1&1=1 ~=0 &s2 q14=0=>0 |~s3=~q7=1=>1 &s4 a=0=>0. N13=0.
+G14 s=[q5=1,q3=1,q13=1,q4=1,b=0,q0=0]. s5=q0=0 -> N14=1.
+G15 s=[q14=0,q14=0,q2=0,q14=0,q8=1,q13=1]. s5=q13=1; s0&s1=0 ~=1 &s2 q2=0=>0 |~s3=~q14=1=>1 &s4 q8=1=>1. N15=1.
+S20: q0=0,q1=1,q2=1,q3=1,q4=0,q5=1,q6=1,q7=1,q8=1,q9=1,q10=1,q11=1,q12=1,q13=0,q14=1,q15=1. String: 0 1 1 1 0 1 1 1 1 1 1 1 1 0 1 1 = "0111011111111011"? Concatenate: q0 0; q1 1=01; q2 1=011; q3 1=0111; q4 0=01110; q5 1=011101; q6 1=0111011; q7 1=01110111; q8 1=011101111; q9 1=0111011111; q10 1=01110111111; q11 1=011101111111; q12 1=0111011111111; q13 0=01110111111110; q14 1=011101111111101; q15 1=0111011111111011. yes.
+Record cycle20 outputs S20: q0=0,q1=1,q11=1,q14=1,q5=1,q7=1.
+
+t=20: input a=1,b=1. Current S20. Compute S21.
+S20: q0=0 q1=1 q2=1 q3=1 q4=0 q5=1 q6=1 q7=1 q8=1 q9=1 q10=1 q11=1 q12=1 q13=0 q14=1 q15=1.
+G0 s=[q11=1,q5=1,q1=1,q8=1,q4=0,q4=0]. s5=q4=0 -> N0=1.
+G1 s=[b=1,q1=1,a=1,q6=1,q2=1,q14=1]. s5=q14=1; s0&s1=1&1=1 ~=0 &s2 a=1=>0 |~s3=~q6=0=>0 &s4 q2=1=>0. N1=0.
+G2 s=[q5=1,q2=1,q12=1,q6=1,q11=1,q9=1]. s5=q9=1; s0&s1=1 ~=0 &q12=1=>0 |~q6=0=>0 &q11=1=>0. N2=0.
+G3 s=[b=1,q14=1,q14=1,a=1,q9=1,q9=1]. s5=q9=1; s0&s1=1&1=1 ~=0 &s2 q14=1=>0 |~s3=~a=0=>0 &s4 q9=1=>0. N3=0.
+G4 s=[q4=0,q13=0,q9=1,q8=1,q4=0,q8=1]. s5=q8=1; s0&s1=0 ~=1 &q9=1=>1 |~q8=0=>1 &s4 q4=0=>0. N4=0.
+G5 s=[q9=1,q15=1,q4=0,q14=1,q12=1,q0=0]. s5=q0=0 -> N5=1.
+G6 s=[q8=1,q4=0,a=1,q13=0,q2=1,b=1]. s5=b=1; s0&s1=1&0=0 ~=1 &s2 a=1=>1 |~s3=~q13=1=>1 &s4 q2=1=>1. N6=1.
+G7 s=[q0=0,q3=1,b=1,q14=1,q6=1,q5=1]. s5=q5=1; s0&s1=0&1=0 ~=1 &s2 b=1=>1 |~s3=~q14=0=>1 &s4 q6=1=>1. N7=1.
+G8 s=[q0=0,q12=1,a=1,q11=1,q13=0,a=1]. s5=a=1; s0&s1=0&1=0 ~=1 &s2 a=1=>1 |~s3=~q11=0=>1 &s4 q13=0=>0. N8=0.
+G9 s=[q9=1,q1=1,q5=1,q13=0,q13=0,q4=0]. s5=q4=0 -> N9=1.
+G10 s=[q6=1,q4=0,q11=1,q10=1,q5=1,q9=1]. s5=q9=1; s0&s1=1&0=0 ~=1 &s2 q11=1=>1 |~s3=~q10=0=>1 &s4 q5=1=>1. N10=1.
+G11 s=[q13=0,q1=1,q0=0,b=1,q11=1,q6=1]. s5=q6=1; s0&s1=0&1=0 ~=1 &s2 q0=0=>0 |~s3=~b=0=>0 &s4 q11=1=>0. N11=0.
+G12 s=[q0=0,q5=1,q6=1,q5=1,q11=1,q4=0]. s5=q4=0 -> N12=1.
+G13 s=[q4=0,q13=0,q14=1,q7=1,a=1,q15=1]. s5=q15=1; s0&s1=0 ~=1 &s2 q14=1=>1 |~s3=~q7=0=>1 &s4 a=1=>1. N13=1.
+G14 s=[q5=1,q3=1,q13=0,q4=0,b=1,q0=0]. s5=q0=0 -> N14=1.
+G15 s=[q14=1,q14=1,q2=1,q14=1,q8=1,q13=0]. s5=q13=0 -> N15=1.
+S21: q0=1,q1=0,q2=0,q3=0,q4=0,q5=1,q6=1,q7=1,q8=0,q9=1,q10=1,q11=0,q12=1,q13=1,q14=1,q15=1. String: 1 0 0 0 0 1 1 1 0 1 1 0 1 1 1 1 = "1000011101101111"? Concatenate: q0 1; q1 0=10; q2 0=100; q3 0=1000; q4 0=10000; q5 1=100001; q6 1=1000011; q7 1=10000111; q8 0=100001110; q9 1=1000011101; q10 1=10000111011; q11 0=100001110110; q12 1=1000011101101; q13 1=10000111011011; q14 1=100001110110111; q15 1=1000011101101111. yes.
+Record cycle21 outputs S21: q0=1,q1=0,q11=0,q14=1,q5=1,q7=1.
+
+t=21: input a=0,b=1. Current S21. Compute S22.
+S21: q0=1 q1=0 q2=0 q3=0 q4=0 q5=1 q6=1 q7=1 q8=0 q9=1 q10=1 q11=0 q12=1 q13=1 q14=1 q15=1.
+G0 s=[q11=0,q5=1,q1=0,q8=0,q4=0,q4=0]. s5=q4=0 -> N0=1.
+G1 s=[b=1,q1=0,a=0,q6=1,q2=0,q14=1]. s5=q14=1; s0&s1=1&0=0 ~=1 &s2 a0=0=>0 |~s3=~q6=0=>0 &s4 q2=0=>0. N1=0.
+G2 s=[q5=1,q2=0,q12=1,q6=1,q11=0,q9=1]. s5=q9=1; s0&s1=1&0=0 ~=1 &s2 q12=1=>1 |~s3=~q6=0=>1 &s4 q11=0=>0. N2=0.
+G3 s=[b=1,q14=1,q14=1,a=0,q9=1,q9=1]. s5=q9=1; s0&s1=1&1=1 ~=0 &s2 q14=1=>0 |~s3=~a=1=>1 &s4 q9=1=>1. N3=1.
+G4 s=[q4=0,q13=1,q9=1,q8=0,q4=0,q8=0]. s5=q8=0 -> N4=1.
+G5 s=[q9=1,q15=1,q4=0,q14=1,q12=1,q0=1]. s5=q0=1; s0&s1=1&1=1 ~=0 &s2 q4=0=>0 |~s3=~q14=0=>0 &s4 q12=1=>0. N5=0.
+G6 s=[q8=0,q4=0,a=0,q13=1,q2=0,b=1]. s5=b=1; s0&s1=0 ~=1 &s2 a0=0=>0 |~s3=~q13=0=>0 &s4 q2=0=>0. N6=0.
+G7 s=[q0=1,q3=0,b=1,q14=1,q6=1,q5=1]. s5=q5=1; s0&s1=1&0=0 ~=1 &s2 b=1=>1 |~s3=~q14=0=>1 &s4 q6=1=>1. N7=1.
+G8 s=[q0=1,q12=1,a=0,q11=0,q13=1,a=0]. s5=a=0 -> N8=1.
+G9 s=[q9=1,q1=0,q5=1,q13=1,q13=1,q4=0]. s5=q4=0 -> N9=1.
+G10 s=[q6=1,q4=0,q11=0,q10=1,q5=1,q9=1]. s5=q9=1; s0&s1=1&0=0 ~=1 &s2 q11=0=>0 |~s3=~q10=0=>0 &s4 q5=1=>0. N10=0.
+G11 s=[q13=1,q1=0,q0=1,b=1,q11=0,q6=1]. s5=q6=1; s0&s1=1&0=0 ~=1 &s2 q0=1=>1 |~s3=~b=0=>1 &s4 q11=0=>0. N11=0.
+G12 s=[q0=1,q5=1,q6=1,q5=1,q11=0,q4=0]. s5=q4=0 -> N12=1.
+G13 s=[q4=0,q13=1,q14=1,q7=1,a=0,q15=1]. s5=q15=1; s0&s1=0&1=0 ~=1 &s2 q14=1=>1 |~s3=~q7=0=>1 &s4 a=0=>0. N13=0.
+G14 s=[q5=1,q3=0,q13=1,q4=0,b=1,q0=1]. s5=q0=1; s0&s1=1&0=0 ~=1 &s2 q13=1=>1 |~s3=~q4=1=>1 &s4 b=1=>1. N14=1.
+G15 s=[q14=1,q14=1,q2=0,q14=1,q8=0,q13=1]. s5=q13=1; s0&s1=1 ~=0 &s2 q2=0=>0 |~s3=~q14=0=>0 &s4 q8=0=>0. N15=0.
+S22: q0=1,q1=0,q2=0,q3=1,q4=1,q5=0,q6=0,q7=1,q8=1,q9=1,q10=0,q11=0,q12=1,q13=0,q14=1,q15=0. String: 1 0 0 1 1 0 0 1 1 1 0 0 1 0 1 0 = "1001100111001010"? Concatenate: 1;0=10;0=100;1=1001;1=10011;0=100110;0=1001100;1=10011001;1=100110011;1=1001100111;0=10011001110;0=100110011100;1=1001100111001;0=10011001110010;1=100110011100101;0=1001100111001010. yes.
+Record cycle22 outputs S22: q0=1,q1=0,q11=0,q14=1,q5=0,q7=1.
+
+t=22: input a=1,b=1. Current S22. Compute S23.
+S22: q0=1 q1=0 q2=0 q3=1 q4=1 q5=0 q6=0 q7=1 q8=1 q9=1 q10=0 q11=0 q12=1 q13=0 q14=1 q15=0.
+G0 s=[q11=0,q5=0,q1=0,q8=1,q4=1,q4=1]. s5=q4=1; s0&s1=0 ~=1 &s2 q1=0=>0 |~s3=~q8=0=>0 &s4 q4=1=>0. N0=0.
+G1 s=[b=1,q1=0,a=1,q6=0,q2=0,q14=1]. s5=q14=1; s0&s1=1&0=0 ~=1 &s2 a=1=>1 |~s3=~q6=1=>1 &s4 q2=0=>0. N1=0.
+G2 s=[q5=0,q2=0,q12=1,q6=0,q11=0,q9=1]. s5=q9=1; s0&s1=0 ~=1 &s2 q12=1=>1 |~s3=~q6=1=>1 &s4 q11=0=>0. N2=0.
+G3 s=[b=1,q14=1,q14=1,a=1,q9=1,q9=1]. s5=q9=1; s0&s1=1&1=1 ~=0 &s2 q14=1=>0 |~s3=~a=0=>0 &s4 q9=1=>0. N3=0.
+G4 s=[q4=1,q13=0,q9=1,q8=1,q4=1,q8=1]. s5=q8=1; s0&s1=1&0=0 ~=1 &s2 q9=1=>1 |~s3=~q8=0=>1 &s4 q4=1=>1. N4=1.
+G5 s=[q9=1,q15=0,q4=1,q14=1,q12=1,q0=1]. s5=q0=1; s0&s1=1&0=0 ~=1 &s2 q4=1=>1 |~s3=~q14=0=>1 &s4 q12=1=>1. N5=1.
+G6 s=[q8=1,q4=1,a=1,q13=0,q2=0,b=1]. s5=b=1; s0&s1=1&1=1 ~=0 &s2 a=1=>0 |~s3=~q13=1=>1 &s4 q2=0=>0. N6=0.
+G7 s=[q0=1,q3=1,b=1,q14=1,q6=0,q5=0]. s5=q5=0 -> N7=1.
+G8 s=[q0=1,q12=1,a=1,q11=0,q13=0,a=1]. s5=a=1; s0&s1=1&1=1 ~=0 &s2 a=1=>0 |~s3=~q11=1=>1 &s4 q13=0=>0. N8=0.
+G9 s=[q9=1,q1=0,q5=0,q13=0,q13=0,q4=1]. s5=q4=1; s0&s1=1&0=0 ~=1 &s2 q5=0=>0 |~s3=~q13=1=>1 &s4 q13=0=>0. N9=0. (B&q13=0 |~q4=0)
+G10 s=[q6=0,q4=1,q11=0,q10=0,q5=0,q9=1]. s5=q9=1; s0&s1=0&1=0 ~=1 &s2 q11=0=>0 |~s3=~q10=1=>1 &s4 q5=0=>0. N10=0.
+G11 s=[q13=0,q1=0,q0=1,b=1,q11=0,q6=0]. s5=q6=0 -> N11=1.
+G12 s=[q0=1,q5=0,q6=0,q5=0,q11=0,q4=1]. s5=q4=1; s0&s1=1&0=0 ~=1 &s2 q6=0=>0 |~s3=~q5=1=>1 &s4 q11=0=>0. N12=0.
+G13 s=[q4=1,q13=0,q14=1,q7=1,a=1,q15=0]. s5=q15=0 -> N13=1.
+G14 s=[q5=0,q3=1,q13=0,q4=1,b=1,q0=1]. s5=q0=1; s0&s1=0&1=0 ~=1 &s2 q13=0=>0 |~s3=~q4=0=>0 &s4 b=1=>0. N14=0.
+G15 s=[q14=1,q14=1,q2=0,q14=1,q8=1,q13=0]. s5=q13=0 -> N15=1.
+S23: q0=0,q1=0,q2=0,q3=0,q4=1,q5=1,q6=0,q7=1,q8=0,q9=0,q10=0,q11=1,q12=0,q13=1,q14=0,q15=1. String: 0 0 0 0 1 1 0 1 0 0 0 1 0 1 0 1 = "0000110100010101"? Concatenate: q0 0; q1 0=00; q2 0=000; q3 0=0000; q4 1=00001; q5 1=000011; q6 0=0000110; q7 1=00001101; q8 0=000011010; q9 0=0000110100; q10 0=00001101000; q11 1=000011010001; q12 0=0000110100010; q13 1=00001101000101; q14 0=000011010001010; q15 1=0000110100010101. yes.
+Record cycle23 outputs S23: q0=0,q1=0,q11=1,q14=0,q5=1,q7=1.
+
+t=23: input a=1,b=0. Current S23. Compute S24.
+S23: q0=0 q1=0 q2=0 q3=0 q4=1 q5=1 q6=0 q7=1 q8=0 q9=0 q10=0 q11=1 q12=0 q13=1 q14=0 q15=1.
+G0 s=[q11=1,q5=1,q1=0,q8=0,q4=1,q4=1]. s5=q4=1; s0&s1=1&1=1 ~=0 &s2 q1=0=>0 |~s3=~q8=1=>1 &s4 q4=1=>1. N0=1.
+G1 s=[b=0,q1=0,a=1,q6=0,q2=0,q14=0]. s5=q14=0 -> N1=1.
+G2 s=[q5=1,q2=0,q12=0,q6=0,q11=1,q9=0]. s5=q9=0 -> N2=1.
+G3 s=[b=0,q14=0,q14=0,a=1,q9=0,q9=0]. s5=q9=0 -> N3=1.
+G4 s=[q4=1,q13=1,q9=0,q8=0,q4=1,q8=0]. s5=q8=0 -> N4=1.
+G5 s=[q9=0,q15=1,q4=1,q14=0,q12=0,q0=0]. s5=q0=0 -> N5=1.
+G6 s=[q8=0,q4=1,a=1,q13=1,q2=0,b=0]. s5=b=0 -> N6=1.
+G7 s=[q0=0,q3=0,b=0,q14=0,q6=0,q5=1]. s5=q5=1; s0&s1=0 ~=1 &s2 b0=0=>0 |~s3=~q14=1=>1 &s4 q6=0=>0. N7=0.
+G8 s=[q0=0,q12=0,a=1,q11=1,q13=1,a=1]. s5=a=1; s0&s1=0 ~=1 &s2 a=1=>1 |~s3=~q11=0=>1 &s4 q13=1=>1. N8=1.
+G9 s=[q9=0,q1=0,q5=1,q13=1,q13=1,q4=1]. s5=q4=1; s0&s1=0 ~=1 &s2 q5=1=>1 |~s3=~q13=0=>1 &s4 q13=1=>1. N9=1.
+G10 s=[q6=0,q4=1,q11=1,q10=0,q5=1,q9=0]. s5=q9=0 -> N10=1.
+G11 s=[q13=1,q1=0,q0=0,b=0,q11=1,q6=0]. s5=q6=0 -> N11=1.
+G12 s=[q0=0,q5=1,q6=0,q5=1,q11=1,q4=1]. s5=q4=1; s0&s1=0&1=0 ~=1 &s2 q6=0=>0 |~s3=~q5=0=>0 &s4 q11=1=>0. N12=0.
+G13 s=[q4=1,q13=1,q14=0,q7=1,a=1,q15=1]. s5=q15=1; s0&s1=1&1=1 ~=0 &s2 q14=0=>0 |~s3=~q7=0=>0 &s4 a=1=>0. N13=0.
+G14 s=[q5=1,q3=0,q13=1,q4=1,b=0,q0=0]. s5=q0=0 -> N14=1.
+G15 s=[q14=0,q14=0,q2=0,q14=0,q8=0,q13=1]. s5=q13=1; s0&s1=0 ~=1 &s2 q2=0=>0 |~s3=~q14=1=>1 &s4 q8=0=>0. N15=0.
+S24: q0=1,q1=1,q2=1,q3=1,q4=1,q5=1,q6=1,q7=0,q8=1,q9=1,q10=1,q11=1,q12=0,q13=0,q14=1,q15=0. String: 1 1 1 1 1 1 1 0 1 1 1 1 0 0 1 0 = "1111111011110010"? Concatenate: q0-6 seven ones? q0=1 q1=1 q2=1 q3=1 q4=1 q5=1 q6=1 =1111111; q7=0 ->11111110; q8=1 111111101; q9=1 1111111011; q10=1 11111110111; q11=1 111111101111; q12=0 1111111011110; q13=0 11111110111100; q14=1 111111101111001; q15=0 1111111011110010. yes.
+Record cycle24 outputs S24: q0=1,q1=1,q11=1,q14=1,q5=1,q7=0.
+
+t=24: input a=1,b=1. Current S24. Compute S25.
+S24: q0=1 q1=1 q2=1 q3=1 q4=1 q5=1 q6=1 q7=0 q8=1 q9=1 q10=1 q11=1 q12=0 q13=0 q14=1 q15=0.
+G0 s=[q11=1,q5=1,q1=1,q8=1,q4=1,q4=1]. s5=1; s0&s1=1 ~=0 &q1=1=>0 |~q8=0=>0 &q4=1=>0. N0=0.
+G1 s=[b=1,q1=1,a=1,q6=1,q2=1,q14=1]. s5=q14=1; s0&s1=1 ~=0 &a=1=>0 |~q6=0=>0 &q2=1=>0. N1=0.
+G2 s=[q5=1,q2=1,q12=0,q6=1,q11=1,q9=1]. s5=q9=1; s0&s1=1 ~=0 &q12=0=>0 |~q6=0=>0 &q11=1=>0. N2=0.
+G3 s=[b=1,q14=1,q14=1,a=1,q9=1,q9=1]. s5=q9=1; s0&s1=1 ~=0 &q14=1=>0 |~a=0=>0 &q9=1=>0. N3=0.
+G4 s=[q4=1,q13=0,q9=1,q8=1,q4=1,q8=1]. s5=q8=1; s0&s1=1&0=0 ~=1 &q9=1=>1 |~q8=0=>1 &q4=1=>1. N4=1.
+G5 s=[q9=1,q15=0,q4=1,q14=1,q12=0,q0=1]. s5=q0=1; s0&s1=1&0=0 ~=1 &q4=1=>1 |~q14=0=>1 &s4 q12=0=>0. N5=0.
+G6 s=[q8=1,q4=1,a=1,q13=0,q2=1,b=1]. s5=b=1; s0&s1=1&1=1 ~=0 &a=1=>0 |~q13=1=>1 &s4 q2=1=>1. N6=1.
+G7 s=[q0=1,q3=1,b=1,q14=1,q6=1,q5=1]. s5=q5=1; s0&s1=1&1=1 ~=0 &b=1=>0 |~q14=0=>0 &q6=1=>0. N7=0.
+G8 s=[q0=1,q12=0,a=1,q11=1,q13=0,a=1]. s5=a=1; s0&s1=1&0=0 ~=1 &a=1=>1 |~q11=0=>1 &s4 q13=0=>0. N8=0.
+G9 s=[q9=1,q1=1,q5=1,q13=0,q13=0,q4=1]. s5=q4=1; s0&s1=1&1=1 ~=0 &q5=1=>0 |~q13=1=>1 &s4 q13=0=>0. N9=0.
+G10 s=[q6=1,q4=1,q11=1,q10=1,q5=1,q9=1]. s5=q9=1; s0&s1=1 ~=0 &q11=1=>0 |~q10=0=>0 &q5=1=>0. N10=0.
+G11 s=[q13=0,q1=1,q0=1,b=1,q11=1,q6=1]. s5=q6=1; s0&s1=0&1=0 ~=1 &q0=1=>1 |~b=0=>1 &q11=1=>1. N11=1.
+G12 s=[q0=1,q5=1,q6=1,q5=1,q11=1,q4=1]. s5=q4=1; s0&s1=1 ~=0 &q6=1=>0 |~q5=0=>0 &q11=1=>0. N12=0.
+G13 s=[q4=1,q13=0,q14=1,q7=0,a=1,q15=0]. s5=q15=0 -> N13=1.
+G14 s=[q5=1,q3=1,q13=0,q4=1,b=1,q0=1]. s5=q0=1; s0&s1=1&1=1 ~=0 &q13=0=>0 |~q4=0=>0 &b=1=>0. N14=0.
+G15 s=[q14=1,q14=1,q2=1,q14=1,q8=1,q13=0]. s5=q13=0 -> N15=1.
+S25: q0=0,q1=0,q2=0,q3=0,q4=1,q5=0,q6=1,q7=0,q8=0,q9=0,q10=0,q11=1,q12=0,q13=1,q14=0,q15=1. String: 0 0 0 0 1 0 1 0 0 0 0 1 0 1 0 1 = "0000101000010101"? Concatenate: 0 0 0 0 =0000; q4 1=00001; q5 0=000010; q6 1=0000101; q7 0=00001010; q8 0=000010100; q9 0=0000101000; q10 0=00001010000; q11 1=000010100001; q12 0=0000101000010; q13 1=00001010000101; q14 0=000010100001010; q15 1=0000101000010101. yes.
+Record cycle25 outputs S25: q0=0,q1=0,q11=1,q14=0,q5=0,q7=0.
+
+t=25: input a=0,b=0. Current S25. Compute S26.
+S25: q0=0 q1=0 q2=0 q3=0 q4=1 q5=0 q6=1 q7=0 q8=0 q9=0 q10=0 q11=1 q12=0 q13=1 q14=0 q15=1.
+G0 s=[q11=1,q5=0,q1=0,q8=0,q4=1,q4=1]. s5=q4=1; s0&s1=1&0=0 ~=1 &s2 q1=0=>0 |~s3=~q8=1=>1 &s4 q4=1=>1. N0=1.
+G1 s=[b=0,q1=0,a=0,q6=1,q2=0,q14=0]. s5=q14=0 -> N1=1.
+G2 s=[q5=0,q2=0,q12=0,q6=1,q11=1,q9=0]. s5=q9=0 -> N2=1.
+G3 s=[b=0,q14=0,q14=0,a=0,q9=0,q9=0]. s5=q9=0 -> N3=1.
+G4 s=[q4=1,q13=1,q9=0,q8=0,q4=1,q8=0]. s5=q8=0 -> N4=1.
+G5 s=[q9=0,q15=1,q4=1,q14=0,q12=0,q0=0]. s5=q0=0 -> N5=1.
+G6 s=[q8=0,q4=1,a=0,q13=1,q2=0,b=0]. s5=b=0 -> N6=1.
+G7 s=[q0=0,q3=0,b=0,q14=0,q6=1,q5=0]. s5=q5=0 -> N7=1.
+G8 s=[q0=0,q12=0,a=0,q11=1,q13=1,a=0]. s5=a=0 -> N8=1.
+G9 s=[q9=0,q1=0,q5=0,q13=1,q13=1,q4=1]. s5=q4=1; s0&s1=0 ~=1 &s2 q5=0=>0 |~s3=~q13=0=>0 &s4 q13=1=>0. N9=0.
+G10 s=[q6=1,q4=1,q11=1,q10=0,q5=0,q9=0]. s5=q9=0 -> N10=1.
+G11 s=[q13=1,q1=0,q0=0,b=0,q11=1,q6=1]. s5=q6=1; s0&s1=1&0=0 ~=1 &s2 q0=0=>0 |~s3=~b=1=>1 &s4 q11=1=>1. N11=1.
+G12 s=[q0=0,q5=0,q6=1,q5=0,q11=1,q4=1]. s5=q4=1; s0&s1=0 ~=1 &s2 q6=1=>1 |~s3=~q5=1=>1 &s4 q11=1=>1. N12=1.
+G13 s=[q4=1,q13=1,q14=0,q7=0,a=0,q15=1]. s5=q15=1; s0&s1=1&1=1 ~=0 &s2 q14=0=>0 |~s3=~q7=1=>1 &s4 a=0=>0. N13=0.
+G14 s=[q5=0,q3=0,q13=1,q4=1,b=0,q0=0]. s5=q0=0 -> N14=1.
+G15 s=[q14=0,q14=0,q2=0,q14=0,q8=0,q13=1]. s5=q13=1; s0&s1=0 ~=1 &s2 q2=0=>0 |~s3=~q14=1=>1 &s4 q8=0=>0. N15=0.
+S26: q0=1,q1=1,q2=1,q3=1,q4=1,q5=1,q6=1,q7=1,q8=1,q9=0,q10=1,q11=1,q12=1,q13=0,q14=1,q15=0. String: q0-q8 = nine? q0 1,q1 1,q2 1,q3 1,q4 1,q5 1,q6 1,q7 1,q8 1 = nine ones; q9=0; q10=1;q11=1;q12=1;q13=0;q14=1;q15=0. String "1111111110111010"? Concatenate: nine ones =111111111; q9 0 ->1111111110; q10 1 ->11111111101; q11 1 ->111111111011; q12 1 ->1111111110111; q13 0 ->11111111101110; q14 1 ->111111111011101; q15 0 ->1111111110111010. yes.
+Record cycle26 outputs S26: q0=1,q1=1,q11=1,q14=1,q5=1,q7=1.
+
+t=26: input a=1,b=0. Current S26. Compute S27.
+S26: q0=1 q1=1 q2=1 q3=1 q4=1 q5=1 q6=1 q7=1 q8=1 q9=0 q10=1 q11=1 q12=1 q13=0 q14=1 q15=0.
+G0 s=[q11=1,q5=1,q1=1,q8=1,q4=1,q4=1] -> as before N0=0 (s0s1=1, q1=1, q8=1,q4=1). N0=0.
+G1 s=[b=0,q1=1,a=1,q6=1,q2=1,q14=1]. s5=q14=1; s0&s1=0&1=0 ~=1 &s2 a=1=>1 |~s3=~q6=0=>1 &s4 q2=1=>1. N1=1.
+G2 s=[q5=1,q2=1,q12=1,q6=1,q11=1,q9=0]. s5=q9=0 -> N2=1.
+G3 s=[b=0,q14=1,q14=1,a=1,q9=0,q9=0]. s5=q9=0 -> N3=1.
+G4 s=[q4=1,q13=0,q9=0,q8=1,q4=1,q8=1]. s5=q8=1; s0&s1=1&0=0 ~=1 &s2 q9=0=>0 |~s3=~q8=0=>0 &s4 q4=1=>0. N4=0.
+G5 s=[q9=0,q15=0,q4=1,q14=1,q12=1,q0=1]. s5=q0=1; s0&s1=0 ~=1 &s2 q4=1=>1 |~s3=~q14=0=>1 &s4 q12=1=>1. N5=1.
+G6 s=[q8=1,q4=1,a=1,q13=0,q2=1,b=0]. s5=b=0 -> N6=1.
+G7 s=[q0=1,q3=1,b=0,q14=1,q6=1,q5=1]. s5=q5=1; s0&s1=1&1=1 ~=0 &s2 b0=0=>0 |~s3=~q14=0=>0 &s4 q6=1=>0. N7=0.
+G8 s=[q0=1,q12=1,a=1,q11=1,q13=0,a=1]. s5=a=1; s0&s1=1&1=1 ~=0 &s2 a=1=>0 |~s3=~q11=0=>0 &s4 q13=0=>0. N8=0.
+G9 s=[q9=0,q1=1,q5=1,q13=0,q13=0,q4=1]. s5=q4=1; s0&s1=0&1=0 ~=1 &s2 q5=1=>1 |~s3=~q13=1=>1 &s4 q13=0=>0. N9=0.
+G10 s=[q6=1,q4=1,q11=1,q10=1,q5=1,q9=0]. s5=q9=0 -> N10=1.
+G11 s=[q13=0,q1=1,q0=1,b=0,q11=1,q6=1]. s5=q6=1; s0&s1=0&1=0 ~=1 &s2 q0=1=>1 |~s3=~b=1=>1 &s4 q11=1=>1. N11=1.
+G12 s=[q0=1,q5=1,q6=1,q5=1,q11=1,q4=1]. s5=q4=1; s0&s1=1 ~=0 &q6=1=>0 |~q5=0=>0 &q11=1=>0. N12=0.
+G13 s=[q4=1,q13=0,q14=1,q7=1,a=1,q15=0]. s5=q15=0 -> N13=1.
+G14 s=[q5=1,q3=1,q13=0,q4=1,b=0,q0=1]. s5=q0=1; s0&s1=1&1=1 ~=0 &s2 q13=0=>0 |~s3=~q4=0=>0 &s4 b=0=>0. N14=0.
+G15 s=[q14=1,q14=1,q2=1,q14=1,q8=1,q13=0]. s5=q13=0 -> N15=1.
+S27: q0=0,q1=1,q2=1,q3=1,q4=0,q5=1,q6=1,q7=0,q8=0,q9=0,q10=1,q11=1,q12=0,q13=1,q14=0,q15=1. String: 0 1 1 1 0 1 1 0 0 0 1 1 0 1 0 1 = "0111011000110101"? Concatenate: 0;1=01;1=011;1=0111;0=01110;1=011101;1=0111011;0=01110110;0=011101100;0=0111011000;1=01110110001;1=011101100011;0=0111011000110;1=01110110001101;0=011101100011010;1=0111011000110101. yes.
+Record cycle27 outputs S27: q0=0,q1=1,q11=1,q14=0,q5=1,q7=0.
+
+t=27: input a=0,b=1. Current S27. Compute S28.
+S27: q0=0 q1=1 q2=1 q3=1 q4=0 q5=1 q6=1 q7=0 q8=0 q9=0 q10=1 q11=1 q12=0 q13=1 q14=0 q15=1.
+G0 s=[q11=1,q5=1,q1=1,q8=0,q4=0,q4=0]. s5=q4=0 -> N0=1.
+G1 s=[b=1,q1=1,a=0,q6=1,q2=1,q14=0]. s5=q14=0 -> N1=1.
+G2 s=[q5=1,q2=1,q12=0,q6=1,q11=1,q9=0]. s5=q9=0 -> N2=1.
+G3 s=[b=1,q14=0,q14=0,a=0,q9=0,q9=0]. s5=q9=0 -> N3=1.
+G4 s=[q4=0,q13=1,q9=0,q8=0,q4=0,q8=0]. s5=q8=0 -> N4=1.
+G5 s=[q9=0,q15=1,q4=0,q14=0,q12=0,q0=0]. s5=q0=0 -> N5=1.
+G6 s=[q8=0,q4=0,a=0,q13=1,q2=1,b=1]. s5=b=1; s0&s1=0 ~=1 &s2 a0=0=>0 |~s3=~q13=0=>0 &s4 q2=1=>0. N6=0.
+G7 s=[q0=0,q3=1,b=1,q14=0,q6=1,q5=1]. s5=q5=1; s0&s1=0&1=0 ~=1 &s2 b=1=>1 |~s3=~q14=1=>1 &s4 q6=1=>1. N7=1.
+G8 s=[q0=0,q12=0,a=0,q11=1,q13=1,a=0]. s5=a=0 -> N8=1.
+G9 s=[q9=0,q1=1,q5=1,q13=1,q13=1,q4=0]. s5=q4=0 -> N9=1.
+G10 s=[q6=1,q4=0,q11=1,q10=1,q5=1,q9=0]. s5=q9=0 -> N10=1.
+G11 s=[q13=1,q1=1,q0=0,b=1,q11=1,q6=1]. s5=q6=1; s0&s1=1&1=1 ~=0 &s2 q0=0=>0 |~s3=~b=0=>0 &s4 q11=1=>0. N11=0.
+G12 s=[q0=0,q5=1,q6=1,q5=1,q11=1,q4=0]. s5=q4=0 -> N12=1.
+G13 s=[q4=0,q13=1,q14=0,q7=0,a=0,q15=1]. s5=q15=1; s0&s1=0&1=0 ~=1 &s2 q14=0=>0 |~s3=~q7=1=>1 &s4 a=0=>0. N13=0.
+G14 s=[q5=1,q3=1,q13=1,q4=0,b=1,q0=0]. s5=q0=0 -> N14=1.
+G15 s=[q14=0,q14=0,q2=1,q14=0,q8=0,q13=1]. s5=q13=1; s0&s1=0 ~=1 &s2 q2=1=>1 |~s3=~q14=1=>1 &s4 q8=0=>0. N15=0.
+S28: q0=1,q1=1,q2=1,q3=1,q4=1,q5=1,q6=0,q7=1,q8=1,q9=1,q10=1,q11=0,q12=1,q13=0,q14=1,q15=0. String: 1 1 1 1 1 1 0 1 1 1 1 0 1 0 1 0 = "1111110111101010"? Concatenate: q0-q5 six ones =111111; q6 0=1111110; q7 1=11111101; q8 1=111111011; q9 1=1111110111; q10 1=11111101111; q11 0=111111011110; q12 1=1111110111101; q13 0=11111101111010; q14 1=111111011110101; q15 0=1111110111101010. yes.
+Record cycle28 outputs S28: q0=1,q1=1,q11=0,q14=1,q5=1,q7=1.
+
+t=28: input a=1,b=1. Current S28. Compute S29.
+S28: q0=1 q1=1 q2=1 q3=1 q4=1 q5=1 q6=0 q7=1 q8=1 q9=1 q10=1 q11=0 q12=1 q13=0 q14=1 q15=0.
+G0 s=[q11=0,q5=1,q1=1,q8=1,q4=1,q4=1]. s5=q4=1; s0&s1=0&1=0 ~=1 &s2 q1=1=>1 |~s3=~q8=0=>1 &s4 q4=1=>1. N0=1.
+G1 s=[b=1,q1=1,a=1,q6=0,q2=1,q14=1]. s5=q14=1; s0&s1=1&1=1 ~=0 &s2 a=1=>0 |~s3=~q6=1=>1 &s4 q2=1=>1. N1=1.
+G2 s=[q5=1,q2=1,q12=1,q6=0,q11=0,q9=1]. s5=q9=1; s0&s1=1&1=1 ~=0 &s2 q12=1=>0 |~s3=~q6=1=>1 &s4 q11=0=>0. N2=0.
+G3 s=[b=1,q14=1,q14=1,a=1,q9=1,q9=1]. s5=q9=1; s0&s1=1&1=1 ~=0 &s2 q14=1=>0 |~s3=~a=0=>0 &s4 q9=1=>0. N3=0.
+G4 s=[q4=1,q13=0,q9=1,q8=1,q4=1,q8=1]. s5=q8=1; s0&s1=1&0=0 ~=1 &s2 q9=1=>1 |~s3=~q8=0=>1 &s4 q4=1=>1. N4=1.
+G5 s=[q9=1,q15=0,q4=1,q14=1,q12=1,q0=1]. s5=q0=1; s0&s1=1&0=0 ~=1 &s2 q4=1=>1 |~s3=~q14=0=>1 &s4 q12=1=>1. N5=1.
+G6 s=[q8=1,q4=1,a=1,q13=0,q2=1,b=1]. s5=b=1; s0&s1=1&1=1 ~=0 &s2 a=1=>0 |~s3=~q13=1=>1 &s4 q2=1=>1. N6=1.
+G7 s=[q0=1,q3=1,b=1,q14=1,q6=0,q5=1]. s5=q5=1; s0&s1=1&1=1 ~=0 &s2 b=1=>0 |~s3=~q14=0=>0 &s4 q6=0=>0. N7=0.
+G8 s=[q0=1,q12=1,a=1,q11=0,q13=0,a=1]. s5=a=1; s0&s1=1&1=1 ~=0 &s2 a=1=>0 |~s3=~q11=1=>1 &s4 q13=0=>0. N8=0.
+G9 s=[q9=1,q1=1,q5=1,q13=0,q13=0,q4=1]. s5=q4=1; s0&s1=1 ~=0 &q5=1=>0 |~q13=1=>1 &s4 q13=0=>0. N9=0.
+G10 s=[q6=0,q4=1,q11=0,q10=1,q5=1,q9=1]. s5=q9=1; s0&s1=0&1=0 ~=1 &s2 q11=0=>0 |~s3=~q10=0=>0 &s4 q5=1=>0. N10=0.
+G11 s=[q13=0,q1=1,q0=1,b=1,q11=0,q6=0]. s5=q6=0 -> N11=1.
+G12 s=[q0=1,q5=1,q6=0,q5=1,q11=0,q4=1]. s5=q4=1; s0&s1=1&1=1 ~=0 &s2 q6=0=>0 |~s3=~q5=0=>0 &s4 q11=0=>0. N12=0.
+G13 s=[q4=1,q13=0,q14=1,q7=1,a=1,q15=0]. s5=q15=0 -> N13=1.
+G14 s=[q5=1,q3=1,q13=0,q4=1,b=1,q0=1]. s5=q0=1; s0&s1=1&1=1 ~=0 &s2 q13=0=>0 |~s3=~q4=0=>0 &s4 b=1=>0. N14=0.
+G15 s=[q14=1,q14=1,q2=1,q14=1,q8=1,q13=0]. s5=q13=0 -> N15=1.
+S29: q0=1,q1=1,q2=0,q3=0,q4=1,q5=1,q6=1,q7=0,q8=0,q9=0,q10=0,q11=1,q12=0,q13=1,q14=0,q15=1. String: 1 1 0 0 1 1 1 0 0 0 0 1 0 1 0 1 = "1100111000010101"? Concatenate: 1;1=11;0=110;0=1100;1=11001;1=110011;1=1100111;0=11001110;0=110011100;0=1100111000;0=11001110000;1=110011100001;0=1100111000010;1=11001110000101;0=110011100001010;1=1100111000010101. yes.
+Record cycle29 outputs S29: q0=1,q1=1,q11=1,q14=0,q5=1,q7=0.
+
+t=29: input a=0,b=1. Current S29. Compute S30.
+S29: q0=1 q1=1 q2=0 q3=0 q4=1 q5=1 q6=1 q7=0 q8=0 q9=0 q10=0 q11=1 q12=0 q13=1 q14=0 q15=1.
+G0 s=[q11=1,q5=1,q1=1,q8=0,q4=1,q4=1]. s5=q4=1; s0&s1=1&1=1 ~=0 &s2 q1=1=>0 |~s3=~q8=1=>1 &s4 q4=1=>1. N0=1.
+G1 s=[b=1,q1=1,a=0,q6=1,q2=0,q14=0]. s5=q14=0 -> N1=1.
+G2 s=[q5=1,q2=0,q12=0,q6=1,q11=1,q9=0]. s5=q9=0 -> N2=1.
+G3 s=[b=1,q14=0,q14=0,a=0,q9=0,q9=0]. s5=q9=0 -> N3=1.
+G4 s=[q4=1,q13=1,q9=0,q8=0,q4=1,q8=0]. s5=q8=0 -> N4=1.
+G5 s=[q9=0,q15=1,q4=1,q14=0,q12=0,q0=1]. s5=q0=1; s0&s1=0&1=0 ~=1 &s2 q4=1=>1 |~s3=~q14=1=>1 &s4 q12=0=>0. N5=0.
+G6 s=[q8=0,q4=1,a=0,q13=1,q2=0,b=1]. s5=b=1; s0&s1=0&1=0 ~=1 &s2 a0=0=>0 |~s3=~q13=0=>0 &s4 q2=0=>0. N6=0.
+G7 s=[q0=1,q3=0,b=1,q14=0,q6=1,q5=1]. s5=q5=1; s0&s1=1&0=0 ~=1 &s2 b=1=>1 |~s3=~q14=1=>1 &s4 q6=1=>1. N7=1.
+G8 s=[q0=1,q12=0,a=0,q11=1,q13=1,a=0]. s5=a=0 -> N8=1.
+G9 s=[q9=0,q1=1,q5=1,q13=1,q13=1,q4=1]. s5=q4=1; s0&s1=0&1=0 ~=1 &s2 q5=1=>1 |~s3=~q13=0=>1 &s4 q13=1=>1. N9=1.
+G10 s=[q6=1,q4=1,q11=1,q10=0,q5=1,q9=0]. s5=q9=0 -> N10=1.
+G11 s=[q13=1,q1=1,q0=1,b=1,q11=1,q6=1]. s5=q6=1; s0&s1=1&1=1 ~=0 &s2 q0=1=>0 |~s3=~b=0=>0 &s4 q11=1=>0. N11=0.
+G12 s=[q0=1,q5=1,q6=1,q5=1,q11=1,q4=1]. s5=q4=1; s0&s1=1&1=1 ~=0 &s2 q6=1=>0 |~s3=~q5=0=>0 &s4 q11=1=>0. N12=0.
+G13 s=[q4=1,q13=1,q14=0,q7=0,a=0,q15=1]. s5=q15=1; s0&s1=1&1=1 ~=0 &s2 q14=0=>0 |~s3=~q7=1=>1 &s4 a=0=>0. N13=0.
+G14 s=[q5=1,q3=0,q13=1,q4=1,b=1,q0=1]. s5=q0=1; s0&s1=1&0=0 ~=1 &s2 q13=1=>1 |~s3=~q4=0=>1 &s4 b=1=>1. N14=1.
+G15 s=[q14=0,q14=0,q2=0,q14=0,q8=0,q13=1]. s5=q13=1; s0&s1=0 ~=1 &s2 q2=0=>0 |~s3=~q14=1=>1 &s4 q8=0=>0. N15=0.
+S30: q0=1,q1=1,q2=1,q3=1,q4=1,q5=0,q6=0,q7=1,q8=1,q9=1,q10=1,q11=0,q12=0,q13=0,q14=1,q15=0. String: 1 1 1 1 1 0 0 1 1 1 1 0 0 0 1 0 = "1111100111100010"? Concatenate: q0-q4 five ones=11111; q5 0=111110; q6 0=1111100; q7 1=11111001; q8 1=111110011; q9 1=1111100111; q10 1=11111001111; q11 0=111110011110; q12 0=1111100111100; q13 0=11111001111000; q14 1=111110011110001; q15 0=1111100111100010. yes.
+Record cycle30 outputs S30: q0=1,q1=1,q11=0,q14=1,q5=0,q7=1.
+
+t=30: input a=1,b=1. Current S30. Compute S31.
+S30: q0=1 q1=1 q2=1 q3=1 q4=1 q5=0 q6=0 q7=1 q8=1 q9=1 q10=1 q11=0 q12=0 q13=0 q14=1 q15=0.
+G0 s=[q11=0,q5=0,q1=1,q8=1,q4=1,q4=1]. s5=q4=1; s0&s1=0&0=0 ~=1 &s2 q1=1=>1 |~s3=~q8=0=>1 &s4 q4=1=>1. N0=1.
+G1 s=[b=1,q1=1,a=1,q6=0,q2=1,q14=1]. s5=q14=1; s0&s1=1&1=1 ~=0 &s2 a=1=>0 |~s3=~q6=1=>1 &s4 q2=1=>1. N1=1.
+G2 s=[q5=0,q2=1,q12=0,q6=0,q11=0,q9=1]. s5=q9=1; s0&s1=0&1=0 ~=1 &s2 q12=0=>0 |~s3=~q6=1=>1 &s4 q11=0=>0. N2=0.
+G3 s=[b=1,q14=1,q14=1,a=1,q9=1,q9=1]. s5=q9=1; s0&s1=1&1=1 ~=0 &s2 q14=1=>0 |~s3=~a=0=>0 &s4 q9=1=>0. N3=0.
+G4 s=[q4=1,q13=0,q9=1,q8=1,q4=1,q8=1]. s5=q8=1; s0&s1=1&0=0 ~=1 &s2 q9=1=>1 |~s3=~q8=0=>1 &s4 q4=1=>1. N4=1.
+G5 s=[q9=1,q15=0,q4=1,q14=1,q12=0,q0=1]. s5=q0=1; s0&s1=1&0=0 ~=1 &s2 q4=1=>1 |~s3=~q14=0=>1 &s4 q12=0=>0. N5=0.
+G6 s=[q8=1,q4=1,a=1,q13=0,q2=1,b=1]. s5=b=1; s0&s1=1&1=1 ~=0 &s2 a=1=>0 |~s3=~q13=1=>1 &s4 q2=1=>1. N6=1.
+G7 s=[q0=1,q3=1,b=1,q14=1,q6=0,q5=0]. s5=q5=0 -> N7=1.
+G8 s=[q0=1,q12=0,a=1,q11=0,q13=0,a=1]. s5=a=1; s0&s1=1&0=0 ~=1 &s2 a=1=>1 |~s3=~q11=1=>1 &s4 q13=0=>0. N8=0.
+G9 s=[q9=1,q1=1,q5=0,q13=0,q13=0,q4=1]. s5=q4=1; s0&s1=1&1=1 ~=0 &s2 q5=0=>0 |~s3=~q13=1=>1 &s4 q13=0=>0. N9=0.
+G10 s=[q6=0,q4=1,q11=0,q10=1,q5=0,q9=1]. s5=q9=1; s0&s1=0&1=0 ~=1 &s2 q11=0=>0 |~s3=~q10=0=>0 &s4 q5=0=>0. N10=0.
+G11 s=[q13=0,q1=1,q0=1,b=1,q11=0,q6=0]. s5=q6=0 -> N11=1.
+G12 s=[q0=1,q5=0,q6=0,q5=0,q11=0,q4=1]. s5=q4=1; s0&s1=1&0=0 ~=1 &s2 q6=0=>0 |~s3=~q5=1=>1 &s4 q11=0=>0. N12=0.
+G13 s=[q4=1,q13=0,q14=1,q7=1,a=1,q15=0]. s5=q15=0 -> N13=1.
+G14 s=[q5=0,q3=1,q13=0,q4=1,b=1,q0=1]. s5=q0=1; s0&s1=0&1=0 ~=1 &s2 q13=0=>0 |~s3=~q4=0=>0 &s4 b=1=>0. N14=0.
+G15 s=[q14=1,q14=1,q2=1,q14=1,q8=1,q13=0]. s5=q13=0 -> N15=1.
+S31: q0=1,q1=1,q2=0,q3=0,q4=1,q5=0,q6=1,q7=1,q8=0,q9=0,q10=0,q11=1,q12=0,q13=1,q14=0,q15=1. String: 1 1 0 0 1 0 1 1 0 0 0 1 0 1 0 1 = "1100101100010101"? Concatenate: 1;1=11;0=110;0=1100;1=11001;0=110010;1=1100101;1=11001011;0=110010110;0=1100101100;0=11001011000;1=110010110001;0=1100101100010;1=11001011000101;0=110010110001010;1=1100101100010101. yes.
+Record cycle31 outputs S31: q0=1,q1=1,q11=1,q14=0,q5=0,q7=1.
+
+t=31: input a=1,b=0. Current S31. Compute S32.
+S31: q0=1 q1=1 q2=0 q3=0 q4=1 q5=0 q6=1 q7=1 q8=0 q9=0 q10=0 q11=1 q12=0 q13=1 q14=0 q15=1.
+G0 s=[q11=1,q5=0,q1=1,q8=0,q4=1,q4=1]. s5=q4=1; s0&s1=1&0=0 ~=1 &s2 q1=1=>1 |~s3=~q8=1=>1 &s4 q4=1=>1. N0=1.
+G1 s=[b=0,q1=1,a=1,q6=1,q2=0,q14=0]. s5=q14=0 -> N1=1.
+G2 s=[q5=0,q2=0,q12=0,q6=1,q11=1,q9=0]. s5=q9=0 -> N2=1.
+G3 s=[b=0,q14=0,q14=0,a=1,q9=0,q9=0]. s5=q9=0 -> N3=1.
+G4 s=[q4=1,q13=1,q9=0,q8=0,q4=1,q8=0]. s5=q8=0 -> N4=1.
+G5 s=[q9=0,q15=1,q4=1,q14=0,q12=0,q0=1]. s5=q0=1; s0&s1=0&1=0 ~=1 &s2 q4=1=>1 |~s3=~q14=1=>1 &s4 q12=0=>0. N5=0.
+G6 s=[q8=0,q4=1,a=1,q13=1,q2=0,b=0]. s5=b=0 -> N6=1.
+G7 s=[q0=1,q3=0,b=0,q14=0,q6=1,q5=0]. s5=q5=0 -> N7=1.
+G8 s=[q0=1,q12=0,a=1,q11=1,q13=1,a=1]. s5=a=1; s0&s1=1&0=0 ~=1 &s2 a=1=>1 |~s3=~q11=0=>1 &s4 q13=1=>1. N8=1.
+G9 s=[q9=0,q1=1,q5=0,q13=1,q13=1,q4=1]. s5=q4=1; s0&s1=0&1=0 ~=1 &s2 q5=0=>0 |~s3=~q13=0=>0 &s4 q13=1=>0. N9=0.
+G10 s=[q6=1,q4=1,q11=1,q10=0,q5=0,q9=0]. s5=q9=0 -> N10=1.
+G11 s=[q13=1,q1=1,q0=1,b=0,q11=1,q6=1]. s5=q6=1; s0&s1=1&1=1 ~=0 &s2 q0=1=>0 |~s3=~b=1=>1 &s4 q11=1=>1. N11=1.
+G12 s=[q0=1,q5=0,q6=1,q5=0,q11=1,q4=1]. s5=q4=1; s0&s1=1&0=0 ~=1 &s2 q6=1=>1 |~s3=~q5=1=>1 &s4 q11=1=>1. N12=1.
+G13 s=[q4=1,q13=1,q14=0,q7=1,a=1,q15=1]. s5=q15=1; s0&s1=1&1=1 ~=0 &s2 q14=0=>0 |~s3=~q7=0=>0 &s4 a=1=>0. N13=0.
+G14 s=[q5=0,q3=0,q13=1,q4=1,b=0,q0=1]. s5=q0=1; s0&s1=0 ~=1 &s2 q13=1=>1 |~s3=~q4=0=>1 &s4 b=0=>0. N14=0.
+G15 s=[q14=0,q14=0,q2=0,q14=0,q8=0,q13=1]. s5=q13=1; s0&s1=0 ~=1 &s2 q2=0=>0 |~s3=~q14=1=>1 &s4 q8=0=>0. N15=0.
+S32: q0=1,q1=1,q2=1,q3=1,q4=1,q5=0,q6=1,q7=1,q8=1,q9=0,q10=1,q11=1,q12=1,q13=0,q14=0,q15=0. String: 1 1 1 1 1 0 1 1 1 0 1 1 1 0 0 0 = "1111101110111000"? Concatenate: q0-q4 five ones=11111; q5 0=111110; q6 1=1111101; q7 1=11111011; q8 1=111110111; q9 0=1111101110; q10 1=11111011101; q11 1=111110111011; q12 1=1111101110111; q13 0=11111011101110; q14 0=111110111011100; q15 0=1111101110111000. yes.
+Record cycle32 outputs S32: q0=1,q1=1,q11=1,q14=0,q5=0,q7=1.
+
+t=32: input a=1,b=1. Current S32. Compute S33.
+S32: q0=1 q1=1 q2=1 q3=1 q4=1 q5=0 q6=1 q7=1 q8=1 q9=0 q10=1 q11=1 q12=1 q13=0 q14=0 q15=0.
+G0 s=[q11=1,q5=0,q1=1,q8=1,q4=1,q4=1]. s5=q4=1; s0&s1=1&0=0 ~=1 &s2 q1=1=>1 |~s3=~q8=0=>1 &s4 q4=1=>1. N0=1.
+G1 s=[b=1,q1=1,a=1,q6=1,q2=1,q14=0]. s5=q14=0 -> N1=1.
+G2 s=[q5=0,q2=1,q12=1,q6=1,q11=1,q9=0]. s5=q9=0 -> N2=1.
+G3 s=[b=1,q14=0,q14=0,a=1,q9=0,q9=0]. s5=q9=0 -> N3=1.
+G4 s=[q4=1,q13=0,q9=0,q8=1,q4=1,q8=1]. s5=q8=1; s0&s1=1&0=0 ~=1 &s2 q9=0=>0 |~s3=~q8=0=>0 &s4 q4=1=>0. N4=0.
+G5 s=[q9=0,q15=0,q4=1,q14=0,q12=1,q0=1]. s5=q0=1; s0&s1=0 ~=1 &s2 q4=1=>1 |~s3=~q14=1=>1 &s4 q12=1=>1. N5=1.
+G6 s=[q8=1,q4=1,a=1,q13=0,q2=1,b=1]. s5=b=1; s0&s1=1&1=1 ~=0 &s2 a=1=>0 |~s3=~q13=1=>1 &s4 q2=1=>1. N6=1.
+G7 s=[q0=1,q3=1,b=1,q14=0,q6=1,q5=0]. s5=q5=0 -> N7=1.
+G8 s=[q0=1,q12=1,a=1,q11=1,q13=0,a=1]. s5=a=1; s0&s1=1&1=1 ~=0 &s2 a=1=>0 |~s3=~q11=0=>0 &s4 q13=0=>0. N8=0.
+G9 s=[q9=0,q1=1,q5=0,q13=0,q13=0,q4=1]. s5=q4=1; s0&s1=0&1=0 ~=1 &s2 q5=0=>0 |~s3=~q13=1=>1 &s4 q13=0=>0. N9=0.
+G10 s=[q6=1,q4=1,q11=1,q10=1,q5=0,q9=0]. s5=q9=0 -> N10=1.
+G11 s=[q13=0,q1=1,q0=1,b=1,q11=1,q6=1]. s5=q6=1; s0&s1=0&1=0 ~=1 &s2 q0=1=>1 |~s3=~b=0=>1 &s4 q11=1=>1. N11=1.
+G12 s=[q0=1,q5=0,q6=1,q5=0,q11=1,q4=1]. s5=q4=1; s0&s1=1&0=0 ~=1 &s2 q6=1=>1 |~s3=~q5=1=>1 &s4 q11=1=>1. N12=1.
+G13 s=[q4=1,q13=0,q14=0,q7=1,a=1,q15=0]. s5=q15=0 -> N13=1.
+G14 s=[q5=0,q3=1,q13=0,q4=1,b=1,q0=1]. s5=q0=1; s0&s1=0&1=0 ~=1 &s2 q13=0=>0 |~s3=~q4=0=>0 &s4 b=1=>0. N14=0.
+G15 s=[q14=0,q14=0,q2=1,q14=0,q8=1,q13=0]. s5=q13=0 -> N15=1.
+S33: q0=1,q1=1,q2=1,q3=1,q4=0,q5=1,q6=1,q7=1,q8=0,q9=0,q10=1,q11=1,q12=1,q13=1,q14=0,q15=1. String: 1 1 1 1 0 1 1 1 0 0 1 1 1 1 0 1 = "1111011100111101"? Concatenate: q0-q3 four ones=1111; q4 0=11110; q5 1=111101; q6 1=1111011; q7 1=11110111; q8 0=111101110; q9 0=1111011100; q10 1=11110111001; q11 1=111101110011; q12 1=1111011100111; q13 1=11110111001111; q14 0=111101110011110; q15 1=1111011100111101. yes.
+Record cycle33 outputs S33: q0=1,q1=1,q11=1,q14=0,q5=1,q7=1.
+
+t=33: input a=1,b=0. Current S33. Compute S34.
+S33: q0=1 q1=1 q2=1 q3=1 q4=0 q5=1 q6=1 q7=1 q8=0 q9=0 q10=1 q11=1 q12=1 q13=1 q14=0 q15=1.
+G0 s=[q11=1,q5=1,q1=1,q8=0,q4=0,q4=0]. s5=q4=0 -> N0=1.
+G1 s=[b=0,q1=1,a=1,q6=1,q2=1,q14=0]. s5=q14=0 -> N1=1.
+G2 s=[q5=1,q2=1,q12=1,q6=1,q11=1,q9=0]. s5=q9=0 -> N2=1.
+G3 s=[b=0,q14=0,q14=0,a=1,q9=0,q9=0]. s5=q9=0 -> N3=1.
+G4 s=[q4=0,q13=1,q9=0,q8=0,q4=0,q8=0]. s5=q8=0 -> N4=1.
+G5 s=[q9=0,q15=1,q4=0,q14=0,q12=1,q0=1]. s5=q0=1; s0&s1=0&1=0 ~=1 &s2 q4=0=>0 |~s3=~q14=1=>1 &s4 q12=1=>1. N5=1.
+G6 s=[q8=0,q4=0,a=1,q13=1,q2=1,b=0]. s5=b=0 -> N6=1.
+G7 s=[q0=1,q3=1,b=0,q14=0,q6=1,q5=1]. s5=q5=1; s0&s1=1&1=1 ~=0 &s2 b0=0=>0 |~s3=~q14=1=>1 &s4 q6=1=>1. N7=1.
+G8 s=[q0=1,q12=1,a=1,q11=1,q13=1,a=1]. s5=a=1; s0&s1=1&1=1 ~=0 &s2 a=1=>0 |~s3=~q11=0=>0 &s4 q13=1=>0. N8=0.
+G9 s=[q9=0,q1=1,q5=1,q13=1,q13=1,q4=0]. s5=q4=0 -> N9=1.
+G10 s=[q6=1,q4=0,q11=1,q10=1,q5=1,q9=0]. s5=q9=0 -> N10=1.
+G11 s=[q13=1,q1=1,q0=1,b=0,q11=1,q6=1]. s5=q6=1; s0&s1=1&1=1 ~=0 &s2 q0=1=>0 |~s3=~b=1=>1 &s4 q11=1=>1. N11=1.
+G12 s=[q0=1,q5=1,q6=1,q5=1,q11=1,q4=0]. s5=q4=0 -> N12=1.
+G13 s=[q4=0,q13=1,q14=0,q7=1,a=1,q15=1]. s5=q15=1; s0&s1=0&1=0 ~=1 &s2 q14=0=>0 |~s3=~q7=0=>0 &s4 a=1=>0. N13=0.
+G14 s=[q5=1,q3=1,q13=1,q4=0,b=0,q0=1]. s5=q0=1; s0&s1=1&1=1 ~=0 &s2 q13=1=>0 |~s3=~q4=1=>1 &s4 b=0=>0. N14=0.
+G15 s=[q14=0,q14=0,q2=1,q14=0,q8=0,q13=1]. s5=q13=1; s0&s1=0 ~=1 &s2 q2=1=>1 |~s3=~q14=1=>1 &s4 q8=0=>0. N15=0.
+S34: q0=1,q1=1,q2=1,q3=1,q4=1,q5=1,q6=1,q7=1,q8=0,q9=1,q10=1,q11=1,q12=1,q13=0,q14=0,q15=0. String: 1 1 1 1 1 1 1 1 0 1 1 1 1 0 0 0 = "1111111101111000"? Concatenate: q0-q7 eight ones=11111111; q8 0=111111110; q9 1=1111111101; q10 1=11111111011; q11 1=111111110111; q12 1=1111111101111; q13 0=11111111011110; q14 0=111111110111100; q15 0=1111111101111000. yes.
+Record cycle34 outputs S34: q0=1,q1=1,q11=1,q14=0,q5=1,q7=1.
+
+t=34: input a=0,b=1. Current S34. Compute S35.
+S34: q0=1 q1=1 q2=1 q3=1 q4=1 q5=1 q6=1 q7=1 q8=0 q9=1 q10=1 q11=1 q12=1 q13=0 q14=0 q15=0.
+G0 s=[q11=1,q5=1,q1=1,q8=0,q4=1,q4=1]. s5=q4=1; s0&s1=1&1=1 ~=0 &s2 q1=1=>0 |~s3=~q8=1=>1 &s4 q4=1=>1. N0=1.
+G1 s=[b=1,q1=1,a=0,q6=1,q2=1,q14=0]. s5=q14=0 -> N1=1.
+G2 s=[q5=1,q2=1,q12=1,q6=1,q11=1,q9=1]. s5=q9=1; s0&s1=1 ~=0 &q12=1=>0 |~q6=0=>0 &q11=1=>0. N2=0.
+G3 s=[b=1,q14=0,q14=0,a=0,q9=1,q9=1]. s5=q9=1; s0&s1=1&0=0 ~=1 &s2 q14=0=>0 |~s3=~a=1=>1 &s4 q9=1=>1. N3=1.
+G4 s=[q4=1,q13=0,q9=1,q8=0,q4=1,q8=0]. s5=q8=0 -> N4=1.
+G5 s=[q9=1,q15=0,q4=1,q14=0,q12=1,q0=1]. s5=q0=1; s0&s1=1&0=0 ~=1 &s2 q4=1=>1 |~s3=~q14=1=>1 &s4 q12=1=>1. N5=1.
+G6 s=[q8=0,q4=1,a=0,q13=0,q2=1,b=1]. s5=b=1; s0&s1=0&1=0 ~=1 &s2 a0=0=>0 |~s3=~q13=1=>1 &s4 q2=1=>1. N6=1.
+G7 s=[q0=1,q3=1,b=1,q14=0,q6=1,q5=1]. s5=q5=1; s0&s1=1&1=1 ~=0 &s2 b=1=>0 |~s3=~q14=1=>1 &s4 q6=1=>1. N7=1.
+G8 s=[q0=1,q12=1,a=0,q11=1,q13=0,a=0]. s5=a=0 -> N8=1.
+G9 s=[q9=1,q1=1,q5=1,q13=0,q13=0,q4=1]. s5=q4=1; s0&s1=1&1=1 ~=0 &s2 q5=1=>0 |~s3=~q13=1=>1 &s4 q13=0=>0. N9=0.
+G10 s=[q6=1,q4=1,q11=1,q10=1,q5=1,q9=1]. s5=q9=1; s0&s1=1 ~=0 &q11=1=>0 |~q10=0=>0 &q5=1=>0. N10=0.
+G11 s=[q13=0,q1=1,q0=1,b=1,q11=1,q6=1]. s5=q6=1; s0&s1=0&1=0 ~=1 &s2 q0=1=>1 |~s3=~b=0=>1 &s4 q11=1=>1. N11=1.
+G12 s=[q0=1,q5=1,q6=1,q5=1,q11=1,q4=1]. s5=q4=1; s0&s1=1 ~=0 &q6=1=>0 |~q5=0=>0 &q11=1=>0. N12=0.
+G13 s=[q4=1,q13=0,q14=0,q7=1,a=0,q15=0]. s5=q15=0 -> N13=1.
+G14 s=[q5=1,q3=1,q13=0,q4=1,b=1,q0=1]. s5=q0=1; s0&s1=1&1=1 ~=0 &s2 q13=0=>0 |~s3=~q4=0=>0 &s4 b=1=>0. N14=0.
+G15 s=[q14=0,q14=0,q2=1,q14=0,q8=0,q13=0]. s5=q13=0 -> N15=1.
+S35: q0=1,q1=1,q2=0,q3=1,q4=1,q5=1,q6=1,q7=1,q8=1,q9=0,q10=0,q11=1,q12=0,q13=1,q14=0,q15=1. String: 1 1 0 1 1 1 1 1 1 0 0 1 0 1 0 1 = "1101111110010101"? Concatenate: 1;1=11;0=110;1=1101;1=11011;1=110111;1=1101111;1=11011111;1=110111111;0=1101111110;0=11011111100;1=110111111001;0=1101111110010;1=11011111100101;0=110111111001010;1=1101111110010101. yes.
+Record cycle35 outputs S35: q0=1,q1=1,q11=1,q14=0,q5=1,q7=1.
+
+t=35: input a=1,b=0. Current S35. Compute S36.
+S35: q0=1 q1=1 q2=0 q3=1 q4=1 q5=1 q6=1 q7=1 q8=1 q9=0 q10=0 q11=1 q12=0 q13=1 q14=0 q15=1.
+G0 s=[q11=1,q5=1,q1=1,q8=1,q4=1,q4=1] -> N0=0 (since q11&q5=1, q1=1, q8=1). N0=0.
+G1 s=[b=0,q1=1,a=1,q6=1,q2=0,q14=0]. s5=q14=0 -> N1=1.
+G2 s=[q5=1,q2=0,q12=0,q6=1,q11=1,q9=0]. s5=q9=0 -> N2=1.
+G3 s=[b=0,q14=0,q14=0,a=1,q9=0,q9=0]. s5=q9=0 -> N3=1.
+G4 s=[q4=1,q13=1,q9=0,q8=1,q4=1,q8=1]. s5=q8=1; s0&s1=1&1=1 ~=0 &s2 q9=0=>0 |~s3=~q8=0=>0 &s4 q4=1=>0. N4=0.
+G5 s=[q9=0,q15=1,q4=1,q14=0,q12=0,q0=1]. s5=q0=1; s0&s1=0&1=0 ~=1 &s2 q4=1=>1 |~s3=~q14=1=>1 &s4 q12=0=>0. N5=0.
+G6 s=[q8=1,q4=1,a=1,q13=1,q2=0,b=0]. s5=b=0 -> N6=1.
+G7 s=[q0=1,q3=1,b=0,q14=0,q6=1,q5=1]. s5=q5=1; s0&s1=1&1=1 ~=0 &s2 b0=0=>0 |~s3=~q14=1=>1 &s4 q6=1=>1. N7=1.
+G8 s=[q0=1,q12=0,a=1,q11=1,q13=1,a=1]. s5=a=1; s0&s1=1&0=0 ~=1 &s2 a=1=>1 |~s3=~q11=0=>1 &s4 q13=1=>1. N8=1.
+G9 s=[q9=0,q1=1,q5=1,q13=1,q13=1,q4=1]. s5=q4=1; s0&s1=0&1=0 ~=1 &s2 q5=1=>1 |~s3=~q13=0=>1 &s4 q13=1=>1. N9=1.
+G10 s=[q6=1,q4=1,q11=1,q10=0,q5=1,q9=0]. s5=q9=0 -> N10=1.
+G11 s=[q13=1,q1=1,q0=1,b=0,q11=1,q6=1]. s5=q6=1; s0&s1=1&1=1 ~=0 &s2 q0=1=>0 |~s3=~b=1=>1 &s4 q11=1=>1. N11=1.
+G12 s=[q0=1,q5=1,q6=1,q5=1,q11=1,q4=1]. s5=q4=1; s0&s1=1&1=1 ~=0 &s2 q6=1=>0 |~s3=~q5=0=>0 &s4 q11=1=>0. N12=0.
+G13 s=[q4=1,q13=1,q14=0,q7=1,a=1,q15=1]. s5=q15=1; s0&s1=1&1=1 ~=0 &s2 q14=0=>0 |~s3=~q7=0=>0 &s4 a=1=>0. N13=0.
+G14 s=[q5=1,q3=1,q13=1,q4=1,b=0,q0=1]. s5=q0=1; s0&s1=1&1=1 ~=0 &s2 q13=1=>0 |~s3=~q4=0=>0 &s4 b=0=>0. N14=0.
+G15 s=[q14=0,q14=0,q2=0,q14=0,q8=1,q13=1]. s5=q13=1; s0&s1=0 ~=1 &s2 q2=0=>0 |~s3=~q14=1=>1 &s4 q8=1=>1. N15=1.
+S36: q0=0,q1=1,q2=1,q3=1,q4=0,q5=0,q6=1,q7=1,q8=1,q9=1,q10=1,q11=1,q12=0,q13=0,q14=0,q15=1. String: 0 1 1 1 0 0 1 1 1 1 1 1 0 0 0 1 = "0111001111110001"? Concatenate: 0;1=01;1=011;1=0111;0=01110;0=011100;1=0111001;1=01110011;1=011100111;1=0111001111;1=01110011111;1=011100111111;0=0111001111110;0=01110011111100;0=011100111111000;1=0111001111110001. yes.
+Record cycle36 outputs S36: q0=0,q1=1,q11=1,q14=0,q5=0,q7=1.
+
+t=36: input a=1,b=1. Current S36. Compute S37.
+S36: q0=0 q1=1 q2=1 q3=1 q4=0 q5=0 q6=1 q7=1 q8=1 q9=1 q10=1 q11=1 q12=0 q13=0 q14=0 q15=1.
+G0 s=[q11=1,q5=0,q1=1,q8=1,q4=0,q4=0]. s5=q4=0 -> N0=1.
+G1 s=[b=1,q1=1,a=1,q6=1,q2=1,q14=0]. s5=q14=0 -> N1=1.
+G2 s=[q5=0,q2=1,q12=0,q6=1,q11=1,q9=1]. s5=q9=1; s0&s1=0&1=0 ~=1 &s2 q12=0=>0 |~s3=~q6=0=>0 &s4 q11=1=>0. N2=0.
+G3 s=[b=1,q14=0,q14=0,a=1,q9=1,q9=1]. s5=q9=1; s0&s1=1&0=0 ~=1 &s2 q14=0=>0 |~s3=~a=0=>0 &s4 q9=1=>0. N3=0.
+G4 s=[q4=0,q13=0,q9=1,q8=1,q4=0,q8=1]. s5=q8=1; s0&s1=0 ~=1 &s2 q9=1=>1 |~s3=~q8=0=>1 &s4 q4=0=>0. N4=0.
+G5 s=[q9=1,q15=1,q4=0,q14=0,q12=0,q0=0]. s5=q0=0 -> N5=1.
+G6 s=[q8=1,q4=0,a=1,q13=0,q2=1,b=1]. s5=b=1; s0&s1=1&0=0 ~=1 &s2 a=1=>1 |~s3=~q13=1=>1 &s4 q2=1=>1. N6=1.
+G7 s=[q0=0,q3=1,b=1,q14=0,q6=1,q5=0]. s5=q5=0 -> N7=1.
+G8 s=[q0=0,q12=0,a=1,q11=1,q13=0,a=1]. s5=a=1; s0&s1=0 ~=1 &s2 a=1=>1 |~s3=~q11=0=>1 &s4 q13=0=>0. N8=0.
+G9 s=[q9=1,q1=1,q5=0,q13=0,q13=0,q4=0]. s5=q4=0 -> N9=1.
+G10 s=[q6=1,q4=0,q11=1,q10=1,q5=0,q9=1]. s5=q9=1; s0&s1=1&0=0 ~=1 &s2 q11=1=>1 |~s3=~q10=0=>1 &s4 q5=0=>0. N10=0.
+G11 s=[q13=0,q1=1,q0=0,b=1,q11=1,q6=1]. s5=q6=1; s0&s1=0&1=0 ~=1 &s2 q0=0=>0 |~s3=~b=0=>0 &s4 q11=1=>0. N11=0.
+G12 s=[q0=0,q5=0,q6=1,q5=0,q11=1,q4=0]. s5=q4=0 -> N12=1.
+G13 s=[q4=0,q13=0,q14=0,q7=1,a=1,q15=1]. s5=q15=1; s0&s1=0 ~=1 &s2 q14=0=>0 |~s3=~q7=0=>0 &s4 a=1=>0. N13=0.
+G14 s=[q5=0,q3=1,q13=0,q4=0,b=1,q0=0]. s5=q0=0 -> N14=1.
+G15 s=[q14=0,q14=0,q2=1,q14=0,q8=1,q13=0]. s5=q13=0 -> N15=1.
+S37: q0=1,q1=1,q2=0,q3=0,q4=0,q5=1,q6=1,q7=1,q8=0,q9=1,q10=0,q11=0,q12=1,q13=0,q14=1,q15=1. String: 1 1 0 0 0 1 1 1 0 1 0 0 1 0 1 1 = "1100011101001011"? Concatenate: q0 1; q1 1=11; q2 0=110; q3 0=1100; q4 0=11000; q5 1=110001; q6 1=1100011; q7 1=11000111; q8 0=110001110; q9 1=1100011101; q10 0=11000111010; q11 0=110001110100; q12 1=1100011101001; q13 0=11000111010010; q14 1=110001110100101; q15 1=1100011101001011. yes.
+Record cycle37 outputs S37: q0=1,q1=1,q11=0,q14=1,q5=1,q7=1.
+
+t=37: input a=0,b=0. Current S37. Compute S38.
+S37: q0=1 q1=1 q2=0 q3=0 q4=0 q5=1 q6=1 q7=1 q8=0 q9=1 q10=0 q11=0 q12=1 q13=0 q14=1 q15=1.
+G0 s=[q11=0,q5=1,q1=1,q8=0,q4=0,q4=0]. s5=q4=0 -> N0=1.
+G1 s=[b=0,q1=1,a=0,q6=1,q2=0,q14=1]. s5=q14=1; s0&s1=0&1=0 ~=1 &s2 a0=0=>0 |~s3=~q6=0=>0 &s4 q2=0=>0. N1=0.
+G2 s=[q5=1,q2=0,q12=1,q6=1,q11=0,q9=1]. s5=q9=1; s0&s1=1&0=0 ~=1 &s2 q12=1=>1 |~s3=~q6=0=>1 &s4 q11=0=>0. N2=0.
+G3 s=[b=0,q14=1,q14=1,a=0,q9=1,q9=1]. s5=q9=1; s0&s1=0&1=0 ~=1 &s2 q14=1=>1 |~s3=~a=1=>1 &s4 q9=1=>1. N3=1.
+G4 s=[q4=0,q13=0,q9=1,q8=0,q4=0,q8=0]. s5=q8=0 -> N4=1.
+G5 s=[q9=1,q15=1,q4=0,q14=1,q12=1,q0=1]. s5=q0=1; s0&s1=1&1=1 ~=0 &s2 q4=0=>0 |~s3=~q14=0=>0 &s4 q12=1=>0. N5=0.
+G6 s=[q8=0,q4=0,a=0,q13=0,q2=0,b=0]. s5=b=0 -> N6=1.
+G7 s=[q0=1,q3=0,b=0,q14=1,q6=1,q5=1]. s5=q5=1; s0&s1=1&0=0 ~=1 &s2 b0=0=>0 |~s3=~q14=0=>0 &s4 q6=1=>0. N7=0.
+G8 s=[q0=1,q12=1,a=0,q11=0,q13=0,a=0]. s5=a=0 -> N8=1.
+G9 s=[q9=1,q1=1,q5=1,q13=0,q13=0,q4=0]. s5=q4=0 -> N9=1.
+G10 s=[q6=1,q4=0,q11=0,q10=0,q5=1,q9=1]. s5=q9=1; s0&s1=1&0=0 ~=1 &s2 q11=0=>0 |~s3=~q10=1=>1 &s4 q5=1=>1. N10=1.
+G11 s=[q13=0,q1=1,q0=1,b=0,q11=0,q6=1]. s5=q6=1; s0&s1=0&1=0 ~=1 &s2 q0=1=>1 |~s3=~b=1=>1 &s4 q11=0=>0. N11=0.
+G12 s=[q0=1,q5=1,q6=1,q5=1,q11=0,q4=0]. s5=q4=0 -> N12=1.
+G13 s=[q4=0,q13=0,q14=1,q7=1,a=0,q15=1]. s5=q15=1; s0&s1=0 ~=1 &s2 q14=1=>1 |~s3=~q7=0=>1 &s4 a=0=>0. N13=0.
+G14 s=[q5=1,q3=0,q13=0,q4=0,b=0,q0=1]. s5=q0=1; s0&s1=1&0=0 ~=1 &s2 q13=0=>0 |~s3=~q4=1=>1 &s4 b=0=>0. N14=0.
+G15 s=[q14=1,q14=1,q2=0,q14=1,q8=0,q13=0]. s5=q13=0 -> N15=1.
+S38: q0=1,q1=0,q2=0,q3=1,q4=1,q5=0,q6=1,q7=0,q8=1,q9=1,q10=1,q11=0,q12=1,q13=0,q14=0,q15=1. String: 1 0 0 1 1 0 1 0 1 1 1 0 1 0 0 1 = "1001101011101001"? Concatenate: 1;0=10;0=100;1=1001;1=10011;0=100110;1=1001101;0=10011010;1=100110101;1=1001101011;1=10011010111;0=100110101110;1=1001101011101;0=10011010111010;0=100110101110100;1=1001101011101001. yes.
+Record cycle38 outputs S38: q0=1,q1=0,q11=0,q14=0,q5=0,q7=0.
+
+t=38: input a=1,b=1. Current S38. Compute S39 (needed record cycle39). 
+S38: q0=1 q1=0 q2=0 q3=1 q4=1 q5=0 q6=1 q7=0 q8=1 q9=1 q10=1 q11=0 q12=1 q13=0 q14=0 q15=1.
+G0 s=[q11=0,q5=0,q1=0,q8=1,q4=1,q4=1]. s5=q4=1; s0&s1=0&0=0 ~=1 &s2 q1=0=>0 |~s3=~q8=0=>0 &s4 q4=1=>0. N0=0.
+G1 s=[b=1,q1=0,a=1,q6=1,q2=0,q14=0]. s5=q14=0 -> N1=1.
+G2 s=[q5=0,q2=0,q12=1,q6=1,q11=0,q9=1]. s5=q9=1; s0&s1=0 ~=1 &s2 q12=1=>1 |~s3=~q6=0=>1 &s4 q11=0=>0. N2=0.
+G3 s=[b=1,q14=0,q14=0,a=1,q9=1,q9=1]. s5=q9=1; s0&s1=1&0=0 ~=1 &s2 q14=0=>0 |~s3=~a=0=>0 &s4 q9=1=>0. N3=0.
+G4 s=[q4=1,q13=0,q9=1,q8=1,q4=1,q8=1]. s5=q8=1; s0&s1=1&0=0 ~=1 &s2 q9=1=>1 |~s3=~q8=0=>1 &s4 q4=1=>1. N4=1.
+G5 s=[q9=1,q15=1,q4=1,q14=0,q12=1,q0=1]. s5=q0=1; s0&s1=1&1=1 ~=0 &s2 q4=1=>0 |~s3=~q14=1=>1 &s4 q12=1=>1. N5=1.
+G6 s=[q8=1,q4=1,a=1,q13=0,q2=0,b=1]. s5=b=1; s0&s1=1&1=1 ~=0 &s2 a=1=>0 |~s3=~q13=1=>1 &s4 q2=0=>0. N6=0.
+G7 s=[q0=1,q3=1,b=1,q14=0,q6=1,q5=0]. s5=q5=0 -> N7=1.
+G8 s=[q0=1,q12=1,a=1,q11=0,q13=0,a=1]. s5=a=1; s0&s1=1&1=1 ~=0 &s2 a=1=>0 |~s3=~q11=1=>1 &s4 q13=0=>0. N8=0.
+G9 s=[q9=1,q1=0,q5=0,q13=0,q13=0,q4=1]. s5=q4=1; s0&s1=1&0=0 ~=1 &s2 q5=0=>0 |~s3=~q13=1=>1 &s4 q13=0=>0. N9=0.
+G10 s=[q6=1,q4=1,q11=0,q10=1,q5=0,q9=1]. s5=q9=1; s0&s1=1&1=1 ~=0 &s2 q11=0=>0 |~s3=~q10=0=>0 &s4 q5=0=>0. N10=0.
+G11 s=[q13=0,q1=0,q0=1,b=1,q11=0,q6=1]. s5=q6=1; s0&s1=0&0=0 ~=1 &s2 q0=1=>1 |~s3=~b=0=>1 &s4 q11=0=>0. N11=0.
+G12 s=[q0=1,q5=0,q6=1,q5=0,q11=0,q4=1]. s5=q4=1; s0&s1=1&0=0 ~=1 &s2 q6=1=>1 |~s3=~q5=1=>1 &s4 q11=0=>0. N12=0.
+G13 s=[q4=1,q13=0,q14=0,q7=0,a=1,q15=1]. s5=q15=1; s0&s1=1&0=0 ~=1 &s2 q14=0=>0 |~s3=~q7=1=>1 &s4 a=1=>1. N13=1.
+G14 s=[q5=0,q3=1,q13=0,q4=1,b=1,q0=1]. s5=q0=1; s0&s1=0&1=0 ~=1 &s2 q13=0=>0 |~s3=~q4=0=>0 &s4 b=1=>0. N14=0.
+G15 s=[q14=0,q14=0,q2=0,q14=0,q8=1,q13=0]. s5=q13=0 -> N15=1.
+S39: q0=0,q1=1,q2=0,q3=0,q4=1,q5=1,q6=0,q7=1,q8=0,q9=0,q10=0,q11=0,q12=0,q13=1,q14=0,q15=1. String: 0 1 0 0 1 1 0 1 0 0 0 0 0 1 0 1 = "0100110100000101"? Concatenate: q0 0; q1 1=01; q2 0=010; q3 0=0100; q4 1=01001; q5 1=010011; q6 0=0100110; q7 1=01001101; q8 0=010011010; q9 0=0100110100; q10 0=01001101000; q11 0=010011010000; q12 0=0100110100000; q13 1=01001101000001; q14 0=010011010000010; q15 1=0100110100000101. yes.
+Record cycle39 outputs S39: q0=0,q1=1,q11=0,q14=0,q5=1,q7=1.
+
+Now we have recorded selected outputs for cycles 0..39. Need compile lists for outputs order in circuit: ["q0","q1","q11","q14","q5","q7"]. Need produce object maps each output net name to list recorded values. The output object can be in that order (JSON order not semantically important but use same). Need list exactly 40 ints.
+
+Let's collect from records. I'll make a table of cycles t and selected outputs (q0,q1,q11,q14,q5,q7). From above records:
+cycle0 S0: q0=0 q1=0 q11=1 q14=0 q5=1 q7=1.
+1 S1: 1,1,1,1,1,1.
+2 S2: 0,0,1,0,1,0.
+3 S3: 0,1,1,1,1,0.
+4 S4: 1,0,0,1,1,1.
+5 S5: 1,0,0,0,0,0.
+6 S6: 1,1,0,1,1,1.
+7 S7: 1,0,1,1,1,0.
+8 S8: 1,0,1,0,0,0.
+9 S9: 1,1,1,1,1,1.
+10 S10: 1,1,1,0,0,0.
+11 S11: 1,1,0,1,1,1.
+12 S12: 1,1,1,0,1,0.
+13 S13: 1,1,0,1,0,1.
+14 S14: 1,0,1,1,0,1.
+15 S15: 1,0,1,0,0,1.
+16 S16: 1,1,1,0,1,1.
+17 S17: 0,1,1,0,1,1.
+18 S18: 1,1,1,1,1,1.
+19 S19: 0,0,1,0,1,0.
+20 S20: 0,1,1,1,1,1.
+21 S21: 1,0,0,1,1,1.
+22 S22: 1,0,0,1,0,1.
+23 S23: 0,0,1,0,1,1.
+24 S24: 1,1,1,1,1,0.
+25 S25: 0,0,1,0,0,0.
+26 S26: 1,1,1,1,1,1.
+27 S27: 0,1,1,0,1,0.
+28 S28: 1,1,0,1,1,1.
+29 S29: 1,1,1,0,1,0.
+30 S30: 1,1,0,1,0,1.
+31 S31: 1,1,1,0,0,1.
+32 S32: 1,1,1,0,0,1.
+33 S33: 1,1,1,0,1,1.
+34 S34: 1,1,1,0,1,1.
+35 S35: 1,1,1,0,1,1.
+36 S36: 0,1,1,0,0,1.
+37 S37: 1,1,0,1,1,1.
+38 S38: 1,0,0,0,0,0.
+39 S39: 0,1,0,0,1,1.
+Need verify each record matches state strings. Let's cross-check selected outputs against state strings for several cycles and compile lists carefully.
+
+Let's build lists column-wise.
+
+q0 list by cycle:
+0:0
+1:1
+2:0
+3:0
+4:1
+5:1
+6:1
+7:1
+8:1
+9:1
+10:1
+11:1
+12:1
+13:1
+14:1
+15:1
+16:1
+17:0
+18:1
+19:0
+20:0
+21:1
+22:1
+23:0
+24:1
+25:0
+26:1
+27:0
+28:1
+29:1
+30:1
+31:1
+32:1
+33:1
+34:1
+35:1
+36:0
+37:1
+38:1
+39:0
+So q0 = [0,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,0,0,1,1,0,1,0,1,0,1,1,1,1,1,1,1,1,0,1,1,0]
+Count? Let's count 40. I'll count groups of 10:
+cycles0-9: 0,1,0,0,1,1,1,1,1,1 = [0,1,0,0,1,1,1,1,1,1] (ten)
+10-19: 1,1,1,1,1,1,1,0,1,0 = [1,1,1,1,1,1,1,0,1,0]
+20-29: 0,1,1,0,1,0,1,0,1,1 = wait cycles20-29 q0 from list: t20=0,t21=1,t22=1,t23=0,t24=1,t25=0,t26=1,t27=0,t28=1,t29=1 => [0,1,1,0,1,0,1,0,1,1]
+30-39: t30=1,t31=1,t32=1,t33=1,t34=1,t35=1,t36=0,t37=1,t38=1,t39=0 => [1,1,1,1,1,1,0,1,1,0]. Combined matches. Good.
+
+q1 list:
+cycle0 0
+1 1
+2 0
+3 1
+4 0
+5 0
+6 1
+7 0
+8 0
+9 1
+10 1
+11 1
+12 1
+13 1
+14 0
+15 0
+16 1
+17 1
+18 1
+19 0
+20 1
+21 0
+22 0
+23 0
+24 1
+25 0
+26 1
+27 1
+28 1
+29 1
+30 1
+31 1
+32 1
+33 1
+34 1
+35 1
+36 1
+37 1
+38 0
+39 1
+List: [0,1,0,1,0,0,1,0,0,1,1,1,1,1,0,0,1,1,1,0,1,0,0,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,0,1]
+Count groups: 0-9 [0,1,0,1,0,0,1,0,0,1]; 10-19 [1,1,1,1,0,0,1,1,1,0]; 20-29 [1,0,0,0,1,0,1,1,1,1]; 30-39 [1,1,1,1,1,1,1,1,0,1]. yes.
+
+q11 list:
+cycle0 1
+1 1
+2 1
+3 1
+4 0
+5 0
+6 0
+7 1
+8 1
+9 1
+10 1
+11 0
+12 1
+13 0
+14 1
+15 1
+16 1
+17 1
+18 1
+19 1
+20 1
+21 0
+22 0
+23 1
+24 1
+25 1
+26 1
+27 1
+28 0
+29 1
+30 0
+31 1
+32 1
+33 1
+34 1
+35 1
+36 1
+37 0
+38 0
+39 0
+List: [1,1,1,1,0,0,0,1,1,1,1,0,1,0,1,1,1,1,1,1,1,0,0,1,1,1,1,1,0,1,0,1,1,1,1,1,1,0,0,0]
+Check groups: 0-9 [1,1,1,1,0,0,0,1,1,1]; 10-19 [1,0,1,0,1,1,1,1,1,1]; 20-29 [1,0,0,1,1,1,1,1,0,1]; 30-39 [0,1,1,1,1,1,1,0,0,0]. Good. Need verify q11 at cycle35/36: S35 q11=1, S36 q11=1, S37 q11=0, S38 q11=0, S39 q11=0. yes.
+
+q14 list:
+cycle0 0
+1 1
+2 0
+3 1
+4 1
+5 0
+6 1
+7 1
+8 0
+9 1
+10 0
+11 1
+12 0
+13 1
+14 1
+15 0
+16 0
+17 0
+18 1
+19 0
+20 1
+21 1
+22 1
+23 0
+24 1
+25 0
+26 1
+27 0
+28 1
+29 0
+30 1
+31 0
+32 0
+33 0
+34 0
+35 0
+36 0
+37 1
+38 0
+39 0
+List: [0,1,0,1,1,0,1,1,0,1,0,1,0,1,1,0,0,0,1,0,1,1,1,0,1,0,1,0,1,0,1,0,0,0,0,0,0,1,0,0]
+Check cycles31-36 q14 all 0? S31 q14=0,S32=0,S33=0,S34=0,S35=0,S36=0 yes. S37 q14=1. Good.
+
+q5 list:
+cycle0 1
+1 1
+2 1
+3 1
+4 1
+5 0
+6 1
+7 1
+8 0
+9 1
+10 0
+11 1
+12 1
+13 0
+14 0
+15 0
+16 1
+17 1
+18 1
+19 1
+20 1
+21 1
+22 0
+23 1
+24 1
+25 0
+26 1
+27 1
+28 1
+29 1
+30 0
+31 0
+32 0
+33 1
+34 1
+35 1
+36 0
+37 1
+38 0
+39 1
+List: [1,1,1,1,1,0,1,1,0,1,0,1,1,0,0,0,1,1,1,1,1,1,0,1,1,0,1,1,1,1,0,0,0,1,1,1,0,1,0,1]
+Need verify q5 at cycles14-15 =0,0 yes S14 q5=0,S15=0; cycle16 q5=1. Good.
+
+q7 list:
+cycle0 1
+1 1
+2 0
+3 0
+4 1
+5 0
+6 1
+7 0
+8 0
+9 1
+10 0
+11 1
+12 0
+13 1
+14 1
+15 1
+16 1
+17 1
+18 1
+19 0
+20 1
+21 1
+22 1
+23 1
+24 0
+25 0
+26 1
+27 0
+28 1
+29 0
+30 1
+31 1
+32 1
+33 1
+34 1
+35 1
+36 1
+37 1
+38 0
+39 1
+List: [1,1,0,0,1,0,1,0,0,1,0,1,0,1,1,1,1,1,1,0,1,1,1,1,0,0,1,0,1,0,1,1,1,1,1,1,1,1,0,1]
+Need verify q7 cycles13-15: S13 q7=1,S14 q7=1,S15 q7=1; yes. Cycle24 q7=0, cycle25=0. Good.
+
+Need be absolutely certain no mistakes in state evolution. Let's verify by alternative methods / consistency checks. Given high risk of manual error, we should audit. We can derive next-state functions and maybe check some cycles with direct gate evaluation or identify invariants.
+
+Let's audit the chain formula and simplifications for groups with repeated signals. It might be easy to off-by-one in c_k indices. The gate list: For each group i, gates: c{i}_0 = NAND(a=first,b=second); c{i}_1 = NAND(a=c{i}_0,b=third); c{i}_2=NAND(c{i}_1, fourth); c{i}_3=NAND(c{i}_2, fifth); c{i}_4=NAND(c{i}_3, sixth); dff d=c{i}_4. Yes six signals. Formula E = (~(n3 & s5)). We derived E = (((~(s0&s1)&s2)|~s3)&s4)|~s5. Let's prove with De Morgan one more time using variables A=s0&s1. n0=~A. n1=~(n0 s2)=~(~A s2)= A ∨ ~s2. n2=~(n1 s3)= ~( (A∨~s2) s3)= ~(A∨~s2) ∨ ~s3 = (~A ∧ s2) ∨ ~s3. n3=~(n2 s4)= ~n2 ∨ ~s4 = ~((~A∧s2)∨~s3) ∨ ~s4 = ( (A∨~s2) ∧ s3) ∨ ~s4. Wait this expression for n3 uses s3 as AND, not our p? Let's compare: We want n4 = ~(n3 s5)= ~n3 ∨ ~s5. ~n3 = ~( ((A∨~s2)∧s3) ∨ ~s4 ) = ( ~((A∨~s2)∧s3) ∧ s4 ) = ( ( ~(A∨~s2) ∨ ~s3 ) ∧ s4) = ( ((~A∧s2) ∨ ~s3) ∧ s4). Yes same. Good. Note p uses ~s3 (NOT fifth? Wait s3 is the b input of c2 (fourth signal). n2 = (~A&s2)|~s3. n3 = ~(n2 & s4) where s4 is fifth signal (b of c3). In formula for n4 ~n3 = ( ((~A&s2)|~s3) & s4 )? Let's recalc carefully because I may have swapped s3/s4 in formula.
+
+We have six signals: s0 (a of gate0), s1 (b gate0), s2 (b gate1), s3 (b gate2), s4 (b gate3), s5 (b gate4). n0=~(s0 s1). n1=~(n0 s2). n2=~(n1 s3). n3=~(n2 s4). n4=~(n3 s5).
+Compute n1 = A ∨ ~s2 where A=s0s1.
+n2 = ~(n1 s3)= ~n1 ∨ ~s3 = ~(A∨~s2) ∨ ~s3 = (~A ∧ s2) ∨ ~s3. Good, uses s3 NOT.
+n3 = ~(n2 s4)= ~n2 ∨ ~s4 = ~( (~A∧s2) ∨ ~s3 ) ∨ ~s4 = ( ~(~A∧s2) ∧ s3 ) ∨ ~s4 = ( (A∨~s2) ∧ s3 ) ∨ ~s4. Yes n3.
+n4 = ~(n3 s5)= ~n3 ∨ ~s5 = ~( ((A∨~s2)∧s3) ∨ ~s4 ) ∨ ~s5 = [ ~( ((A∨~s2)∧s3) ) ∧ s4] ∨ ~s5 = [ ( ~(A∨~s2) ∨ ~s3 ) ∧ s4] ∨ ~s5 = [ ((~A∧s2) ∨ ~s3) ∧ s4] ∨ ~s5. This matches E = (((~A&s2)|~s3)&s4)|~s5. Good: the NOT inside p is ~s3 (fourth signal), then AND s4 (fifth), final OR ~s5. Good.
+
+Now group signal mappings need audit from gate list. Let's parse gates exactly for potential mistakes.
+Gates listed in order c0_0.. c15_4. For c0: a=q11,b=q5 y=c0_0; c0_1 a=c0_0 b=q1; c0_2 a=c0_1 b=q8; c0_3 a=c0_2 b=q4; c0_4 a=c0_3 b=q4. yes s=[q11,q5,q1,q8,q4,q4].
+DFF q0 d=c0_4. ok.
+G1: c1_0 a=in1 (b), b=q1; c1_1 b=in0(a); c1_2 b=q6; c1_3 b=q2; c1_4 b=q14. s=[in1,q1,in0,q6,q2,q14]. ok.
+G2: c2_0 a=q5 b=q2; c2_1 b=q12; c2_2 b=q6; c2_3 b=q11; c2_4 b=q9. ok.
+G3: c3_0 a=in1 b=q14; c3_1 b=q14; c3_2 b=in0; c3_3 b=q9; c3_4 b=q9. s=[in1,q14,q14,in0,q9,q9]. ok. In evaluation for G3, formula E with s3=in0. Good. But wait signals: c3_2 has b=in0 (this is s3 in formula? Let's map: gate0 uses s0=in1,s1=q14. gate1 uses n0 and s2=q14. gate2 uses n1 and s3=in0. gate3 uses n2 and s4=q9. gate4 uses n3 and s5=q9. Yes. Good.
+G4: c4_0 a=q4 b=q13; c4_1 b=q9; c4_2 b=q8; c4_3 b=q4; c4_4 b=q8. s=[q4,q13,q9,q8,q4,q8]. yes.
+G5: c5_0 q9,q15; c5_1 q4; c5_2 q14; c5_3 q12; c5_4 q0. yes.
+G6: c6_0 q8,q4; c6_1 in0; c6_2 q13; c6_3 q2; c6_4 in1. s=[q8,q4,in0,q13,q2,in1]. yes.
+G7: c7_0 q0,q3; c7_1 in1; c7_2 q14; c7_3 q6; c7_4 q5. yes.
+G8: c8_0 q0,q12; c8_1 in0; c8_2 q11; c8_3 q13; c8_4 in0. yes.
+G9: c9_0 q9,q1; c9_1 q5; c9_2 q13; c9_3 q13; c9_4 q4. yes.
+G10: c10_0 q6,q4; c10_1 q11; c10_2 q10; c10_3 q5; c10_4 q9. yes.
+G11: c11_0 q13,q1; c11_1 q0; c11_2 in1; c11_3 q11; c11_4 q6. yes.
+G12: c12_0 q0,q5; c12_1 q6; c12_2 q5; c12_3 q11; c12_4 q4. yes.
+G13: c13_0 q4,q13; c13_1 q14; c13_2 q7; c13_3 in0; c13_4 q15. yes.
+G14: c14_0 q5,q3; c14_1 q13; c14_2 q4; c14_3 in1; c14_4 q0. yes.
+G15: c15_0 q14,q14; c15_1 q2; c15_2 q14; c15_3 q8; c15_4 q13. yes.
+Good.
+
+Now audit state transitions using maybe generating selected outputs directly from previous states? Could check some computed next states with direct gate chain for random cycles. Let's pick cycle0 group13 maybe: S0 q4=1 q13=1 q14=0 q7=1 a=0 q15=1. Chain direct: c13_0=NAND(1,1)=0; c13_1=NAND(0,q14=0)=1; c13_2=NAND(1,q7=1)=0; c13_3=NAND(0,in0=0)=1; c13_4=NAND(1,q15=1)=0. N13=0. We got 0. Good.
+Cycle0 G14: q5=1,q3=0 ->c14_0=1; c14_1=NAND(1,q13=1)=0; c14_2=NAND(0,q4=1)=1; c14_3=NAND(1,in1=0)=1; c14_4=NAND(1,q0=0)=1. N14=1. We got via s5=q0=0 ->1. Good.
+Cycle0 G15: q14=0,q14=0 c15_0=1; c15_1=NAND(1,q2=0)=1; c15_2=NAND(1,q14=0)=1; c15_3=NAND(1,q8=0)=1; c15_4=NAND(1,q13=1)=0. N15=0. Good.
+
+Let's audit a later more complex cycle, e.g., t=16 to S17 with direct chain for groups where N changed. S16 had many ones except q10=0,q13=0,q14=0,q15=0; input a=1,b=1. We computed N: q0=0,q1=1,q2=0,q3=0,q4=1,q5=1,q6=1,q7=1,q8=0,q9=0,q10=1,q11=1,q12=0,q13=1,q14=0,q15=1. Let's direct evaluate all quickly from S16: q0=1 q1=1 q2=1 q3=1 q4=1 q5=1 q6=1 q7=1 q8=1 q9=1 q10=0 q11=1 q12=1 q13=0 q14=0 q15=0, a=1,b=1.
+G0: c00=NAND(q11=1,q5=1)=0; c01=NAND(0,q1=1)=1; c02=NAND(1,q8=1)=0; c03=NAND(0,q4=1)=1; c04=NAND(1,q4=1)=0. N0=0 yes.
+G1: c10=NAND(b=1,q1=1)=0; c11=NAND(0,a=1)=1; c12=NAND(1,q6=1)=0; c13=NAND(0,q2=1)=1; c14=NAND(1,q14=0)=1. N1=1 yes. Wait our formula for G1 at t=16: s5=q14=0 -> N1=1. Direct gives c14=1. Good.
+G2: c20=NAND(q5=1,q2=1)=0; c21=NAND(0,q12=1)=1; c22=NAND(1,q6=1)=0; c23=NAND(0,q11=1)=1; c24=NAND(1,q9=1)=0. N2=0 yes.
+G3: c30=NAND(b=1,q14=0)=1; c31=NAND(1,q14=0)=1; c32=NAND(1,a=1)=0; c33=NAND(0,q9=1)=1; c34=NAND(1,q9=1)=0. N3=0 yes.
+G4: c40=NAND(q4=1,q13=0)=1; c41=NAND(1,q9=1)=0; c42=NAND(0,q8=1)=1; c43=NAND(1,q4=1)=0; c44=NAND(0,q8=1)=1. N4=1 yes.
+G5: c50=NAND(q9=1,q15=0)=1; c51=NAND(1,q4=1)=0; c52=NAND(0,q14=0)=1; c53=NAND(1,q12=1)=0; c54=NAND(0,q0=1)=1. N5=1 yes.
+G6: c60=NAND(q8=1,q4=1)=0; c61=NAND(0,a=1)=1; c62=NAND(1,q13=0)=1; c63=NAND(1,q2=1)=0; c64=NAND(0,b=1)=1. N6=1 yes.
+G7: c70=NAND(q0=1,q3=1)=0; c71=NAND(0,b=1)=1; c72=NAND(1,q14=0)=1; c73=NAND(1,q6=1)=0; c74=NAND(0,q5=1)=1. N7=1 yes.
+G8: c80=NAND(q0=1,q12=1)=0; c81=NAND(0,a=1)=1; c82=NAND(1,q11=1)=0; c83=NAND(0,q13=0)=1; c84=NAND(1,a=1)=0. N8=0 yes.
+G9: c90=NAND(q9=1,q1=1)=0; c91=NAND(0,q5=1)=1; c92=NAND(1,q13=0)=1; c93=NAND(1,q13=0)=1; c94=NAND(1,q4=1)=0. N9=0 yes.
+G10: c100=NAND(q6=1,q4=1)=0; c101=NAND(0,q11=1)=1; c102=NAND(1,q10=0)=1; c103=NAND(1,q5=1)=0; c104=NAND(0,q9=1)=1. N10=1 yes.
+G11: c110=NAND(q13=0,q1=1)=1; c111=NAND(1,q0=1)=0; c112=NAND(0,b=1)=1; c113=NAND(1,q11=1)=0; c114=NAND(0,q6=1)=1. N11=1 yes.
+G12: c120=NAND(q0=1,q5=1)=0; c121=NAND(0,q6=1)=1; c122=NAND(1,q5=1)=0; c123=NAND(0,q11=1)=1; c124=NAND(1,q4=1)=0. N12=0 yes.
+G13: c130=NAND(q4=1,q13=0)=1; c131=NAND(1,q14=0)=1; c132=NAND(1,q7=1)=0; c133=NAND(0,a=1)=1; c134=NAND(1,q15=0)=1. N13=1 yes.
+G14: c140=NAND(q5=1,q3=1)=0; c141=NAND(0,q13=0)=1; c142=NAND(1,q4=1)=0; c143=NAND(0,b=1)=1; c144=NAND(1,q0=1)=0. N14=0 yes.
+G15: c150=NAND(q14=0,q14=0)=1; c151=NAND(1,q2=1)=0; c152=NAND(0,q14=0)=1; c153=NAND(1,q8=1)=0; c154=NAND(0,q13=0)=1. N15=1. Good. This audit strongly supports formula and evaluation for t=16.
+
+Need audit cycles around 30-39 because outputs maybe. Let's direct evaluate t=38 -> S39 maybe; we did via formula. Direct for S38 (q: [1,0,0,1,1,0,1,0,1,1,1,0,1,0,0,1], a=1,b=1) check all next:
+q0=1,q1=0,q2=0,q3=1,q4=1,q5=0,q6=1,q7=0,q8=1,q9=1,q10=1,q11=0,q12=1,q13=0,q14=0,q15=1.
+G0: NAND(q11=0,q5=0)=1; NAND(1,q1=0)=1; NAND(1,q8=1)=0; NAND(0,q4=1)=1; NAND(1,q4=1)=0. N0=0 yes.
+G1: NAND(b=1,q1=0)=1; NAND(1,a=1)=0; NAND(0,q6=1)=1; NAND(1,q2=0)=1; NAND(1,q14=0)=1. N1=1 yes.
+G2: NAND(q5=0,q2=0)=1; NAND(1,q12=1)=0; NAND(0,q6=1)=1; NAND(1,q11=0)=1; NAND(1,q9=1)=0. N2=0 yes.
+G3: NAND(b=1,q14=0)=1; NAND(1,q14=0)=1; NAND(1,a=1)=0; NAND(0,q9=1)=1; NAND(1,q9=1)=0. N3=0 yes.
+G4: NAND(q4=1,q13=0)=1; NAND(1,q9=1)=0; NAND(0,q8=1)=1; NAND(1,q4=1)=0; NAND(0,q8=1)=1. N4=1 yes.
+G5: NAND(q9=1,q15=1)=0; NAND(0,q4=1)=1; NAND(1,q14=0)=1; NAND(1,q12=1)=0; NAND(0,q0=1)=1. N5=1 yes.
+G6: NAND(q8=1,q4=1)=0; NAND(0,a=1)=1; NAND(1,q13=0)=1; NAND(1,q2=0)=1; NAND(1,b=1)=0. N6=0 yes.
+G7: NAND(q0=1,q3=1)=0; NAND(0,b=1)=1; NAND(1,q14=0)=1; NAND(1,q6=1)=0; NAND(0,q5=0)=1. N7=1 yes.
+G8: NAND(q0=1,q12=1)=0; NAND(0,a=1)=1; NAND(1,q11=0)=1; NAND(1,q13=0)=1; NAND(1,a=1)=0. N8=0 yes.
+G9: NAND(q9=1,q1=0)=1; NAND(1,q5=0)=1; NAND(1,q13=0)=1; NAND(1,q13=0)=1; NAND(1,q4=1)=0. N9=0 yes.
+G10: NAND(q6=1,q4=1)=0; NAND(0,q11=0)=1; NAND(1,q10=1)=0; NAND(0,q5=0)=1; NAND(1,q9=1)=0. N10=0 yes.
+G11: NAND(q13=0,q1=0)=1; NAND(1,q0=1)=0; NAND(0,b=1)=1; NAND(1,q11=0)=1; NAND(1,q6=1)=0. N11=0 yes.
+G12: NAND(q0=1,q5=0)=1; NAND(1,q6=1)=0; NAND(0,q5=0)=1; NAND(1,q11=0)=1; NAND(1,q4=1)=0. N12=0 yes.
+G13: NAND(q4=1,q13=0)=1; NAND(1,q14=0)=1; NAND(1,q7=0)=1; NAND(1,a=1)=0; NAND(0,q15=1)=1. N13=1 yes.
+G14: NAND(q5=0,q3=1)=1; NAND(1,q13=0)=1; NAND(1,q4=1)=0; NAND(0,b=1)=1; NAND(1,q0=1)=0. N14=0 yes.
+G15: NAND(q14=0,q14=0)=1; NAND(1,q2=0)=1; NAND(1,q14=0)=1; NAND(1,q8=1)=0; NAND(0,q13=0)=1. N15=1. Good. S39 as computed.
+
+Need ensure output lists correspond to recorded values at step3 before clock edge. We used state_t. Good.
+
+Potential issue: The final answer should include exactly one object mapping each output net name to list. No extra text? User says "Work through the simulation carefully, cycle by cycle. You cannot run code; do it by reasoning. End your reply with a single fenced json code block containing exactly one object ... Put no other json code block after it." They may expect some reasoning but final answer oververbosity 5. However if we include explanation and then code block, okay as long as code block at end. But to minimize risk and satisfy "End your reply with a single fenced json code block" we can just output the code block. They asked work through carefully, but final answer can be just result; no requirement to show work in final. It says "End your reply with..." meaning can have preceding text. But safest for machine scoring: only the fenced JSON code block. It says "containing exactly one object" and "Put no other json code block after it." If we output only code block, fine. Need ensure valid JSON, no trailing commas. Use double quotes. Lists length 40.
+
+Before final, let's verify all output lists length 40 and maybe compare selected outputs with state strings systematically. I'll recompile from state strings as a cross-check.
+
+State strings S0..S39 (we should list all and extract positions q0,q1,q5,q7,q11,q14 maybe). Let's list state strings and selected extraction to verify records:
+S0 0000111101010101. positions: q0=0,q1=0,q5=1 (index5?), let's index string: indices 0 0;1 0;2 0;3 0;4 1;5 1;6 1;7 1;8 0;9 1;10 0;11 1;12 0;13 1;14 0;15 1. Selected q0 0 q1 0 q11 index11=1 q14 index14=0 q5 index5=1 q7 index7=1. ok.
+S1 1101111111111010. indices: 0=1,1=1,5=1,7=1,11=1,14=1. ok.
+S2 0011110010010101. indices: q0 0 q1 0 q11? string positions: let's index S2 "0011110010010101": 0 0;1 0;2 1;3 1;4 1;5 1;6 0;7 0;8 1;9 0;10 0;11 1;12 0;13 1;14 0;15 1. q5=1 q7=0 q11=1 q14=0. record (0,0,1,0,1,0) yes.
+S3 "0111011011110011": index0 0,1 1,11? positions: 0 0;1 1;2 1;3 1;4 0;5 1;6 1;7 0;8 1;9 1;10 1;11 1;12 0;13 0;14 1;15 1. q11=1 q14=1 q5=1 q7=0. record 0,1,1,1,1,0 yes.
+S4 "1001011111101011": positions 0 1;1 0;2 0;3 1;4 0;5 1;6 1;7 1;8 1;9 1;10 1;11 0;12 1;13 0;14 1;15 1. record q0=1 q1=0 q11=0 q14=1 q5=1 q7=1 yes.
+S5 "1001001001001100": pos0 1,1 0,5 0,7 0,11 0,14 0. record 1,0,0,0,0,0. yes.
+S6 "1100110111001110": pos0 1,pos1 1,pos5 1,pos7 1,pos11 0,pos14 1. record 1,1,0,1,1,1 yes.
+S7 "1000010010110110": pos0 1,pos1 0,pos5 1,pos7 0,pos11 1,pos14 1. record yes.
+S8 "1011001011111100": pos0 1,pos1 0,pos5 0,pos7 0,pos11 1,pos14 0. record (1,0,1,0,0,0) yes.
+S9 "1110011101011111": pos0 1,pos1 1,pos5 1,pos7 1,pos11 1,pos14 1. yes.
+S10 "1101101001111100": pos0 1,pos1 1,pos5 0,pos7 0,pos11 1,pos14 0. record 1,1,1,0,0,0. yes.
+S11 "1111110110001110": pos0 1,pos1 1,pos5 1,pos7 1,pos11 0,pos14 1. yes.
+S12 "1111011011110100": pos0 1,pos1 1,pos5 1,pos7 0,pos11 1,pos14 0. yes.
+S13 "1101000111011111": pos0 1,pos1 1,pos5 0,pos7 1,pos11 0,pos14 1. yes.
+S14 "1001000111011010": pos0 1,pos1 0,pos5 0,pos7 1,pos11 1,pos14 1. yes.
+S15 "1011001101011101": pos0 1,pos1 0,pos5 0,pos7 1,pos11 1,pos14 0. yes.
+S16 "1111111111011000": pos0 1,pos1 1,pos5 1,pos7 1,pos11 1,pos14 0. yes.
+S17 "0100111100110101": pos0 0,pos1 1,pos5 1,pos7 1,pos11 1,pos14 0. yes.
+S18 "1111111111111010": pos0 1,pos1 1,pos5 1,pos7 1,pos11 1,pos14 1. yes.
+S19 "0001111010010101": pos0 0,pos1 0,pos5 1,pos7 0,pos11 1,pos14 0. yes.
+S20 "0111011111111011": pos0 0,pos1 1,pos5 1,pos7 1,pos11 1,pos14 1. yes.
+S21 "1000011101101111": pos0 1,pos1 0,pos5 1,pos7 1,pos11 0,pos14 1. yes.
+S22 "1001100111001010": pos0 1,pos1 0,pos5 0,pos7 1,pos11 0,pos14 1. yes.
+S23 "0000110100010101": pos0 0,pos1 0,pos5 1,pos7 1,pos11 1,pos14 0. yes.
+S24 "1111111011110010": pos0 1,pos1 1,pos5 1,pos7 0,pos11 1,pos14 1. yes.
+S25 "0000101000010101": pos0 0,pos1 0,pos5 0,pos7 0,pos11 1,pos14 0. yes.
+S26 "1111111110111010": pos0 1,pos1 1,pos5 1,pos7 1,pos11 1,pos14 1. yes.
+S27 "0111011000110101": pos0 0,pos1 1,pos5 1,pos7 0,pos11 1,pos14 0. yes.
+S28 "1111110111101010": pos0 1,pos1 1,pos5 1,pos7 1,pos11 0,pos14 1. yes.
+S29 "1100111000010101": pos0 1,pos1 1,pos5 1,pos7 0,pos11 1,pos14 0. yes.
+S30 "1111100111100010": pos0 1,pos1 1,pos5 0,pos7 1,pos11 0,pos14 1. yes.
+S31 "1100101100010101": pos0 1,pos1 1,pos5 0,pos7 1,pos11 1,pos14 0. yes.
+S32 "1111101110111000": pos0 1,pos1 1,pos5 0,pos7 1,pos11 1,pos14 0. yes.
+S33 "1111011100111101": pos0 1,pos1 1,pos5 1,pos7 1,pos11 1,pos14 0. yes.
+S34 "1111111101111000": pos0 1,pos1 1,pos5 1,pos7 1,pos11 1,pos14 0. yes.
+S35 "1101111110010101": pos0 1,pos1 1,pos5 1,pos7 1,pos11 1,pos14 0. yes.
+S36 "0111001111110001": pos0 0,pos1 1,pos5 0,pos7 1,pos11 1,pos14 0. yes.
+S37 "1100011101001011": pos0 1,pos1 1,pos5 1,pos7 1,pos11 0,pos14 1. yes.
+S38 "1001101011101001": pos0 1,pos1 0,pos5 0,pos7 0,pos11 0,pos14 0. yes.
+S39 "0100110100000101": pos0 0,pos1 1,pos5 1,pos7 1,pos11 0,pos14 0. yes.
+All records consistent.
+
+Let's verify output lists by extracting columns from the record table maybe one more time. We already did. But there is a chance of mis-copy in final. Let's construct final JSON carefully.
+
+Order: "q0", "q1", "q11", "q14", "q5", "q7". Need output object exactly maps these. Values:
+q0: [0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0]
+Let's count with indices: 0 0;1 1;2 0;3 0;4 1;5 1;6 1;7 1;8 1;9 1;10 1;11 1;12 1;13 1;14 1;15 1;16 1;17 0;18 1;19 0;20 0;21 1;22 1;23 0;24 1;25 0;26 1;27 0;28 1;29 1;30 1;31 1;32 1;33 1;34 1;35 1;36 0;37 1;38 1;39 0. Good. There are many ones; check cycles 4-16 q0 mostly 1 except? q0 records cycles 4-16 all 1 (13 cycles) then cycle17 0, cycle18 1, cycle19 0, cycle20 0. In list positions 4 through16 inclusive: indices4=1,5=1,6=1,7=1,8=1,9=1,10=1,11=1,12=1,13=1,14=1,15=1,16=1 = 13 ones. In written list after [0,1,0,0,] there are? "[0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, ..." The segment from index4 to16 is 13 ones; our written has after four entries: positions: entry0 0,1 1,2 0,3 0, then entries4-16 = thirteen 1s? Count the ones between index4 and before 0 at index17: In list: 1(index4),1(5),1(6),1(7),1(8),1(9),1(10),1(11),1(12),1(13),1(14),1(15),1(16) =13. The written sequence has 13? "1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1" yes then 0. Good.
+
+q1 final list as above. Let's count q1 list: [0,1,0,1,0,0,1,0,0,1, 1,1,1,1,0,0,1,1,1,0, 1,0,0,0,1,0,1,1,1,1, 1,1,1,1,1,1,1,1,0,1]
+That's 40 with grouping. Need ensure cycle39 q1=1, cycle38=0. yes.
+
+q11 final: [1,1,1,1,0,0,0,1,1,1, 1,0,1,0,1,1,1,1,1,1, 1,0,0,1,1,1,1,1,0,1, 0,1,1,1,1,1,1,0,0,0]
+Count groups of ten. Good.
+
+q14 final: [0,1,0,1,1,0,1,1,0,1, 0,1,0,1,1,0,0,0,1,0, 1,1,1,0,1,0,1,0,1,0, 1,0,0,0,0,0,0,1,0,0]
+Check group 20-29: indices20=1,21=1,22=1,23=0,24=1,25=0,26=1,27=0,28=1,29=0. yes. Group30-39: 1,0,0,0,0,0,0,1,0,0. Good.
+
+q5 final: [1,1,1,1,1,0,1,1,0,1, 0,1,1,0,0,0,1,1,1,1, 1,1,0,1,1,0,1,1,1,1, 0,0,0,1,1,1,0,1,0,1]
+Check group10-19: indices10=0,11=1,12=1,13=0,14=0,15=0,16=1,17=1,18=1,19=1. yes. group20-29: 1,1,0,1,1,0,1,1,1,1. group30-39:0,0,0,1,1,1,0,1,0,1. Good.
+
+q7 final: [1,1,0,0,1,0,1,0,0,1, 0,1,0,1,1,1,1,1,1,0, 1,1,1,1,0,0,1,0,1,0, 1,1,1,1,1,1,1,1,0,1]
+Check group10-19: cycle10=0,11=1,12=0,13=1,14=1,15=1,16=1,17=1,18=1,19=0. yes. group20-29: cycle20=1,21=1,22=1,23=1,24=0,25=0,26=1,27=0,28=1,29=0. group30-39: 1,1,1,1,1,1,1,1,0,1. Good.
+
+Now consider whether net names in outputs include q0 etc. yes.
+
+Need maybe include no spaces? Spaces okay. Use fenced code block with json. Exactly one object. No trailing text after. The final answer should be just code block. Since user said "End your reply with" maybe if only code block, it's at end. Fine.
+
+Double-check there are exactly 40 integers in each list. Let's count q0 list in final one more time programmatically mentally by grouping into 8 groups of 5:
+q0 groups of 5 from list:
+[0,1,0,0,1] (0-4)
+[1,1,1,1,1] (5-9)
+[1,1,1,1,1] (10-14)
+[1,1,0,1,0] (15-19) -> indices15=1,16=1,17=0,18=1,19=0 yes.
+[0,1,1,0,1] (20-24) -> 20=0,21=1,22=1,23=0,24=1.
+[0,1,0,1,1] (25-29) ->25=0,26=1,27=0,28=1,29=1.
+[1,1,1,1,1] (30-34)
+[1,0,1,1,0] (35-39) ->35=1,36=0,37=1,38=1,39=0. Good.
+The flat list earlier after index14 maybe: group3 [1,1,0,1,0] corresponds indices15-19. In flat q0 list: ... positions 10-14 are five 1s, positions15-16 two 1s, position17 0, position18 1, position19 0. In flat list: [..., 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, ...] Let's align: first 15 entries indices0-14: 0,1,0,0,1,1,1,1,1,1,1,1,1,1,1. Then indices15-19:1,1,0,1,0. In the written list: after the 15th entry, do we have "1, 1, 0, 1, 0"? Written: [0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, ...] That's indices0-19 = 0,1,0,0, then indices4-16 =? Let's count the written before first 0 after long run: entries: 1:0,2:1,3:0,4:0,5:1,6:1,7:1,8:1,9:1,10:1,11:1,12:1,13:1,14:1,15:1,16:1,17:1,18:0,19:1,20:0. In 1-based, entry17=1 (index16), entry18=0 (index17), entry19=1(index18), entry20=0(index19). Good. There are entries5-17 (13 entries) all 1? entry5 index4 through entry17 index16 =13, yes. Good.
+
+For q11 list grouping of 5:
+[1,1,1,1,0] indices0-4
+[0,0,1,1,1] 5-9 -> index5=0,6=0,7=1,8=1,9=1. good.
+[1,0,1,0,1] 10-14 -> q11 t10=1,t11=0,t12=1,t13=0,t14=1.
+[1,1,1,1,1] 15-19 -> t15=1,t16=1,t17=1,t18=1,t19=1. good.
+[1,0,0,1,1] 20-24 -> t20=1,t21=0,t22=0,t23=1,t24=1.
+[1,1,1,0,1] 25-29 -> t25=1,t26=1,t27=1,t28=0,t29=1.
+[0,1,1,1,1] 30-34 -> t30=0,t31=1,t32=1,t33=1,t34=1.
+[1,1,0,0,0] 35-39 -> t35=1,t36=1,t37=0,t38=0,t39=0. Wait earlier q11 at cycle35=1, cycle36=1, cycle37=0,38=0,39=0. yes. But in flat list we had group30-39 [0,1,1,1,1,1,1,0,0,0], yes. Good.
+
+q14 groups of 5:
+[0,1,0,1,1] 0-4
+[0,1,1,0,1] 5-9 -> t5=0,t6=1,t7=1,t8=0,t9=1.
+[0,1,0,1,1] 10-14 -> t10=0,t11=1,t12=0,t13=1,t14=1.
+[0,0,0,1,0] 15-19 -> t15=0,t16=0,t17=0,t18=1,t19=0.
+[1,1,1,0,1] 20-24 -> t20=1,t21=1,t22=1,t23=0,t24=1.
+[0,1,0,1,0] 25-29 -> t25=0,t26=1,t27=0,t28=1,t29=0.
+[1,0,0,0,0] 30-34 -> t30=1,t31=0,t32=0,t33=0,t34=0.
+[0,0,1,0,0] 35-39 -> t35=0,t36=0,t37=1,t38=0,t39=0. Good. Flat q14 list group30-39 [1,0,0,0,0,0,0,1,0,0]. yes.
+
+q5 groups of 5:
+[1,1,1,1,1] 0-4
+[0,1,1,0,1] 5-9 -> t5=0,t6=1,t7=1,t8=0,t9=1.
+[0,1,1,0,0] 10-14 -> t10=0,t11=1,t12=1,t13=0,t14=0.
+[0,1,1,1,1] 15-19 -> t15=0,t16=1,t17=1,t18=1,t19=1.
+[1,1,0,1,1] 20-24 -> t20=1,t21=1,t22=0,t23=1,t24=1.
+[0,1,1,1,1] 25-29 -> t25=0,t26=1,t27=1,t28=1,t29=1.
+[0,0,0,1,1] 30-34 -> t30=0,t31=0,t32=0,t33=1,t34=1.
+[1,0,1,0,1] 35-39 -> t35=1,t36=0,t37=1,t38=0,t39=1. Good. Flat q5 list matches.
+
+q7 groups of 5:
+[1,1,0,0,1] 0-4
+[0,1,0,0,1] 5-9 -> t5=0,t6=1,t7=0,t8=0,t9=1.
+[0,1,0,1,1] 10-14 -> t10=0,t11=1,t12=0,t13=1,t14=1.
+[1,1,1,1,0] 15-19 -> t15=1,t16=1,t17=1,t18=1,t19=0.
+[1,1,1,1,0] 20-24 -> t20=1,t21=1,t22=1,t23=1,t24=0.
+[0,1,0,1,0] 25-29 -> t25=0,t26=1,t27=0,t28=1,t29=0.
+[1,1,1,1,1] 30-34 -> t30=1,t31=1,t32=1,t33=1,t34=1.
+[1,1,1,0,1] 35-39 -> t35=1,t36=1,t37=1,t38=0,t39=1. Good. Flat q7 list group15-19 [1,1,1,1,0], group20-24 [1,1,1,1,0] same. In flat list after index14: ... q7 list [1,1,0,0,1,0,1,0,0,1,0,1,0,1,1,1,1,1,1,0,1,1,1,1,0,0,1,0,1,0,1,1,1,1,1,1,1,1,0,1]. At indices15-19 = 1,1,1,1,0; index14=1, so sequence indices13-19 = 1,1,1,1,1,1,0? Let's check: q7 record t13=1,t14=1,t15=1,t16=1,t17=1,t18=1,t19=0. That's six ones then zero. In flat list around positions 13-19: ... index12=0, index13=1,index14=1,index15=1,index16=1,index17=1,index18=1,index19=0. Yes six ones (13-18) then 0. Good.
+
+Potential issue: DFF q outputs are recorded in outputs; q0 etc are DFF outputs. At cycle0, dff q nets hold init. yes.
+
+Could there be a requirement that gate-only graph acyclic; some gate inputs use q outputs (DFF) and inputs; no combinational cycles. ok.
+
+Need final no extra explanation. We'll output exactly one fenced json block. Ensure the code block is the only thing. Good. Good. Final can be normal.
+
+Let's prepare final JSON. Use compact but readable. Since code block contains exactly one object. It can span lines. That's okay. No other json after. There will be one code block only.
+
+Let's formulate final:
+```json
+{"q0": [0, 1, ...], "q1": [...], "q11": [...], "q14": [...], "q5": [...], "q7": [...]}
+```
+Need ensure not accidentally use single quotes. Good.
+
+Let's ensure q1 list in final has exactly 40. Write with groups maybe in one line. If line too long okay. Use spaces after commas.
+
+Final lists:
+q0: [0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0]
+Count the q0 written: Let's count items separated by commas: 1:0,2:1,3:0,4:0,5:1,6:1,7:1,8:1,9:1,10:1,11:1,12:1,13:1,14:1,15:1,16:1,17:1,18:0,19:1,20:0,21:0,22:1,23:1,24:0,25:1,26:0,27:1,28:0,29:1,30:1,31:1,32:1,33:1,34:1,35:1,36:1,37:0,38:1,39:1,40:0. Good. Note item37=0 corresponds index36, item38=1 index37, item39=1 index38, item40=0 index39. Good.
+
+q1: [0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 1, 0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1]
+Count 40: group as earlier. Good.
+
+q11: [1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0]
+Count: 40. Check item30? Let's map: item1-4=1, item5-7=0, item8-11? Wait list has item8=1,item9=1,item10=1,item11=1? Let's count q11 carefully because there are four 1s at start then three zeros? Written: [1,1,1,1,0,0,0,1,1,1,1,0,1,0,1,1,1,1,1,1,1,0,0,1,1,1,1,1,0,1,0,1,1,1,1,1,1,0,0,0]
+Index0=1,1=1,2=1,3=1,4=0,5=0,6=0,7=1,8=1,9=1,10=1,11=0,12=1,13=0,14=1,15=1,16=1,17=1,18=1,19=1,20=1,21=0,22=0,23=1,24=1,25=1,26=1,27=1,28=0,29=1,30=0,31=1,32=1,33=1,34=1,35=1,36=1,37=0,38=0,39=0. Matches table? Wait table q11 at cycle20=1, cycle21=0,cycle22=0,cycle23=1,cycle24=1,cycle25=1,cycle26=1,cycle27=1,cycle28=0,cycle29=1,cycle30=0,cycle31=1,... yes. Good.
+
+q14 as above. q5/q7 as above.
+
+Let's also consider if output object should include lists in the same order as outputs but maybe JSON object order irrelevant. fine.
+
+One subtlety: In semantics, "trace gives each input net one value per cycle; every list has length cycles." We used in0/in1. Good.
+
+No code execution. Good.
+
+Proceed final. Ensure no text before code block? The instruction says end with code block; if final answer only code block it's okay. The code block itself starts with ```json and ends ```. Nothing after. Good. We'll now final.
+
+=== response ===
+```json
+{"q0": [0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0], "q1": [0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 1, 0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1], "q11": [1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0], "q14": [0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0], "q5": [1, 1, 1, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 1, 0, 1], "q7": [1, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1]}
+```

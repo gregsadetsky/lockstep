@@ -1,0 +1,5613 @@
+model: moonshotai/kimi-k3
+circuit: chain_s5102_g200_d12
+score: {'status': 'ok', 'prefix_cycles': 24, 'pointwise': 1.0, 'exact': True}
+
+=== reasoning ===
+Let me carefully work through this simulation. I need to track the DFF states and compute the gate values each cycle.
+
+The outputs are: n199, q10, q11, q6.
+
+The DFFs are:
+- q0: d=n188, init=0
+- q1: d=n159, init=0
+- q2: d=n181, init=1
+- q3: d=n190, init=0
+- q4: d=n167, init=1
+- q5: d=n192, init=0
+- q6: d=n166, init=1
+- q7: d=n170, init=1
+- q8: d=n157, init=0
+- q9: d=n188, init=1
+- q10: d=n194, init=1
+- q11: d=n193, init=1
+
+Note: q0 and q9 share the same d (n188).
+
+The gates are given in order n0..n199, and importantly, gate n_i only depends on nets with index < i (or inputs or q's). Let me verify: the gates are topologically sorted. Looking at the dependencies, each gate's inputs are either inputs (in0/in1/in2), q nets, or lower-numbered n nets. Let me trust that they're in topological order since the gate graph is acyclic and listed in order. Actually I need to verify this. Looking at gate n114: a=n114? No. Gate n114 has a=n114? Let me check: {"a": "n114", "b": "n113", "y": "n115"}. No wait, that's y=n115, inputs n114 and n113. OK n114 < n115. Good. Gate n115: a=n115, b=n34? No: {"a": "n115", "b": "n34", "y": "n116"}. Good. So they are topologically ordered (each gate uses strictly lower n indices or inputs/q). Let me double check a few that might be tricky: n188 uses n187 and n63. n189 uses n188 and n185. n190 uses n189 and n134. All lower. Good. So I can evaluate in order n0..n199 each cycle.
+
+The NAND function: y = 1 - (a & b) = NOT(a AND b).
+
+So y = 1 if a=0 or b=0; y = 0 only if a=1 and b=1.
+
+This is a lot. 200 gates × 24 cycles. I need to be systematic. Let me think about whether there's structure.
+
+Actually, since I only need n199, q10, q11, q6, maybe I can find a smaller set. But the dependency graph is huge; n199 depends on basically everything. q10 = previous n194, q11 = previous n193, q6 = previous n166. So I need n166, n193, n194, n199 each cycle (settled), plus the DFF states.
+
+Let me just be careful and compute everything. But that's enormous. Let me think of a smarter representation.
+
+Since all gates are NAND, and NAND is universal. Note NAND(a,b) = ¬(a∧b). 
+
+Hmm, let me think. This is a "chain" — maybe random gates. I just have to grind.
+
+Given 24 cycles and 200 gates, doing this fully by hand is very error-prone. But I must. Let me set up a careful tabular method.
+
+Let me denote the state at the start of cycle t (before settling) as q0..q11. At t=0, states are init:
+q0=0, q1=0, q2=1, q3=0, q4=1, q5=0, q6=1, q7=1, q8=0, q9=1, q10=1, q11=1.
+
+For each cycle t, given inputs and current q's, compute n0..n199 in order, record outputs (n199, q10, q11, q6) — note q10,q11,q6 are just the current state values (held during the cycle). Then compute next state: q0'=n188, q1'=n159, q2'=n181, q3'=n190, q4'=n167, q5'=n192, q6'=n166, q7'=n170, q8'=n157, q9'=n188, q10'=n194, q11'=n193.
+
+Wait — q10 output recorded at cycle t is the q10 state during cycle t, which is init for t=0, then updates after each edge. So q10 recorded at cycle t = state of q10 at start of cycle t. Good. So outputs q10,q11,q6 are just current states; easy. I still need n199 each cycle.
+
+Let me reconsider: q6 output = current q6 state. q10 output = current q10. q11 output = current q11. So I need the state sequences. And n199.
+
+Let me now think about the dependency cone for n199 and the d inputs. The d inputs I need to compute next states: n188 (q0,q9), n159 (q1), n181 (q2), n190 (q3), n167 (q4), n192 (q5), n166 (q6), n170 (q7), n157 (q8), n194 (q10), n193 (q11). And n199 for output. Since n199 depends on n198 which depends on n197 ... it likely needs all n's. I'll just compute all n0..n199 each cycle. To reduce errors, I'll compute carefully and maybe reuse.
+
+This is a heavy computation. Let me proceed cycle by cycle, computing all n values. I'll use NAND: for gate with inputs a,b, y=0 iff a==1 and b==1 else 1.
+
+Let me pre-write the gate list as (a,b)->y for reference. I'll create a function mentally.
+
+Actually, let me think about a possible simplification. Many gates. No shortcut. Let's grind.
+
+I'll organize: For each cycle, I'll list inputs (i0,i1,i2), current q vector, then compute n0..n199. That's 200 values per cycle. 24 cycles = 4800 NAND evaluations. That's a lot but doable if I'm careful. However, the risk of arithmetic error is high. Let me see if I can reduce by noticing many n's may be constant or follow patterns. Unlikely.
+
+Alternative: Since I only need the DFF inputs (12 nets: n157,n159,n166,n167,n170,n181,n188,n190,n192,n193,n194) and n199, I can compute the dependency cones of these 13 nets. But the cones probably cover most gates anyway.
+
+Let me just compute fully but efficiently. I'll represent the evaluation as: y = 1 - a*b. I'll compute each n in order. To keep track, I'll write the n values as a string/vector per cycle.
+
+Given the magnitude, I'll proceed but be extremely careful, double-checking each cycle's state update since outputs depend on it.
+
+Let me start. I'll use notation: for gate k, inputs A_k, B_k (which may be in*, q*, or n_j with j<k). n_k = NAND(A_k,B_k).
+
+I'll need to resolve A_k, B_k to values. Let me just go.
+
+=== Cycle 0 ===
+Inputs: in0=1, in1=1, in2=1.
+State (start): q0=0,q1=0,q2=1,q3=0,q4=1,q5=0,q6=1,q7=1,q8=0,q9=1,q10=1,q11=1.
+
+Compute n0..n199:
+n0 = NAND(in1=1, q8=0) = 1-(1&0)=1.
+n1 = NAND(n0=1, in2=1) = 1-(1)=0.
+n2 = NAND(n1=0, q5=0) = 1-(0)=1.
+n3 = NAND(n2=1, q0=0) = 1-(0)=1.
+n4 = NAND(n3=1, q5=0) = 1-(0)=1.
+n5 = NAND(n4=1, n0=1) = 1-(1)=0.
+n6 = NAND(n5=0, q8=0) = 1-(0)=1.
+n7 = NAND(n6=1, n6=1) = 1-(1)=0.
+n8 = NAND(n7=0, n2=1) = 1-(0)=1.
+n9 = NAND(n8=1, n5=0) = 1-(0)=1.
+n10 = NAND(n9=1, n3=1) = 1-(1)=0.
+n11 = NAND(n10=0, in0=1) = 1-(0)=1.
+n12 = NAND(n11=1, n6=1) = 1-(1)=0.
+n13 = NAND(n12=0, in2=1) = 1-(0)=1.
+n14 = NAND(n13=1, n11=1) = 1-(1)=0.
+n15 = NAND(n14=0, q0=0) = 1-(0)=1.
+n16 = NAND(n15=1, n12=0) = 1-(0)=1.
+n17 = NAND(n16=1, n8=1) = 1-(1)=0.
+n18 = NAND(n17=0, n3=1) = 1-(0)=1.
+n19 = NAND(n18=1, q1=0) = 1-(0)=1.
+n20 = NAND(n19=1, n4=1) = 1-(1)=0.
+n21 = NAND(n20=0, q0=0) = 1.
+n22 = NAND(n21=1, n3=1) = 1-(1)=0.
+n23 = NAND(n22=0, q9=1) = 1-(0)=1.
+n24 = NAND(n23=1, n12=0) = 1-(0)=1.
+n25 = NAND(n24=1, n20=0) = 1-(0)=1.
+n26 = NAND(n25=1, n22=0) = 1-(0)=1.
+n27 = NAND(n26=1, n23=1) = 1-(1)=0.
+n28 = NAND(n27=0, n16=1) = 1-(0)=1.
+n29 = NAND(n28=1, n18=1) = 1-(1)=0.
+n30 = NAND(n29=0, q3=0) = 1.
+n31 = NAND(n30=1, q9=1) = 1-(1)=0.
+n32 = NAND(n31=0, n19=1) = 1-(0)=1.
+n33 = NAND(n32=1, q7=1) = 1-(1)=0.
+n34 = NAND(n33=0, n1=0) = 1-(0)=1.
+n35 = NAND(n34=1, n0=1) = 1-(1)=0.
+n36 = NAND(n35=0, n8=1) = 1-(0)=1.
+n37 = NAND(n36=1, in2=1) = 1-(1)=0.
+n38 = NAND(n37=0, q8=0) = 1.
+n39 = NAND(n38=1, n18=1) = 1-(1)=0.
+n40 = NAND(n39=0, n16=1) = 1-(0)=1.
+n41 = NAND(n40=1, n11=1) = 1-(1)=0.
+n42 = NAND(n41=0, n25=1) = 1-(0)=1.
+n43 = NAND(n42=1, n28=1) = 1-(1)=0.
+n44 = NAND(n43=0, q9=1) = 1.
+n45 = NAND(n44=1, q10=1) = 1-(1)=0.
+n46 = NAND(n45=0, q3=0) = 1.
+n47 = NAND(n46=1, n21=1) = 1-(1)=0.
+n48 = NAND(n47=0, q6=1) = 1.
+n49 = NAND(n48=1, n33=0) = 1-(0)=1.
+n50 = NAND(n49=1, n15=1) = 1-(1)=0.
+n51 = NAND(n50=0, n9=1) = 1-(0)=1.
+n52 = NAND(n51=1, n9=1) = 1-(1)=0.
+n53 = NAND(n52=0, q1=0) = 1.
+n54 = NAND(n53=1, n38=1) = 1-(1)=0.
+n55 = NAND(n54=0, q2=1) = 1.
+n56 = NAND(n55=1, n5=0) = 1-(0)=1.
+n57 = NAND(n56=1, n13=1) = 1-(1)=0.
+n58 = NAND(n57=0, n22=0) = 1-(0)=1.
+n59 = NAND(n58=1, n43=0) = 1-(0)=1.
+n60 = NAND(n59=1, q8=0) = 1-(0)=1.
+n61 = NAND(n60=1, n48=1) = 1-(1)=0.
+n62 = NAND(n61=0, n44=1) = 1-(0)=1.
+n63 = NAND(n62=1, n41=0) = 1-(0)=1.
+n64 = NAND(n63=1, n30=1) = 1-(1)=0.
+n65 = NAND(n64=0, n37=0) = 1-(0)=1.
+n66 = NAND(n65=1, n1=0) = 1-(0)=1.
+n67 = NAND(n66=1, q0=0) = 1-(0)=1.
+n68 = NAND(n67=1, n64=0) = 1-(0)=1.
+n69 = NAND(n68=1, n35=0) = 1-(0)=1.
+n70 = NAND(n69=1, n22=0) = 1-(0)=1.
+n71 = NAND(n70=1, n43=0) = 1-(0)=1.
+n72 = NAND(n71=1, n43=0) = 1-(0)=1.
+n73 = NAND(n72=1, n55=1) = 1-(1)=0.
+n74 = NAND(n73=0, n39=0) = 1-(0)=1.
+n75 = NAND(n74=1, n20=0) = 1-(0)=1.
+n76 = NAND(n75=1, n68=1) = 1-(1)=0.
+n77 = NAND(n76=0, q4=1) = 1.
+n78 = NAND(n77=1, n54=0) = 1-(0)=1.
+n79 = NAND(n78=1, n75=1) = 1-(1)=0.
+n80 = NAND(n79=0, q4=1) = 1.
+n81 = NAND(n80=1, n36=1) = 1-(1)=0.
+n82 = NAND(n81=0, n10=0) = 1-(0)=1.
+n83 = NAND(n82=1, n28=1) = 1-(1)=0.
+n84 = NAND(n83=0, n78=1) = 1-(0)=1.
+n85 = NAND(n84=1, n58=1) = 1-(1)=0.
+n86 = NAND(n85=0, n74=1) = 1-(0)=1.
+n87 = NAND(n86=1, q5=0) = 1-(0)=1.
+n88 = NAND(n87=1, n65=1) = 1-(1)=0.
+n89 = NAND(n88=0, n70=1) = 1-(0)=1.
+n90 = NAND(n89=1, q2=1) = 1-(1)=0.
+n91 = NAND(n90=0, q11=1) = 1.
+n92 = NAND(n91=1, n57=0) = 1-(0)=1.
+n93 = NAND(n92=1, n8=1) = 1-(1)=0.
+n94 = NAND(n93=0, n60=1) = 1-(0)=1.
+n95 = NAND(n94=1, n64=0) = 1-(0)=1.
+n96 = NAND(n95=1, n4=1) = 1-(1)=0.
+n97 = NAND(n96=0, in1=1) = 1.
+n98 = NAND(n97=1, n57=0) = 1-(0)=1.
+n99 = NAND(n98=1, n8=1) = 1-(1)=0.
+n100 = NAND(n99=0, n10=0) = 1-(0)=1.
+n101 = NAND(n100=1, n35=0) = 1-(0)=1.
+n102 = NAND(n101=1, n62=1) = 1-(1)=0.
+n103 = NAND(n102=0, n73=0) = 1-(0)=1.
+n104 = NAND(n103=1, n98=1) = 1-(1)=0.
+n105 = NAND(n104=0, n16=1) = 1-(0)=1.
+n106 = NAND(n105=1, n45=0) = 1-(0)=1.
+n107 = NAND(n106=1, n77=1) = 1-(1)=0.
+n108 = NAND(n107=0, n16=1) = 1-(0)=1.
+n109 = NAND(n108=1, n103=1) = 1-(1)=0.
+n110 = NAND(n109=0, n15=1) = 1-(0)=1.
+n111 = NAND(n110=1, n41=0) = 1-(0)=1.
+n112 = NAND(n111=1, n74=1) = 1-(1)=0.
+n113 = NAND(n112=0, n71=1) = 1-(0)=1.
+n114 = NAND(n113=1, n40=1) = 1-(1)=0.
+n115 = NAND(n114=0, n113=1) = 1-(0)=1.
+n116 = NAND(n115=1, n34=1) = 1-(1)=0.
+n117 = NAND(n116=0, n25=1) = 1-(0)=1.
+n118 = NAND(n117=1, n18=1) = 1-(1)=0.
+n119 = NAND(n118=0, n59=1) = 1-(0)=1.
+n120 = NAND(n119=1, n100=1) = 1-(1)=0.
+n121 = NAND(n120=0, n5=0) = 1-(0)=1.
+n122 = NAND(n121=1, n29=0) = 1-(0)=1.
+n123 = NAND(n122=1, n45=0) = 1-(0)=1.
+n124 = NAND(n123=1, n77=1) = 1-(1)=0.
+n125 = NAND(n124=0, n15=1) = 1-(0)=1.
+n126 = NAND(n125=1, n95=1) = 1-(1)=0.
+n127 = NAND(n126=0, n10=0) = 1.
+n128 = NAND(n127=1, n18=1) = 1-(1)=0.
+n129 = NAND(n128=0, n35=0) = 1.
+n130 = NAND(n129=1, n72=1) = 1-(1)=0.
+n131 = NAND(n130=0, n2=1) = 1-(0)=1.
+n132 = NAND(n131=1, n35=0) = 1-(0)=1.
+n133 = NAND(n132=1, n104=0) = 1-(0)=1.
+n134 = NAND(n133=1, n13=1) = 1-(1)=0.
+n135 = NAND(n134=0, q3=0) = 1.
+n136 = NAND(n135=1, n97=1) = 1-(1)=0.
+n137 = NAND(n136=0, n26=1) = 1-(0)=1.
+n138 = NAND(n137=1, n7=0) = 1-(0)=1.
+n139 = NAND(n138=1, n38=1) = 1-(1)=0.
+n140 = NAND(n139=0, q4=1) = 1.
+n141 = NAND(n140=1, n11=1) = 1-(1)=0.
+n142 = NAND(n141=0, n78=1) = 1-(0)=1.
+n143 = NAND(n142=1, n51=1) = 1-(1)=0.
+n144 = NAND(n143=0, n49=1) = 1-(0)=1.
+n145 = NAND(n144=1, n112=0) = 1-(0)=1.
+n146 = NAND(n145=1, n1=0) = 1-(0)=1.
+n147 = NAND(n146=1, n22=0) = 1-(0)=1.
+n148 = NAND(n147=1, n107=0) = 1-(0)=1.
+n149 = NAND(n148=1, n18=1) = 1-(1)=0.
+n150 = NAND(n149=0, n79=0) = 1.
+n151 = NAND(n150=1, n57=0) = 1-(0)=1.
+n152 = NAND(n151=1, n70=1) = 1-(1)=0.
+n153 = NAND(n152=0, n109=0) = 1.
+n154 = NAND(n153=1, q1=0) = 1-(0)=1.
+n155 = NAND(n154=1, n73=0) = 1-(0)=1.
+n156 = NAND(n155=1, n73=0) = 1-(0)=1.
+n157 = NAND(n156=1, n76=0) = 1-(0)=1.
+n158 = NAND(n157=1, n40=1) = 1-(1)=0.
+n159 = NAND(n158=0, n34=1) = 1-(0)=1.
+n160 = NAND(n159=1, n130=0) = 1-(0)=1.
+n161 = NAND(n160=1, n57=0) = 1-(0)=1.
+n162 = NAND(n161=1, n20=0) = 1-(0)=1.
+n163 = NAND(n162=1, n21=1) = 1-(1)=0.
+n164 = NAND(n163=0, q4=1) = 1.
+n165 = NAND(n164=1, n138=1) = 1-(1)=0.
+n166 = NAND(n165=0, n33=0) = 1-(0)=1.
+n167 = NAND(n166=1, n59=1) = 1-(1)=0.
+n168 = NAND(n167=0, n20=0) = 1.
+n169 = NAND(n168=1, q0=0) = 1-(0)=1.
+n170 = NAND(n169=1, n161=1) = 1-(1)=0.
+n171 = NAND(n170=0, n55=1) = 1-(0)=1.
+n172 = NAND(n171=1, n45=0) = 1-(0)=1.
+n173 = NAND(n172=1, n16=1) = 1-(1)=0.
+n174 = NAND(n173=0, n166=1) = 1-(0)=1.
+n175 = NAND(n174=1, q3=0) = 1-(0)=1.
+n176 = NAND(n175=1, q6=1) = 1-(1)=0.
+n177 = NAND(n176=0, n116=0) = 1.
+n178 = NAND(n177=1, n148=1) = 1-(1)=0.
+n179 = NAND(n178=0, n82=1) = 1-(0)=1.
+n180 = NAND(n179=1, n124=0) = 1-(0)=1.
+n181 = NAND(n180=1, n42=1) = 1-(1)=0.
+n182 = NAND(n181=0, n142=1) = 1-(0)=1.
+n183 = NAND(n182=1, in1=1) = 1-(1)=0.
+n184 = NAND(n183=0, n26=1) = 1-(0)=1.
+n185 = NAND(n184=1, n139=0) = 1-(0)=1.
+n186 = NAND(n185=1, n115=1) = 1-(1)=0.
+n187 = NAND(n186=0, n12=0) = 1.
+n188 = NAND(n187=1, n63=1) = 1-(1)=0.
+n189 = NAND(n188=0, n185=1) = 1-(0)=1.
+n190 = NAND(n189=1, n134=0) = 1-(0)=1.
+n191 = NAND(n190=1, n122=1) = 1-(1)=0.
+n192 = NAND(n191=0, n20=0) = 1.
+n193 = NAND(n192=1, n96=0) = 1-(0)=1.
+n194 = NAND(n193=1, n89=1) = 1-(1)=0.
+n195 = NAND(n194=0, n130=0) = 1.
+n196 = NAND(n195=1, n171=1) = 1-(1)=0.
+n197 = NAND(n196=0, n158=0) = 1.
+n198 = NAND(n197=1, n126=0) = 1-(0)=1.
+n199 = NAND(n198=1, n18=1) = 1-(1)=0.
+
+Outputs cycle 0: n199=0, q10=1, q11=1, q6=1.
+
+State update (after edge):
+q0' = n188 = 0
+q1' = n159 = 1
+q2' = n181 = 0
+q3' = n190 = 1
+q4' = n167 = 0
+q5' = n192 = 1
+q6' = n166 = 1
+q7' = n170 = 0
+q8' = n157 = 1
+q9' = n188 = 0
+q10' = n194 = 0
+q11' = n193 = 1
+
+Let me record state for start of cycle 1:
+q0=0,q1=1,q2=0,q3=1,q4=0,q5=1,q6=1,q7=0,q8=1,q9=0,q10=0,q11=1.
+
+I need to be very careful. Let me double check a few of the DFF input computations for cycle 0 since they determine the next state.
+
+n157 = NAND(n156, n76). n156=1, n76=0 -> NAND=1. OK.
+n159 = NAND(n158,n34). n158=0,n34=1 -> 1. OK.
+n166 = NAND(n165,n33). n165=0,n33=0 -> 1. OK.
+n167 = NAND(n166,n59). n166=1,n59=1 -> 0. OK.
+n170 = NAND(n169,n161). n169=1,n161=1 ->0. OK.
+n181 = NAND(n180,n42). n180=1,n42=1 ->0. OK.
+n188 = NAND(n187,n63). n187=1,n63=1 ->0. OK.
+n190 = NAND(n189,n134). n189=1,n134=0 ->1. OK.
+n192 = NAND(n191,n20). n191=0,n20=0 ->1. OK.
+n193 = NAND(n192,n96). n192=1,n96=0 ->1. OK.
+n194 = NAND(n193,n89). n193=1,n89=1 ->0. OK.
+
+Good. Let me also sanity check some intermediate ones that feed multiple:
+n20 = NAND(n19=1,n4=1)=0. OK.
+n22 = NAND(n21=1,n3=1). n21=1,n3=1 ->0. OK.
+n33 = NAND(n32=1,q7=1)=0. OK.
+n35 = NAND(n34=1,n0=1)=0. OK.
+n57 = NAND(n56=1,n13=1)=0. OK.
+n63 = NAND(n62=1,n41=0)=1. OK.
+n76 = NAND(n75=1,n68=1)=0. OK.
+n89 = NAND(n88=0,n70=1)=1. OK.
+n96 = NAND(n95=1,n4=1)=0. OK.
+n126 = NAND(n125=1,n95=1)=0. OK.
+n134 = NAND(n133=1,n13=1)=0. OK.
+n158 = NAND(n157=1,n40=1)=0. OK.
+n185 = NAND(n184=1,n139=0)=1. OK.
+n187 = NAND(n186=0,n12=0)=1. OK.
+
+OK cycle 0 done. This is going to be long. Let me continue but try to be efficient. I'll maintain the full n vector each cycle. Given the complexity, I'll proceed cycle by cycle.
+
+Actually, given the enormous risk, let me reconsider whether there's a pattern. The circuit name "chain_s5102_g200_d12" suggests a generated random chain with 200 gates and depth... probably no simple pattern. I'll grind.
+
+Let me set up a more compact per-cycle computation. I'll keep the q state and inputs, compute n0..n199. I'll write the n vector as I go, but only report key ones. However errors compound; I must compute all because later gates depend on arbitrary earlier ones.
+
+I'll continue. To manage, I'll write for each cycle the inputs, the q's, then compute n in blocks and record the needed d-values and n199.
+
+Let me proceed to cycle 1.
+
+=== Cycle 1 ===
+Inputs: in0=1, in1=1, in2=1.
+State start: q0=0,q1=1,q2=0,q3=1,q4=0,q5=1,q6=1,q7=0,q8=1,q9=0,q10=0,q11=1.
+
+n0 = NAND(in1=1, q8=1) = 1-(1)=0.
+n1 = NAND(n0=0, in2=1) = 1-(0)=1.
+n2 = NAND(n1=1, q5=1) = 1-(1)=0.
+n3 = NAND(n2=0, q0=0) = 1.
+n4 = NAND(n3=1, q5=1) = 1-(1)=0.
+n5 = NAND(n4=0, n0=0) = 1.
+n6 = NAND(n5=1, q8=1) = 1-(1)=0.
+n7 = NAND(n6=0, n6=0) = 1.
+n8 = NAND(n7=1, n2=0) = 1-(0)=1.
+n9 = NAND(n8=1, n5=1) = 1-(1)=0.
+n10 = NAND(n9=0, n3=1) = 1-(0)=1.
+n11 = NAND(n10=1, in0=1) = 1-(1)=0.
+n12 = NAND(n11=0, n6=0) = 1.
+n13 = NAND(n12=1, in2=1) = 1-(1)=0.
+n14 = NAND(n13=0, n11=0) = 1.
+n15 = NAND(n14=1, q0=0) = 1-(0)=1.
+n16 = NAND(n15=1, n12=1) = 1-(1)=0.
+n17 = NAND(n16=0, n8=1) = 1-(0)=1.
+n18 = NAND(n17=1, n3=1) = 1-(1)=0.
+n19 = NAND(n18=0, q1=1) = 1-(0)=1.
+n20 = NAND(n19=1, n4=0) = 1-(0)=1.
+n21 = NAND(n20=1, q0=0) = 1-(0)=1.
+n22 = NAND(n21=1, n3=1) = 1-(1)=0.
+n23 = NAND(n22=0, q9=0) = 1.
+n24 = NAND(n23=1, n12=1) = 1-(1)=0.
+n25 = NAND(n24=0, n20=1) = 1-(0)=1.
+n26 = NAND(n25=1, n22=0) = 1-(0)=1.
+n27 = NAND(n26=1, n23=1) = 1-(1)=0.
+n28 = NAND(n27=0, n16=0) = 1.
+n29 = NAND(n28=1, n18=0) = 1-(0)=1.
+n30 = NAND(n29=1, q3=1) = 1-(1)=0.
+n31 = NAND(n30=0, q9=0) = 1.
+n32 = NAND(n31=1, n19=1) = 1-(1)=0.
+n33 = NAND(n32=0, q7=0) = 1.
+n34 = NAND(n33=1, n1=1) = 1-(1)=0.
+n35 = NAND(n34=0, n0=0) = 1.
+n36 = NAND(n35=1, n8=1) = 1-(1)=0.
+n37 = NAND(n36=0, in2=1) = 1-(0)=1.
+n38 = NAND(n37=1, q8=1) = 1-(1)=0.
+n39 = NAND(n38=0, n18=0) = 1.
+n40 = NAND(n39=1, n16=0) = 1-(0)=1.
+n41 = NAND(n40=1, n11=0) = 1-(0)=1.
+n42 = NAND(n41=1, n25=1) = 1-(1)=0.
+n43 = NAND(n42=0, n28=1) = 1-(0)=1.
+n44 = NAND(n43=1, q9=0) = 1-(0)=1.
+n45 = NAND(n44=1, q10=0) = 1-(0)=1.
+n46 = NAND(n45=1, q3=1) = 1-(1)=0.
+n47 = NAND(n46=0, n21=1) = 1-(0)=1.
+n48 = NAND(n47=1, q6=1) = 1-(1)=0.
+n49 = NAND(n48=0, n33=1) = 1-(0)=1.
+n50 = NAND(n49=1, n15=1) = 1-(1)=0.
+n51 = NAND(n50=0, n9=0) = 1.
+n52 = NAND(n51=1, n9=0) = 1-(0)=1.
+n53 = NAND(n52=1, q1=1) = 1-(1)=0.
+n54 = NAND(n53=0, n38=0) = 1.
+n55 = NAND(n54=1, q2=0) = 1-(0)=1.
+n56 = NAND(n55=1, n5=1) = 1-(1)=0.
+n57 = NAND(n56=0, n13=0) = 1.
+n58 = NAND(n57=1, n22=0) = 1-(0)=1.
+n59 = NAND(n58=1, n43=1) = 1-(1)=0.
+n60 = NAND(n59=0, q8=1) = 1-(0)=1.
+n61 = NAND(n60=1, n48=0) = 1-(0)=1.
+n62 = NAND(n61=1, n44=1) = 1-(1)=0.
+n63 = NAND(n62=0, n41=1) = 1-(0)=1.
+n64 = NAND(n63=1, n30=0) = 1-(0)=1.
+n65 = NAND(n64=1, n37=1) = 1-(1)=0.
+n66 = NAND(n65=0, n1=1) = 1-(0)=1.
+n67 = NAND(n66=1, q0=0) = 1-(0)=1.
+n68 = NAND(n67=1, n64=1) = 1-(1)=0.
+n69 = NAND(n68=0, n35=1) = 1-(0)=1.
+n70 = NAND(n69=1, n22=0) = 1-(0)=1.
+n71 = NAND(n70=1, n43=1) = 1-(1)=0.
+n72 = NAND(n71=0, n43=1) = 1-(0)=1.
+n73 = NAND(n72=1, n55=1) = 1-(1)=0.
+n74 = NAND(n73=0, n39=1) = 1-(0)=1.
+n75 = NAND(n74=1, n20=1) = 1-(1)=0.
+n76 = NAND(n75=0, n68=0) = 1.
+n77 = NAND(n76=1, q4=0) = 1-(0)=1.
+n78 = NAND(n77=1, n54=1) = 1-(1)=0.
+n79 = NAND(n78=0, n75=0) = 1.
+n80 = NAND(n79=1, q4=0) = 1-(0)=1.
+n81 = NAND(n80=1, n36=0) = 1-(0)=1.
+n82 = NAND(n81=1, n10=1) = 1-(1)=0.
+n83 = NAND(n82=0, n28=1) = 1-(0)=1.
+n84 = NAND(n83=1, n78=0) = 1-(0)=1.
+n85 = NAND(n84=1, n58=1) = 1-(1)=0.
+n86 = NAND(n85=0, n74=1) = 1-(0)=1.
+n87 = NAND(n86=1, q5=1) = 1-(1)=0.
+n88 = NAND(n87=0, n65=0) = 1.
+n89 = NAND(n88=1, n70=1) = 1-(1)=0.
+n90 = NAND(n89=0, q2=0) = 1.
+n91 = NAND(n90=1, q11=1) = 1-(1)=0.
+n92 = NAND(n91=0, n57=1) = 1-(0)=1.
+n93 = NAND(n92=1, n8=1) = 1-(1)=0.
+n94 = NAND(n93=0, n60=1) = 1-(0)=1.
+n95 = NAND(n94=1, n64=1) = 1-(1)=0.
+n96 = NAND(n95=0, n4=0) = 1.
+n97 = NAND(n96=1, in1=1) = 1-(1)=0.
+n98 = NAND(n97=0, n57=1) = 1-(0)=1.
+n99 = NAND(n98=1, n8=1) = 1-(1)=0.
+n100 = NAND(n99=0, n10=1) = 1-(0)=1.
+n101 = NAND(n100=1, n35=1) = 1-(1)=0.
+n102 = NAND(n101=0, n62=0) = 1.
+n103 = NAND(n102=1, n73=0) = 1-(0)=1.
+n104 = NAND(n103=1, n98=1) = 1-(1)=0.
+n105 = NAND(n104=0, n16=0) = 1.
+n106 = NAND(n105=1, n45=1) = 1-(1)=0.
+n107 = NAND(n106=0, n77=1) = 1-(0)=1.
+n108 = NAND(n107=1, n16=0) = 1-(0)=1.
+n109 = NAND(n108=1, n103=1) = 1-(1)=0.
+n110 = NAND(n109=0, n15=1) = 1-(0)=1.
+n111 = NAND(n110=1, n41=1) = 1-(1)=0.
+n112 = NAND(n111=0, n74=1) = 1-(0)=1.
+n113 = NAND(n112=1, n71=0) = 1-(0)=1.
+n114 = NAND(n113=1, n40=1) = 1-(1)=0.
+n115 = NAND(n114=0, n113=1) = 1-(0)=1.
+n116 = NAND(n115=1, n34=0) = 1-(0)=1.
+n117 = NAND(n116=1, n25=1) = 1-(1)=0.
+n118 = NAND(n117=0, n18=0) = 1.
+n119 = NAND(n118=1, n59=0) = 1-(0)=1.
+n120 = NAND(n119=1, n100=1) = 1-(1)=0.
+n121 = NAND(n120=0, n5=1) = 1-(0)=1.
+n122 = NAND(n121=1, n29=1) = 1-(1)=0.
+n123 = NAND(n122=0, n45=1) = 1-(0)=1.
+n124 = NAND(n123=1, n77=1) = 1-(1)=0.
+n125 = NAND(n124=0, n15=1) = 1-(0)=1.
+n126 = NAND(n125=1, n95=0) = 1-(0)=1.
+n127 = NAND(n126=1, n10=1) = 1-(1)=0.
+n128 = NAND(n127=0, n18=0) = 1.
+n129 = NAND(n128=1, n35=1) = 1-(1)=0.
+n130 = NAND(n129=0, n72=1) = 1-(0)=1.
+n131 = NAND(n130=1, n2=0) = 1-(0)=1.
+n132 = NAND(n131=1, n35=1) = 1-(1)=0.
+n133 = NAND(n132=0, n104=0) = 1.
+n134 = NAND(n133=1, n13=0) = 1-(0)=1.
+n135 = NAND(n134=1, q3=1) = 1-(1)=0.
+n136 = NAND(n135=0, n97=0) = 1.
+n137 = NAND(n136=1, n26=1) = 1-(1)=0.
+n138 = NAND(n137=0, n7=1) = 1-(0)=1.
+n139 = NAND(n138=1, n38=0) = 1-(0)=1.
+n140 = NAND(n139=1, q4=0) = 1-(0)=1.
+n141 = NAND(n140=1, n11=0) = 1-(0)=1.
+n142 = NAND(n141=1, n78=0) = 1-(0)=1.
+n143 = NAND(n142=1, n51=1) = 1-(1)=0.
+n144 = NAND(n143=0, n49=1) = 1-(0)=1.
+n145 = NAND(n144=1, n112=1) = 1-(1)=0.
+n146 = NAND(n145=0, n1=1) = 1-(0)=1.
+n147 = NAND(n146=1, n22=0) = 1-(0)=1.
+n148 = NAND(n147=1, n107=1) = 1-(1)=0.
+n149 = NAND(n148=0, n18=0) = 1.
+n150 = NAND(n149=1, n79=1) = 1-(1)=0.
+n151 = NAND(n150=0, n57=1) = 1-(0)=1.
+n152 = NAND(n151=1, n70=1) = 1-(1)=0.
+n153 = NAND(n152=0, n109=0) = 1.
+n154 = NAND(n153=1, q1=1) = 1-(1)=0.
+n155 = NAND(n154=0, n73=0) = 1.
+n156 = NAND(n155=1, n73=0) = 1-(0)=1.
+n157 = NAND(n156=1, n76=1) = 1-(1)=0.
+n158 = NAND(n157=0, n40=1) = 1-(0)=1.
+n159 = NAND(n158=1, n34=0) = 1-(0)=1.
+n160 = NAND(n159=1, n130=1) = 1-(1)=0.
+n161 = NAND(n160=0, n57=1) = 1-(0)=1.
+n162 = NAND(n161=1, n20=1) = 1-(1)=0.
+n163 = NAND(n162=0, n21=1) = 1-(0)=1.
+n164 = NAND(n163=1, q4=0) = 1-(0)=1.
+n165 = NAND(n164=1, n138=1) = 1-(1)=0.
+n166 = NAND(n165=0, n33=1) = 1-(0)=1.
+n167 = NAND(n166=1, n59=0) = 1-(0)=1.
+n168 = NAND(n167=1, n20=1) = 1-(1)=0.
+n169 = NAND(n168=0, q0=0) = 1.
+n170 = NAND(n169=1, n161=1) = 1-(1)=0.
+n171 = NAND(n170=0, n55=1) = 1-(0)=1.
+n172 = NAND(n171=1, n45=1) = 1-(1)=0.
+n173 = NAND(n172=0, n16=0) = 1.
+n174 = NAND(n173=1, n166=1) = 1-(1)=0.
+n175 = NAND(n174=0, q3=1) = 1-(0)=1.
+n176 = NAND(n175=1, q6=1) = 1-(1)=0.
+n177 = NAND(n176=0, n116=1) = 1-(0)=1.
+n178 = NAND(n177=1, n148=0) = 1-(0)=1.
+n179 = NAND(n178=1, n82=0) = 1-(0)=1.
+n180 = NAND(n179=1, n124=0) = 1-(0)=1.
+n181 = NAND(n180=1, n42=0) = 1-(0)=1.
+n182 = NAND(n181=1, n142=1) = 1-(1)=0.
+n183 = NAND(n182=0, in1=1) = 1-(0)=1.
+n184 = NAND(n183=1, n26=1) = 1-(1)=0.
+n185 = NAND(n184=0, n139=1) = 1-(0)=1.
+n186 = NAND(n185=1, n115=1) = 1-(1)=0.
+n187 = NAND(n186=0, n12=1) = 1-(0)=1.
+n188 = NAND(n187=1, n63=1) = 1-(1)=0.
+n189 = NAND(n188=0, n185=1) = 1-(0)=1.
+n190 = NAND(n189=1, n134=1) = 1-(1)=0.
+n191 = NAND(n190=0, n122=0) = 1.
+n192 = NAND(n191=1, n20=1) = 1-(1)=0.
+n193 = NAND(n192=0, n96=1) = 1-(0)=1.
+n194 = NAND(n193=1, n89=0) = 1-(0)=1.
+n195 = NAND(n194=1, n130=1) = 1-(1)=0.
+n196 = NAND(n195=0, n171=1) = 1-(0)=1.
+n197 = NAND(n196=1, n158=1) = 1-(1)=0.
+n198 = NAND(n197=0, n126=1) = 1-(0)=1.
+n199 = NAND(n198=1, n18=0) = 1-(0)=1.
+
+Outputs cycle 1: n199=1, q10=0, q11=1, q6=1.
+
+State update:
+q0'=n188=0
+q1'=n159=1
+q2'=n181=1
+q3'=n190=0
+q4'=n167=1
+q5'=n192=0
+q6'=n166=1
+q7'=n170=0
+q8'=n157=0
+q9'=n188=0
+q10'=n194=1
+q11'=n193=1
+
+State for cycle 2 start:
+q0=0,q1=1,q2=1,q3=0,q4=1,q5=0,q6=1,q7=0,q8=0,q9=0,q10=1,q11=1.
+
+Let me double-check some critical ones for cycle1 update:
+n157: n156=1,n76=1 ->0. yes (n76=1 because n75=0,n68=0 -> NAND=1). OK.
+n159: n158=1,n34=0 ->1. OK.
+n166: n165=0,n33=1 ->1. OK.
+n167: n166=1,n59=0 ->1. OK.
+n170: n169=1,n161=1 ->0. OK.
+n181: n180=1,n42=0 ->1. OK.
+n188: n187=1,n63=1 ->0. OK.
+n190: n189=1,n134=1 ->0. OK.
+n192: n191=1,n20=1 ->0. OK.
+n193: n192=0,n96=1 ->1. OK.
+n194: n193=1,n89=0 ->1. OK.
+
+This is consistent. Let me continue. This is extremely tedious; I'll keep going but I worry about errors. Let me persevere. I'll keep the same rigor.
+
+Given the volume, let me consider verifying by an independent approach for the final outputs. But there's no code. I'll just be careful and perhaps re-derive the output-relevant DFF states with extra care.
+
+Actually, the outputs q6,q10,q11 are just states. I have them per cycle directly. n199 needs full computation. The next-state DFF inputs need specific nets. Since I'm computing all n's anyway, I'll capture the needed d nets and n199.
+
+Let me list which nets are needed for next state each cycle: {157,159,166,167,170,181,188,190,192,193,194}. And output n199. Plus current q6,q10,q11 for outputs.
+
+I'll continue to cycle 2.
+
+=== Cycle 2 ===
+Inputs: in0=0, in1=1, in2=0.
+State: q0=0,q1=1,q2=1,q3=0,q4=1,q5=0,q6=1,q7=0,q8=0,q9=0,q10=1,q11=1.
+
+n0 = NAND(in1=1, q8=0)=1.
+n1 = NAND(n0=1, in2=0)=1-(0)=1.
+n2 = NAND(n1=1, q5=0)=1.
+n3 = NAND(n2=1, q0=0)=1.
+n4 = NAND(n3=1, q5=0)=1.
+n5 = NAND(n4=1, n0=1)=0.
+n6 = NAND(n5=0, q8=0)=1.
+n7 = NAND(n6=1,n6=1)=0.
+n8 = NAND(n7=0, n2=1)=1.
+n9 = NAND(n8=1, n5=0)=1.
+n10= NAND(n9=1, n3=1)=0.
+n11= NAND(n10=0, in0=0)=1.
+n12= NAND(n11=1, n6=1)=0.
+n13= NAND(n12=0, in2=0)=1.
+n14= NAND(n13=1, n11=1)=0.
+n15= NAND(n14=0, q0=0)=1.
+n16= NAND(n15=1, n12=0)=1.
+n17= NAND(n16=1, n8=1)=0.
+n18= NAND(n17=0, n3=1)=1.
+n19= NAND(n18=1, q1=1)=0.
+n20= NAND(n19=0, n4=1)=1.
+n21= NAND(n20=1, q0=0)=1.
+n22= NAND(n21=1, n3=1)=0.
+n23= NAND(n22=0, q9=0)=1.
+n24= NAND(n23=1, n12=0)=1.
+n25= NAND(n24=1, n20=1)=0.
+n26= NAND(n25=0, n22=0)=1.
+n27= NAND(n26=1, n23=1)=0.
+n28= NAND(n27=0, n16=1)=1.
+n29= NAND(n28=1, n18=1)=0.
+n30= NAND(n29=0, q3=0)=1.
+n31= NAND(n30=1, q9=0)=1.
+n32= NAND(n31=1, n19=0)=1.
+n33= NAND(n32=1, q7=0)=1.
+n34= NAND(n33=1, n1=1)=0.
+n35= NAND(n34=0, n0=1)=1.
+n36= NAND(n35=1, n8=1)=0.
+n37= NAND(n36=0, in2=0)=1.
+n38= NAND(n37=1, q8=0)=1.
+n39= NAND(n38=1, n18=1)=0.
+n40= NAND(n39=0, n16=1)=1.
+n41= NAND(n40=1, n11=1)=0.
+n42= NAND(n41=0, n25=0)=1.
+n43= NAND(n42=1, n28=1)=0.
+n44= NAND(n43=0, q9=0)=1.
+n45= NAND(n44=1, q10=1)=0.
+n46= NAND(n45=0, q3=0)=1.
+n47= NAND(n46=1, n21=1)=0.
+n48= NAND(n47=0, q6=1)=1.
+n49= NAND(n48=1, n33=1)=0.
+n50= NAND(n49=0, n15=1)=1.
+n51= NAND(n50=1, n9=1)=0.
+n52= NAND(n51=0, n9=1)=1.
+n53= NAND(n52=1, q1=1)=0.
+n54= NAND(n53=0, n38=1)=1.
+n55= NAND(n54=1, q2=1)=0.
+n56= NAND(n55=0, n5=0)=1.
+n57= NAND(n56=1, n13=1)=0.
+n58= NAND(n57=0, n22=0)=1.
+n59= NAND(n58=1, n43=0)=1.
+n60= NAND(n59=1, q8=0)=1.
+n61= NAND(n60=1, n48=1)=0.
+n62= NAND(n61=0, n44=1)=1.
+n63= NAND(n62=1, n41=0)=1.
+n64= NAND(n63=1, n30=1)=0.
+n65= NAND(n64=0, n37=1)=1.
+n66= NAND(n65=1, n1=1)=0.
+n67= NAND(n66=0, q0=0)=1.
+n68= NAND(n67=1, n64=0)=1.
+n69= NAND(n68=1, n35=1)=0.
+n70= NAND(n69=0, n22=0)=1.
+n71= NAND(n70=1, n43=0)=1.
+n72= NAND(n71=1, n43=0)=1.
+n73= NAND(n72=1, n55=0)=1.
+n74= NAND(n73=1, n39=0)=1.
+n75= NAND(n74=1, n20=1)=0.
+n76= NAND(n75=0, n68=1)=1.
+n77= NAND(n76=1, q4=1)=0.
+n78= NAND(n77=0, n54=1)=1.
+n79= NAND(n78=1, n75=0)=1.
+n80= NAND(n79=1, q4=1)=0.
+n81= NAND(n80=0, n36=0)=1.
+n82= NAND(n81=1, n10=0)=1.
+n83= NAND(n82=1, n28=1)=0.
+n84= NAND(n83=0, n78=1)=1.
+n85= NAND(n84=1, n58=1)=0.
+n86= NAND(n85=0, n74=1)=1.
+n87= NAND(n86=1, q5=0)=1.
+n88= NAND(n87=1, n65=1)=0.
+n89= NAND(n88=0, n70=1)=1.
+n90= NAND(n89=1, q2=1)=0.
+n91= NAND(n90=0, q11=1)=1.
+n92= NAND(n91=1, n57=0)=1.
+n93= NAND(n92=1, n8=1)=0.
+n94= NAND(n93=0, n60=1)=1.
+n95= NAND(n94=1, n64=0)=1.
+n96= NAND(n95=1, n4=1)=0.
+n97= NAND(n96=0, in1=1)=1.
+n98= NAND(n97=1, n57=0)=1.
+n99= NAND(n98=1, n8=1)=0.
+n100=NAND(n99=0, n10=0)=1.
+n101=NAND(n100=1,n35=1)=0.
+n102=NAND(n101=0,n62=1)=1.
+n103=NAND(n102=1,n73=1)=0.
+n104=NAND(n103=0,n98=1)=1.
+n105=NAND(n104=1,n16=1)=0.
+n106=NAND(n105=0,n45=0)=1.
+n107=NAND(n106=1,n77=0)=1.
+n108=NAND(n107=1,n16=1)=0.
+n109=NAND(n108=0,n103=0)=1.
+n110=NAND(n109=1,n15=1)=0.
+n111=NAND(n110=0,n41=0)=1.
+n112=NAND(n111=1,n74=1)=0.
+n113=NAND(n112=0,n71=1)=1.
+n114=NAND(n113=1,n40=1)=0.
+n115=NAND(n114=0,n113=1)=1.
+n116=NAND(n115=1,n34=0)=1.
+n117=NAND(n116=1,n25=0)=1.
+n118=NAND(n117=1,n18=1)=0.
+n119=NAND(n118=0,n59=1)=1.
+n120=NAND(n119=1,n100=1)=0.
+n121=NAND(n120=0,n5=0)=1.
+n122=NAND(n121=1,n29=0)=1.
+n123=NAND(n122=1,n45=0)=1.
+n124=NAND(n123=1,n77=0)=1.
+n125=NAND(n124=1,n15=1)=0.
+n126=NAND(n125=0,n95=1)=1.
+n127=NAND(n126=1,n10=0)=1.
+n128=NAND(n127=1,n18=1)=0.
+n129=NAND(n128=0,n35=1)=1.
+n130=NAND(n129=1,n72=1)=0.
+n131=NAND(n130=0,n2=1)=1.
+n132=NAND(n131=1,n35=1)=0.
+n133=NAND(n132=0,n104=1)=1.
+n134=NAND(n133=1,n13=1)=0.
+n135=NAND(n134=0,q3=0)=1.
+n136=NAND(n135=1,n97=1)=0.
+n137=NAND(n136=0,n26=1)=1.
+n138=NAND(n137=1,n7=0)=1.
+n139=NAND(n138=1,n38=1)=0.
+n140=NAND(n139=0,q4=1)=1.
+n141=NAND(n140=1,n11=1)=0.
+n142=NAND(n141=0,n78=1)=1.
+n143=NAND(n142=1,n51=0)=1.
+n144=NAND(n143=1,n49=0)=1.
+n145=NAND(n144=1,n112=0)=1.
+n146=NAND(n145=1,n1=1)=0.
+n147=NAND(n146=0,n22=0)=1.
+n148=NAND(n147=1,n107=1)=0.
+n149=NAND(n148=0,n18=1)=1.
+n150=NAND(n149=1,n79=1)=0.
+n151=NAND(n150=0,n57=0)=1.
+n152=NAND(n151=1,n70=1)=0.
+n153=NAND(n152=0,n109=1)=1.
+n154=NAND(n153=1,q1=1)=0.
+n155=NAND(n154=0,n73=1)=1.
+n156=NAND(n155=1,n73=1)=0.
+n157=NAND(n156=0,n76=1)=1.
+n158=NAND(n157=1,n40=1)=0.
+n159=NAND(n158=0,n34=0)=1.
+n160=NAND(n159=1,n130=0)=1.
+n161=NAND(n160=1,n57=0)=1.
+n162=NAND(n161=1,n20=1)=0.
+n163=NAND(n162=0,n21=1)=1.
+n164=NAND(n163=1,q4=1)=0.
+n165=NAND(n164=0,n138=1)=1.
+n166=NAND(n165=1,n33=1)=0.
+n167=NAND(n166=0,n59=1)=1.
+n168=NAND(n167=1,n20=1)=0.
+n169=NAND(n168=0,q0=0)=1.
+n170=NAND(n169=1,n161=1)=0.
+n171=NAND(n170=0,n55=0)=1.
+n172=NAND(n171=1,n45=0)=1.
+n173=NAND(n172=1,n16=1)=0.
+n174=NAND(n173=0,n166=0)=1.
+n175=NAND(n174=1,q3=0)=1.
+n176=NAND(n175=1,q6=1)=0.
+n177=NAND(n176=0,n116=1)=1.
+n178=NAND(n177=1,n148=0)=1.
+n179=NAND(n178=1,n82=1)=0.
+n180=NAND(n179=0,n124=1)=1.
+n181=NAND(n180=1,n42=1)=0.
+n182=NAND(n181=0,n142=1)=1.
+n183=NAND(n182=1,in1=1)=0.
+n184=NAND(n183=0,n26=1)=1.
+n185=NAND(n184=1,n139=0)=1.
+n186=NAND(n185=1,n115=1)=0.
+n187=NAND(n186=0,n12=0)=1.
+n188=NAND(n187=1,n63=1)=0.
+n189=NAND(n188=0,n185=1)=1.
+n190=NAND(n189=1,n134=0)=1.
+n191=NAND(n190=1,n122=1)=0.
+n192=NAND(n191=0,n20=1)=1.
+n193=NAND(n192=1,n96=0)=1.
+n194=NAND(n193=1,n89=1)=0.
+n195=NAND(n194=0,n130=0)=1.
+n196=NAND(n195=1,n171=1)=0.
+n197=NAND(n196=0,n158=0)=1.
+n198=NAND(n197=1,n126=1)=0.
+n199=NAND(n198=0,n18=1)=1.
+
+Outputs cycle 2: n199=1, q10=1, q11=1, q6=1.
+
+State update:
+q0'=n188=0
+q1'=n159=1
+q2'=n181=0
+q3'=n190=1
+q4'=n167=1
+q5'=n192=1
+q6'=n166=0
+q7'=n170=0
+q8'=n157=1
+q9'=n188=0
+q10'=n194=0
+q11'=n193=1
+
+State for cycle 3 start:
+q0=0,q1=1,q2=0,q3=1,q4=1,q5=1,q6=0,q7=0,q8=1,q9=0,q10=0,q11=1.
+
+Hmm wait, I need to double-check n157 for cycle2: n156 = NAND(n155=1,n73=1)=0. n157=NAND(n156=0,n76=1)=1. OK. n159: n158=0,n34=0 -> NAND(0,0)=1. OK. n166=NAND(n165=1,n33=1)=0. OK (so q6 becomes 0 next). n167=NAND(n166=0,n59=1)=1. OK. n192=NAND(n191=0,n20=1)=1. OK. n194=NAND(n193=1,n89=1)=0. OK.
+
+Outputs so far:
+n199: [0,1,1]
+q10: [1,0,1]
+q11: [1,1,1]
+q6:  [1,1,1]
+
+Continuing. This is very long. I'll keep going.
+
+=== Cycle 3 ===
+Inputs: in0=0, in1=0, in2=1.
+State: q0=0,q1=1,q2=0,q3=1,q4=1,q5=1,q6=0,q7=0,q8=1,q9=0,q10=0,q11=1.
+
+n0 = NAND(in1=0, q8=1)=1.
+n1 = NAND(n0=1, in2=1)=0.
+n2 = NAND(n1=0, q5=1)=1.
+n3 = NAND(n2=1, q0=0)=1.
+n4 = NAND(n3=1, q5=1)=0.
+n5 = NAND(n4=0, n0=1)=1.
+n6 = NAND(n5=1, q8=1)=0.
+n7 = NAND(n6=0,n6=0)=1.
+n8 = NAND(n7=1, n2=1)=0.
+n9 = NAND(n8=0, n5=1)=1.
+n10= NAND(n9=1, n3=1)=0.
+n11= NAND(n10=0, in0=0)=1.
+n12= NAND(n11=1, n6=0)=1.
+n13= NAND(n12=1, in2=1)=0.
+n14= NAND(n13=0, n11=1)=1.
+n15= NAND(n14=1, q0=0)=1.
+n16= NAND(n15=1, n12=1)=0.
+n17= NAND(n16=0, n8=0)=1.
+n18= NAND(n17=1, n3=1)=0.
+n19= NAND(n18=0, q1=1)=1.
+n20= NAND(n19=1, n4=0)=1.
+n21= NAND(n20=1, q0=0)=1.
+n22= NAND(n21=1, n3=1)=0.
+n23= NAND(n22=0, q9=0)=1.
+n24= NAND(n23=1, n12=1)=0.
+n25= NAND(n24=0, n20=1)=1.
+n26= NAND(n25=1, n22=0)=1.
+n27= NAND(n26=1, n23=1)=0.
+n28= NAND(n27=0, n16=0)=1.
+n29= NAND(n28=1, n18=0)=1.
+n30= NAND(n29=1, q3=1)=0.
+n31= NAND(n30=0, q9=0)=1.
+n32= NAND(n31=1, n19=1)=0.
+n33= NAND(n32=0, q7=0)=1.
+n34= NAND(n33=1, n1=0)=1.
+n35= NAND(n34=1, n0=1)=0.
+n36= NAND(n35=0, n8=0)=1.
+n37= NAND(n36=1, in2=1)=0.
+n38= NAND(n37=0, q8=1)=1.
+n39= NAND(n38=1, n18=0)=1.
+n40= NAND(n39=1, n16=0)=1.
+n41= NAND(n40=1, n11=1)=0.
+n42= NAND(n41=0, n25=1)=1.
+n43= NAND(n42=1, n28=1)=0.
+n44= NAND(n43=0, q9=0)=1.
+n45= NAND(n44=1, q10=0)=1.
+n46= NAND(n45=1, q3=1)=0.
+n47= NAND(n46=0, n21=1)=1.
+n48= NAND(n47=1, q6=0)=1.
+n49= NAND(n48=1, n33=1)=0.
+n50= NAND(n49=0, n15=1)=1.
+n51= NAND(n50=1, n9=1)=0.
+n52= NAND(n51=0, n9=1)=1.
+n53= NAND(n52=1, q1=1)=0.
+n54= NAND(n53=0, n38=1)=1.
+n55= NAND(n54=1, q2=0)=1.
+n56= NAND(n55=1, n5=1)=0.
+n57= NAND(n56=0, n13=0)=1.
+n58= NAND(n57=1, n22=0)=1.
+n59= NAND(n58=1, n43=0)=1.
+n60= NAND(n59=1, q8=1)=0.
+n61= NAND(n60=0, n48=1)=1.
+n62= NAND(n61=1, n44=1)=0.
+n63= NAND(n62=0, n41=0)=1.
+n64= NAND(n63=1, n30=0)=1.
+n65= NAND(n64=1, n37=0)=1.
+n66= NAND(n65=1, n1=0)=1.
+n67= NAND(n66=1, q0=0)=1.
+n68= NAND(n67=1, n64=1)=0.
+n69= NAND(n68=0, n35=0)=1.
+n70= NAND(n69=1, n22=0)=1.
+n71= NAND(n70=1, n43=0)=1.
+n72= NAND(n71=1, n43=0)=1.
+n73= NAND(n72=1, n55=1)=0.
+n74= NAND(n73=0, n39=1)=1.
+n75= NAND(n74=1, n20=1)=0.
+n76= NAND(n75=0, n68=0)=1.
+n77= NAND(n76=1, q4=1)=0.
+n78= NAND(n77=0, n54=1)=1.
+n79= NAND(n78=1, n75=0)=1.
+n80= NAND(n79=1, q4=1)=0.
+n81= NAND(n80=0, n36=1)=1.
+n82= NAND(n81=1, n10=0)=1.
+n83= NAND(n82=1, n28=1)=0.
+n84= NAND(n83=0, n78=1)=1.
+n85= NAND(n84=1, n58=1)=0.
+n86= NAND(n85=0, n74=1)=1.
+n87= NAND(n86=1, q5=1)=0.
+n88= NAND(n87=0, n65=1)=1.
+n89= NAND(n88=1, n70=1)=0.
+n90= NAND(n89=0, q2=0)=1.
+n91= NAND(n90=1, q11=1)=0.
+n92= NAND(n91=0, n57=1)=1.
+n93= NAND(n92=1, n8=0)=1.
+n94= NAND(n93=1, n60=0)=1.
+n95= NAND(n94=1, n64=1)=0.
+n96= NAND(n95=0, n4=0)=1.
+n97= NAND(n96=1, in1=0)=1.
+n98= NAND(n97=1, n57=1)=0.
+n99= NAND(n98=0, n8=0)=1.
+n100=NAND(n99=1, n10=0)=1.
+n101=NAND(n100=1,n35=0)=1.
+n102=NAND(n101=1,n62=0)=1.
+n103=NAND(n102=1,n73=0)=1.
+n104=NAND(n103=1,n98=0)=1.
+n105=NAND(n104=1,n16=0)=1.
+n106=NAND(n105=1,n45=1)=0.
+n107=NAND(n106=0,n77=0)=1.
+n108=NAND(n107=1,n16=0)=1.
+n109=NAND(n108=1,n103=1)=0.
+n110=NAND(n109=0,n15=1)=1.
+n111=NAND(n110=1,n41=0)=1.
+n112=NAND(n111=1,n74=1)=0.
+n113=NAND(n112=0,n71=1)=1.
+n114=NAND(n113=1,n40=1)=0.
+n115=NAND(n114=0,n113=1)=1.
+n116=NAND(n115=1,n34=1)=0.
+n117=NAND(n116=0,n25=1)=1.
+n118=NAND(n117=1,n18=0)=1.
+n119=NAND(n118=1,n59=1)=0.
+n120=NAND(n119=0,n100=1)=1.
+n121=NAND(n120=1,n5=1)=0.
+n122=NAND(n121=0,n29=1)=1.
+n123=NAND(n122=1,n45=1)=0.
+n124=NAND(n123=0,n77=0)=1.
+n125=NAND(n124=1,n15=1)=0.
+n126=NAND(n125=0,n95=0)=1.
+n127=NAND(n126=1,n10=0)=1.
+n128=NAND(n127=1,n18=0)=1.
+n129=NAND(n128=1,n35=0)=1.
+n130=NAND(n129=1,n72=1)=0.
+n131=NAND(n130=0,n2=1)=1.
+n132=NAND(n131=1,n35=0)=1.
+n133=NAND(n132=1,n104=1)=0.
+n134=NAND(n133=0,n13=0)=1.
+n135=NAND(n134=1,q3=1)=0.
+n136=NAND(n135=0,n97=1)=1.
+n137=NAND(n136=1,n26=1)=0.
+n138=NAND(n137=0,n7=1)=1.
+n139=NAND(n138=1,n38=1)=0.
+n140=NAND(n139=0,q4=1)=1.
+n141=NAND(n140=1,n11=1)=0.
+n142=NAND(n141=0,n78=1)=1.
+n143=NAND(n142=1,n51=0)=1.
+n144=NAND(n143=1,n49=0)=1.
+n145=NAND(n144=1,n112=0)=1.
+n146=NAND(n145=1,n1=0)=1.
+n147=NAND(n146=1,n22=0)=1.
+n148=NAND(n147=1,n107=1)=0.
+n149=NAND(n148=0,n18=0)=1.
+n150=NAND(n149=1,n79=1)=0.
+n151=NAND(n150=0,n57=1)=1.
+n152=NAND(n151=1,n70=1)=0.
+n153=NAND(n152=0,n109=0)=1.
+n154=NAND(n153=1,q1=1)=0.
+n155=NAND(n154=0,n73=0)=1.
+n156=NAND(n155=1,n73=0)=1.
+n157=NAND(n156=1,n76=1)=0.
+n158=NAND(n157=0,n40=1)=1.
+n159=NAND(n158=1,n34=1)=0.
+n160=NAND(n159=0,n130=0)=1.
+n161=NAND(n160=1,n57=1)=0.
+n162=NAND(n161=0,n20=1)=1.
+n163=NAND(n162=1,n21=1)=0.
+n164=NAND(n163=0,q4=1)=1.
+n165=NAND(n164=1,n138=1)=0.
+n166=NAND(n165=0,n33=1)=1.
+n167=NAND(n166=1,n59=1)=0.
+n168=NAND(n167=0,n20=1)=1.
+n169=NAND(n168=1,q0=0)=1.
+n170=NAND(n169=1,n161=0)=1.
+n171=NAND(n170=1,n55=1)=0.
+n172=NAND(n171=0,n45=1)=1.
+n173=NAND(n172=1,n16=0)=1.
+n174=NAND(n173=1,n166=1)=0.
+n175=NAND(n174=0,q3=1)=1.
+n176=NAND(n175=1,q6=0)=1.
+n177=NAND(n176=1,n116=0)=1.
+n178=NAND(n177=1,n148=0)=1.
+n179=NAND(n178=1,n82=1)=0.
+n180=NAND(n179=0,n124=1)=1.
+n181=NAND(n180=1,n42=1)=0.
+n182=NAND(n181=0,n142=1)=1.
+n183=NAND(n182=1,in1=0)=1.
+n184=NAND(n183=1,n26=1)=0.
+n185=NAND(n184=0,n139=0)=1.
+n186=NAND(n185=1,n115=1)=0.
+n187=NAND(n186=0,n12=1)=1.
+n188=NAND(n187=1,n63=1)=0.
+n189=NAND(n188=0,n185=1)=1.
+n190=NAND(n189=1,n134=1)=0.
+n191=NAND(n190=0,n122=1)=1.
+n192=NAND(n191=1,n20=1)=0.
+n193=NAND(n192=0,n96=1)=1.
+n194=NAND(n193=1,n89=0)=1.
+n195=NAND(n194=1,n130=0)=1.
+n196=NAND(n195=1,n171=0)=1.
+n197=NAND(n196=1,n158=1)=0.
+n198=NAND(n197=0,n126=1)=1.
+n199=NAND(n198=1,n18=0)=1.
+
+Outputs cycle3: n199=1, q10=0, q11=1, q6=0.
+
+State update:
+q0'=n188=0
+q1'=n159=0
+q2'=n181=0
+q3'=n190=0
+q4'=n167=0
+q5'=n192=0
+q6'=n166=1
+q7'=n170=1
+q8'=n157=0
+q9'=n188=0
+q10'=n194=1
+q11'=n193=1
+
+State cycle4 start:
+q0=0,q1=0,q2=0,q3=0,q4=0,q5=0,q6=1,q7=1,q8=0,q9=0,q10=1,q11=1.
+
+Check critical: n157=NAND(n156=1,n76=1)=0. n159=NAND(n158=1,n34=1)=0. n166=NAND(n165=0,n33=1)=1. n167=NAND(n166=1,n59=1)=0. n170=NAND(n169=1,n161=0)=1. n181=NAND(n180=1,n42=1)=0. n188=0. n190=NAND(n189=1,n134=1)=0. n192=NAND(n191=1,n20=1)=0. n193=NAND(n192=0,n96=1)=1. n194=NAND(n193=1,n89=0)=1. OK.
+
+Outputs so far:
+n199: [0,1,1,1]
+q10: [1,0,1,0]
+q11: [1,1,1,1]
+q6:  [1,1,1,0]
+
+=== Cycle 4 ===
+Inputs: in0=0, in1=1, in2=1.
+State: q0=0,q1=0,q2=0,q3=0,q4=0,q5=0,q6=1,q7=1,q8=0,q9=0,q10=1,q11=1.
+
+n0=NAND(in1=1,q8=0)=1.
+n1=NAND(n0=1,in2=1)=0.
+n2=NAND(n1=0,q5=0)=1.
+n3=NAND(n2=1,q0=0)=1.
+n4=NAND(n3=1,q5=0)=1.
+n5=NAND(n4=1,n0=1)=0.
+n6=NAND(n5=0,q8=0)=1.
+n7=NAND(n6=1,n6=1)=0.
+n8=NAND(n7=0,n2=1)=1.
+n9=NAND(n8=1,n5=0)=1.
+n10=NAND(n9=1,n3=1)=0.
+n11=NAND(n10=0,in0=0)=1.
+n12=NAND(n11=1,n6=1)=0.
+n13=NAND(n12=0,in2=1)=1.
+n14=NAND(n13=1,n11=1)=0.
+n15=NAND(n14=0,q0=0)=1.
+n16=NAND(n15=1,n12=0)=1.
+n17=NAND(n16=1,n8=1)=0.
+n18=NAND(n17=0,n3=1)=1.
+n19=NAND(n18=1,q1=0)=1.
+n20=NAND(n19=1,n4=1)=0.
+n21=NAND(n20=0,q0=0)=1.
+n22=NAND(n21=1,n3=1)=0.
+n23=NAND(n22=0,q9=0)=1.
+n24=NAND(n23=1,n12=0)=1.
+n25=NAND(n24=1,n20=0)=1.
+n26=NAND(n25=1,n22=0)=1.
+n27=NAND(n26=1,n23=1)=0.
+n28=NAND(n27=0,n16=1)=1.
+n29=NAND(n28=1,n18=1)=0.
+n30=NAND(n29=0,q3=0)=1.
+n31=NAND(n30=1,q9=0)=1.
+n32=NAND(n31=1,n19=1)=0.
+n33=NAND(n32=0,q7=1)=1.
+n34=NAND(n33=1,n1=0)=1.
+n35=NAND(n34=1,n0=1)=0.
+n36=NAND(n35=0,n8=1)=1.
+n37=NAND(n36=1,in2=1)=0.
+n38=NAND(n37=0,q8=0)=1.
+n39=NAND(n38=1,n18=1)=0.
+n40=NAND(n39=0,n16=1)=1.
+n41=NAND(n40=1,n11=1)=0.
+n42=NAND(n41=0,n25=1)=1.
+n43=NAND(n42=1,n28=1)=0.
+n44=NAND(n43=0,q9=0)=1.
+n45=NAND(n44=1,q10=1)=0.
+n46=NAND(n45=0,q3=0)=1.
+n47=NAND(n46=1,n21=1)=0.
+n48=NAND(n47=0,q6=1)=1.
+n49=NAND(n48=1,n33=1)=0.
+n50=NAND(n49=0,n15=1)=1.
+n51=NAND(n50=1,n9=1)=0.
+n52=NAND(n51=0,n9=1)=1.
+n53=NAND(n52=1,q1=0)=1.
+n54=NAND(n53=1,n38=1)=0.
+n55=NAND(n54=0,q2=0)=1.
+n56=NAND(n55=1,n5=0)=1.
+n57=NAND(n56=1,n13=1)=0.
+n58=NAND(n57=0,n22=0)=1.
+n59=NAND(n58=1,n43=0)=1.
+n60=NAND(n59=1,q8=0)=1.
+n61=NAND(n60=1,n48=1)=0.
+n62=NAND(n61=0,n44=1)=1.
+n63=NAND(n62=1,n41=0)=1.
+n64=NAND(n63=1,n30=1)=0.
+n65=NAND(n64=0,n37=0)=1.
+n66=NAND(n65=1,n1=0)=1.
+n67=NAND(n66=1,q0=0)=1.
+n68=NAND(n67=1,n64=0)=1.
+n69=NAND(n68=1,n35=0)=1.
+n70=NAND(n69=1,n22=0)=1.
+n71=NAND(n70=1,n43=0)=1.
+n72=NAND(n71=1,n43=0)=1.
+n73=NAND(n72=1,n55=1)=0.
+n74=NAND(n73=0,n39=0)=1.
+n75=NAND(n74=1,n20=0)=1.
+n76=NAND(n75=1,n68=1)=0.
+n77=NAND(n76=0,q4=0)=1.
+n78=NAND(n77=1,n54=0)=1.
+n79=NAND(n78=1,n75=1)=0.
+n80=NAND(n79=0,q4=0)=1.
+n81=NAND(n80=1,n36=1)=0.
+n82=NAND(n81=0,n10=0)=1.
+n83=NAND(n82=1,n28=1)=0.
+n84=NAND(n83=0,n78=1)=1.
+n85=NAND(n84=1,n58=1)=0.
+n86=NAND(n85=0,n74=1)=1.
+n87=NAND(n86=1,q5=0)=1.
+n88=NAND(n87=1,n65=1)=0.
+n89=NAND(n88=0,n70=1)=1.
+n90=NAND(n89=1,q2=0)=1.
+n91=NAND(n90=1,q11=1)=0.
+n92=NAND(n91=0,n57=0)=1.
+n93=NAND(n92=1,n8=1)=0.
+n94=NAND(n93=0,n60=1)=1.
+n95=NAND(n94=1,n64=0)=1.
+n96=NAND(n95=1,n4=1)=0.
+n97=NAND(n96=0,in1=1)=1.
+n98=NAND(n97=1,n57=0)=1.
+n99=NAND(n98=1,n8=1)=0.
+n100=NAND(n99=0,n10=0)=1.
+n101=NAND(n100=1,n35=0)=1.
+n102=NAND(n101=1,n62=1)=0.
+n103=NAND(n102=0,n73=0)=1.
+n104=NAND(n103=1,n98=1)=0.
+n105=NAND(n104=0,n16=1)=1.
+n106=NAND(n105=1,n45=0)=1.
+n107=NAND(n106=1,n77=1)=0.
+n108=NAND(n107=0,n16=1)=1.
+n109=NAND(n108=1,n103=1)=0.
+n110=NAND(n109=0,n15=1)=1.
+n111=NAND(n110=1,n41=0)=1.
+n112=NAND(n111=1,n74=1)=0.
+n113=NAND(n112=0,n71=1)=1.
+n114=NAND(n113=1,n40=1)=0.
+n115=NAND(n114=0,n113=1)=1.
+n116=NAND(n115=1,n34=1)=0.
+n117=NAND(n116=0,n25=1)=1.
+n118=NAND(n117=1,n18=1)=0.
+n119=NAND(n118=0,n59=1)=1.
+n120=NAND(n119=1,n100=1)=0.
+n121=NAND(n120=0,n5=0)=1.
+n122=NAND(n121=1,n29=0)=1.
+n123=NAND(n122=1,n45=0)=1.
+n124=NAND(n123=1,n77=1)=0.
+n125=NAND(n124=0,n15=1)=1.
+n126=NAND(n125=1,n95=1)=0.
+n127=NAND(n126=0,n10=0)=1.
+n128=NAND(n127=1,n18=1)=0.
+n129=NAND(n128=0,n35=0)=1.
+n130=NAND(n129=1,n72=1)=0.
+n131=NAND(n130=0,n2=1)=1.
+n132=NAND(n131=1,n35=0)=1.
+n133=NAND(n132=1,n104=0)=1.
+n134=NAND(n133=1,n13=1)=0.
+n135=NAND(n134=0,q3=0)=1.
+n136=NAND(n135=1,n97=1)=0.
+n137=NAND(n136=0,n26=1)=1.
+n138=NAND(n137=1,n7=0)=1.
+n139=NAND(n138=1,n38=1)=0.
+n140=NAND(n139=0,q4=0)=1.
+n141=NAND(n140=1,n11=1)=0.
+n142=NAND(n141=0,n78=1)=1.
+n143=NAND(n142=1,n51=0)=1.
+n144=NAND(n143=1,n49=0)=1.
+n145=NAND(n144=1,n112=0)=1.
+n146=NAND(n145=1,n1=0)=1.
+n147=NAND(n146=1,n22=0)=1.
+n148=NAND(n147=1,n107=0)=1.
+n149=NAND(n148=1,n18=1)=0.
+n150=NAND(n149=0,n79=0)=1.
+n151=NAND(n150=1,n57=0)=1.
+n152=NAND(n151=1,n70=1)=0.
+n153=NAND(n152=0,n109=0)=1.
+n154=NAND(n153=1,q1=0)=1.
+n155=NAND(n154=1,n73=0)=1.
+n156=NAND(n155=1,n73=0)=1.
+n157=NAND(n156=1,n76=0)=1.
+n158=NAND(n157=1,n40=1)=0.
+n159=NAND(n158=0,n34=1)=1.
+n160=NAND(n159=1,n130=0)=1.
+n161=NAND(n160=1,n57=0)=1.
+n162=NAND(n161=1,n20=0)=1.
+n163=NAND(n162=1,n21=1)=0.
+n164=NAND(n163=0,q4=0)=1.
+n165=NAND(n164=1,n138=1)=0.
+n166=NAND(n165=0,n33=1)=1.
+n167=NAND(n166=1,n59=1)=0.
+n168=NAND(n167=0,n20=0)=1.
+n169=NAND(n168=1,q0=0)=1.
+n170=NAND(n169=1,n161=1)=0.
+n171=NAND(n170=0,n55=1)=1.
+n172=NAND(n171=1,n45=0)=1.
+n173=NAND(n172=1,n16=1)=0.
+n174=NAND(n173=0,n166=1)=1.
+n175=NAND(n174=1,q3=0)=1.
+n176=NAND(n175=1,q6=1)=0.
+n177=NAND(n176=0,n116=0)=1.
+n178=NAND(n177=1,n148=1)=0.
+n179=NAND(n178=0,n82=1)=1.
+n180=NAND(n179=1,n124=0)=1.
+n181=NAND(n180=1,n42=1)=0.
+n182=NAND(n181=0,n142=1)=1.
+n183=NAND(n182=1,in1=1)=0.
+n184=NAND(n183=0,n26=1)=1.
+n185=NAND(n184=1,n139=0)=1.
+n186=NAND(n185=1,n115=1)=0.
+n187=NAND(n186=0,n12=0)=1.
+n188=NAND(n187=1,n63=1)=0.
+n189=NAND(n188=0,n185=1)=1.
+n190=NAND(n189=1,n134=0)=1.
+n191=NAND(n190=1,n122=1)=0.
+n192=NAND(n191=0,n20=0)=1.
+n193=NAND(n192=1,n96=0)=1.
+n194=NAND(n193=1,n89=1)=0.
+n195=NAND(n194=0,n130=0)=1.
+n196=NAND(n195=1,n171=1)=0.
+n197=NAND(n196=0,n158=0)=1.
+n198=NAND(n197=1,n126=0)=1.
+n199=NAND(n198=1,n18=1)=0.
+
+Outputs cycle4: n199=0, q10=1, q11=1, q6=1.
+
+State update:
+q0'=n188=0
+q1'=n159=1
+q2'=n181=0
+q3'=n190=1
+q4'=n167=0
+q5'=n192=1
+q6'=n166=1
+q7'=n170=0
+q8'=n157=1
+q9'=n188=0
+q10'=n194=0
+q11'=n193=1
+
+State cycle5 start:
+q0=0,q1=1,q2=0,q3=1,q4=0,q5=1,q6=1,q7=0,q8=1,q9=0,q10=0,q11=1.
+
+Wait, this is identical to the state at start of cycle 1! Let me check: cycle1 start was q0=0,q1=1,q2=0,q3=1,q4=0,q5=1,q6=1,q7=0,q8=1,q9=0,q10=0,q11=1. Yes! Exactly the same. And inputs cycle5: in0=0,in1=1,in2=1. Cycle1 inputs were in0=1,in1=1,in2=1. Different in0 (cycle5 in0=0 vs cycle1 in0=1). So not a full repeat. But state same as cycle1.
+
+Hold on, that's a useful check: state at start of cycle5 equals state at start of cycle1. Good consistency? Not necessarily required but it's a coincidence. Let me double check cycle4 update produced q1=1. n159=NAND(n158=0,n34=1)=1 yes. q3=n190=1 yes. q5=n192=1 yes. q8=n157=1 yes. q10=n194=0. Good. So state cycle5 = state cycle1. Note cycle0 -> cycle1 we had state1; cycle4 -> cycle5 gives same as state1. Interesting but fine.
+
+Outputs so far:
+n199: [0,1,1,1,0]
+q10: [1,0,1,0,1]
+q11: [1,1,1,1,1]
+q6:  [1,1,1,0,1]
+
+=== Cycle 5 ===
+Inputs: in0=0, in1=1, in2=1.
+State: q0=0,q1=1,q2=0,q3=1,q4=0,q5=1,q6=1,q7=0,q8=1,q9=0,q10=0,q11=1.
+
+This state = cycle1 state. But cycle1 inputs were in0=1; cycle5 in0=0. in0 only affects n11 (and downstream). Let me compute.
+
+n0=NAND(in1=1,q8=1)=0.
+n1=NAND(n0=0,in2=1)=1.
+n2=NAND(n1=1,q5=1)=0.
+n3=NAND(n2=0,q0=0)=1.
+n4=NAND(n3=1,q5=1)=0.
+n5=NAND(n4=0,n0=0)=1.
+n6=NAND(n5=1,q8=1)=0.
+n7=NAND(n6=0,n6=0)=1.
+n8=NAND(n7=1,n2=0)=1.
+n9=NAND(n8=1,n5=1)=0.
+n10=NAND(n9=0,n3=1)=1.
+n11=NAND(n10=1,in0=0)=1.
+n12=NAND(n11=1,n6=0)=1.
+n13=NAND(n12=1,in2=1)=0.
+n14=NAND(n13=0,n11=1)=1.
+n15=NAND(n14=1,q0=0)=1.
+n16=NAND(n15=1,n12=1)=0.
+n17=NAND(n16=0,n8=1)=1.
+n18=NAND(n17=1,n3=1)=0.
+n19=NAND(n18=0,q1=1)=1.
+n20=NAND(n19=1,n4=0)=1.
+n21=NAND(n20=1,q0=0)=1.
+n22=NAND(n21=1,n3=1)=0.
+n23=NAND(n22=0,q9=0)=1.
+n24=NAND(n23=1,n12=1)=0.
+n25=NAND(n24=0,n20=1)=1.
+n26=NAND(n25=1,n22=0)=1.
+n27=NAND(n26=1,n23=1)=0.
+n28=NAND(n27=0,n16=0)=1.
+n29=NAND(n28=1,n18=0)=1.
+n30=NAND(n29=1,q3=1)=0.
+n31=NAND(n30=0,q9=0)=1.
+n32=NAND(n31=1,n19=1)=0.
+n33=NAND(n32=0,q7=0)=1.
+n34=NAND(n33=1,n1=1)=0.
+n35=NAND(n34=0,n0=0)=1.
+n36=NAND(n35=1,n8=1)=0.
+n37=NAND(n36=0,in2=1)=1.
+n38=NAND(n37=1,q8=1)=0.
+n39=NAND(n38=0,n18=0)=1.
+n40=NAND(n39=1,n16=0)=1.
+n41=NAND(n40=1,n11=1)=0.
+n42=NAND(n41=0,n25=1)=1.
+n43=NAND(n42=1,n28=1)=0.
+n44=NAND(n43=0,q9=0)=1.
+n45=NAND(n44=1,q10=0)=1.
+n46=NAND(n45=1,q3=1)=0.
+n47=NAND(n46=0,n21=1)=1.
+n48=NAND(n47=1,q6=1)=0.
+n49=NAND(n48=0,n33=1)=1.
+n50=NAND(n49=1,n15=1)=0.
+n51=NAND(n50=0,n9=0)=1.
+n52=NAND(n51=1,n9=0)=1.
+n53=NAND(n52=1,q1=1)=0.
+n54=NAND(n53=0,n38=0)=1.
+n55=NAND(n54=1,q2=0)=1.
+n56=NAND(n55=1,n5=1)=0.
+n57=NAND(n56=0,n13=0)=1.
+n58=NAND(n57=1,n22=0)=1.
+n59=NAND(n58=1,n43=0)=1.
+n60=NAND(n59=1,q8=1)=0.
+n61=NAND(n60=0,n48=0)=1.
+n62=NAND(n61=1,n44=1)=0.
+n63=NAND(n62=0,n41=0)=1.
+n64=NAND(n63=1,n30=0)=1.
+n65=NAND(n64=1,n37=1)=0.
+n66=NAND(n65=0,n1=1)=1.
+n67=NAND(n66=1,q0=0)=1.
+n68=NAND(n67=1,n64=1)=0.
+n69=NAND(n68=0,n35=1)=1.
+n70=NAND(n69=1,n22=0)=1.
+n71=NAND(n70=1,n43=0)=1.
+n72=NAND(n71=1,n43=0)=1.
+n73=NAND(n72=1,n55=1)=0.
+n74=NAND(n73=0,n39=1)=1.
+n75=NAND(n74=1,n20=1)=0.
+n76=NAND(n75=0,n68=0)=1.
+n77=NAND(n76=1,q4=0)=1.
+n78=NAND(n77=1,n54=1)=0.
+n79=NAND(n78=0,n75=0)=1.
+n80=NAND(n79=1,q4=0)=1.
+n81=NAND(n80=1,n36=0)=1.
+n82=NAND(n81=1,n10=1)=0.
+n83=NAND(n82=0,n28=1)=1.
+n84=NAND(n83=1,n78=0)=1.
+n85=NAND(n84=1,n58=1)=0.
+n86=NAND(n85=0,n74=1)=1.
+n87=NAND(n86=1,q5=1)=0.
+n88=NAND(n87=0,n65=0)=1.
+n89=NAND(n88=1,n70=1)=0.
+n90=NAND(n89=0,q2=0)=1.
+n91=NAND(n90=1,q11=1)=0.
+n92=NAND(n91=0,n57=1)=1.
+n93=NAND(n92=1,n8=1)=0.
+n94=NAND(n93=0,n60=0)=1.
+n95=NAND(n94=1,n64=1)=0.
+n96=NAND(n95=0,n4=0)=1.
+n97=NAND(n96=1,in1=1)=0.
+n98=NAND(n97=0,n57=1)=1.
+n99=NAND(n98=1,n8=1)=0.
+n100=NAND(n99=0,n10=1)=1.
+n101=NAND(n100=1,n35=1)=0.
+n102=NAND(n101=0,n62=0)=1.
+n103=NAND(n102=1,n73=0)=1.
+n104=NAND(n103=1,n98=1)=0.
+n105=NAND(n104=0,n16=0)=1.
+n106=NAND(n105=1,n45=1)=0.
+n107=NAND(n106=0,n77=1)=1.
+n108=NAND(n107=1,n16=0)=1.
+n109=NAND(n108=1,n103=1)=0.
+n110=NAND(n109=0,n15=1)=1.
+n111=NAND(n110=1,n41=0)=1.
+n112=NAND(n111=1,n74=1)=0.
+n113=NAND(n112=0,n71=1)=1.
+n114=NAND(n113=1,n40=1)=0.
+n115=NAND(n114=0,n113=1)=1.
+n116=NAND(n115=1,n34=0)=1.
+n117=NAND(n116=1,n25=1)=0.
+n118=NAND(n117=0,n18=0)=1.
+n119=NAND(n118=1,n59=1)=0.
+n120=NAND(n119=0,n100=1)=1.
+n121=NAND(n120=1,n5=1)=0.
+n122=NAND(n121=0,n29=1)=1.
+n123=NAND(n122=1,n45=1)=0.
+n124=NAND(n123=0,n77=1)=1.
+n125=NAND(n124=1,n15=1)=0.
+n126=NAND(n125=0,n95=0)=1.
+n127=NAND(n126=1,n10=1)=0.
+n128=NAND(n127=0,n18=0)=1.
+n129=NAND(n128=1,n35=1)=0.
+n130=NAND(n129=0,n72=1)=1.
+n131=NAND(n130=1,n2=0)=1.
+n132=NAND(n131=1,n35=1)=0.
+n133=NAND(n132=0,n104=0)=1.
+n134=NAND(n133=1,n13=0)=1.
+n135=NAND(n134=1,q3=1)=0.
+n136=NAND(n135=0,n97=0)=1.
+n137=NAND(n136=1,n26=1)=0.
+n138=NAND(n137=0,n7=1)=1.
+n139=NAND(n138=1,n38=0)=1.
+n140=NAND(n139=1,q4=0)=1.
+n141=NAND(n140=1,n11=1)=0.
+n142=NAND(n141=0,n78=0)=1.
+n143=NAND(n142=1,n51=1)=0.
+n144=NAND(n143=0,n49=1)=1.
+n145=NAND(n144=1,n112=0)=1.
+n146=NAND(n145=1,n1=1)=0.
+n147=NAND(n146=0,n22=0)=1.
+n148=NAND(n147=1,n107=1)=0.
+n149=NAND(n148=0,n18=0)=1.
+n150=NAND(n149=1,n79=1)=0.
+n151=NAND(n150=0,n57=1)=1.
+n152=NAND(n151=1,n70=1)=0.
+n153=NAND(n152=0,n109=0)=1.
+n154=NAND(n153=1,q1=1)=0.
+n155=NAND(n154=0,n73=0)=1.
+n156=NAND(n155=1,n73=0)=1.
+n157=NAND(n156=1,n76=1)=0.
+n158=NAND(n157=0,n40=1)=1.
+n159=NAND(n158=1,n34=0)=1.
+n160=NAND(n159=1,n130=1)=0.
+n161=NAND(n160=0,n57=1)=1.
+n162=NAND(n161=1,n20=1)=0.
+n163=NAND(n162=0,n21=1)=1.
+n164=NAND(n163=1,q4=0)=1.
+n165=NAND(n164=1,n138=1)=0.
+n166=NAND(n165=0,n33=1)=1.
+n167=NAND(n166=1,n59=1)=0.
+n168=NAND(n167=0,n20=1)=1.
+n169=NAND(n168=1,q0=0)=1.
+n170=NAND(n169=1,n161=1)=0.
+n171=NAND(n170=0,n55=1)=1.
+n172=NAND(n171=1,n45=1)=0.
+n173=NAND(n172=0,n16=0)=1.
+n174=NAND(n173=1,n166=1)=0.
+n175=NAND(n174=0,q3=1)=1.
+n176=NAND(n175=1,q6=1)=0.
+n177=NAND(n176=0,n116=1)=1.
+n178=NAND(n177=1,n148=0)=1.
+n179=NAND(n178=1,n82=0)=1.
+n180=NAND(n179=1,n124=1)=0.
+n181=NAND(n180=0,n42=1)=1.
+n182=NAND(n181=1,n142=1)=0.
+n183=NAND(n182=0,in1=1)=1.
+n184=NAND(n183=1,n26=1)=0.
+n185=NAND(n184=0,n139=1)=1.
+n186=NAND(n185=1,n115=1)=0.
+n187=NAND(n186=0,n12=1)=1.
+n188=NAND(n187=1,n63=1)=0.
+n189=NAND(n188=0,n185=1)=1.
+n190=NAND(n189=1,n134=1)=0.
+n191=NAND(n190=0,n122=1)=1.
+n192=NAND(n191=1,n20=1)=0.
+n193=NAND(n192=0,n96=1)=1.
+n194=NAND(n193=1,n89=0)=1.
+n195=NAND(n194=1,n130=1)=0.
+n196=NAND(n195=0,n171=1)=1.
+n197=NAND(n196=1,n158=1)=0.
+n198=NAND(n197=0,n126=1)=1.
+n199=NAND(n198=1,n18=0)=1.
+
+Outputs cycle5: n199=1, q10=0, q11=1, q6=1.
+
+State update:
+q0'=n188=0
+q1'=n159=1
+q2'=n181=1
+q3'=n190=0
+q4'=n167=0
+q5'=n192=0
+q6'=n166=1
+q7'=n170=0
+q8'=n157=0
+q9'=n188=0
+q10'=n194=1
+q11'=n193=1
+
+State cycle6 start:
+q0=0,q1=1,q2=1,q3=0,q4=0,q5=0,q6=1,q7=0,q8=0,q9=0,q10=1,q11=1.
+
+Outputs so far:
+n199: [0,1,1,1,0,1]
+q10: [1,0,1,0,1,0]
+q11: [1,1,1,1,1,1]
+q6:  [1,1,1,0,1,1]
+
+I'm now fairly deep. Given the high risk, let me reconsider my accuracy. The computations are long. I've been consistent in applying NAND. I should continue but maybe I can reduce work by noting that after computing the needed DFF nets and n199 I still need full n's. I'll keep going.
+
+Let me double-check a couple of cycle5 criticals: n157=NAND(n156=1,n76=1)=0. n159=NAND(n158=1,n34=0)=1. n166=NAND(n165=0,n33=1)=1. n167=NAND(n166=1,n59=1)=0. n170=NAND(n169=1,n161=1)=0. n181=NAND(n180=0,n42=1)=1 (since n180=0 -> NAND(0,1)=1). OK. n188=0. n190=NAND(n189=1,n134=1)=0. n192=NAND(n191=1,n20=1)=0. n193=NAND(n192=0,n96=1)=1. n194=NAND(n193=1,n89=0)=1. Good.
+
+=== Cycle 6 ===
+Inputs: in0=0, in1=0, in2=0.
+State: q0=0,q1=1,q2=1,q3=0,q4=0,q5=0,q6=1,q7=0,q8=0,q9=0,q10=1,q11=1.
+
+n0=NAND(in1=0,q8=0)=1.
+n1=NAND(n0=1,in2=0)=1.
+n2=NAND(n1=1,q5=0)=1.
+n3=NAND(n2=1,q0=0)=1.
+n4=NAND(n3=1,q5=0)=1.
+n5=NAND(n4=1,n0=1)=0.
+n6=NAND(n5=0,q8=0)=1.
+n7=NAND(n6=1,n6=1)=0.
+n8=NAND(n7=0,n2=1)=1.
+n9=NAND(n8=1,n5=0)=1.
+n10=NAND(n9=1,n3=1)=0.
+n11=NAND(n10=0,in0=0)=1.
+n12=NAND(n11=1,n6=1)=0.
+n13=NAND(n12=0,in2=0)=1.
+n14=NAND(n13=1,n11=1)=0.
+n15=NAND(n14=0,q0=0)=1.
+n16=NAND(n15=1,n12=0)=1.
+n17=NAND(n16=1,n8=1)=0.
+n18=NAND(n17=0,n3=1)=1.
+n19=NAND(n18=1,q1=1)=0.
+n20=NAND(n19=0,n4=1)=1.
+n21=NAND(n20=1,q0=0)=1.
+n22=NAND(n21=1,n3=1)=0.
+n23=NAND(n22=0,q9=0)=1.
+n24=NAND(n23=1,n12=0)=1.
+n25=NAND(n24=1,n20=1)=0.
+n26=NAND(n25=0,n22=0)=1.
+n27=NAND(n26=1,n23=1)=0.
+n28=NAND(n27=0,n16=1)=1.
+n29=NAND(n28=1,n18=1)=0.
+n30=NAND(n29=0,q3=0)=1.
+n31=NAND(n30=1,q9=0)=1.
+n32=NAND(n31=1,n19=0)=1.
+n33=NAND(n32=1,q7=0)=1.
+n34=NAND(n33=1,n1=1)=0.
+n35=NAND(n34=0,n0=1)=1.
+n36=NAND(n35=1,n8=1)=0.
+n37=NAND(n36=0,in2=0)=1.
+n38=NAND(n37=1,q8=0)=1.
+n39=NAND(n38=1,n18=1)=0.
+n40=NAND(n39=0,n16=1)=1.
+n41=NAND(n40=1,n11=1)=0.
+n42=NAND(n41=0,n25=0)=1.
+n43=NAND(n42=1,n28=1)=0.
+n44=NAND(n43=0,q9=0)=1.
+n45=NAND(n44=1,q10=1)=0.
+n46=NAND(n45=0,q3=0)=1.
+n47=NAND(n46=1,n21=1)=0.
+n48=NAND(n47=0,q6=1)=1.
+n49=NAND(n48=1,n33=1)=0.
+n50=NAND(n49=0,n15=1)=1.
+n51=NAND(n50=1,n9=1)=0.
+n52=NAND(n51=0,n9=1)=1.
+n53=NAND(n52=1,q1=1)=0.
+n54=NAND(n53=0,n38=1)=1.
+n55=NAND(n54=1,q2=1)=0.
+n56=NAND(n55=0,n5=0)=1.
+n57=NAND(n56=1,n13=1)=0.
+n58=NAND(n57=0,n22=0)=1.
+n59=NAND(n58=1,n43=0)=1.
+n60=NAND(n59=1,q8=0)=1.
+n61=NAND(n60=1,n48=1)=0.
+n62=NAND(n61=0,n44=1)=1.
+n63=NAND(n62=1,n41=0)=1.
+n64=NAND(n63=1,n30=1)=0.
+n65=NAND(n64=0,n37=1)=1.
+n66=NAND(n65=1,n1=1)=0.
+n67=NAND(n66=0,q0=0)=1.
+n68=NAND(n67=1,n64=0)=1.
+n69=NAND(n68=1,n35=1)=0.
+n70=NAND(n69=0,n22=0)=1.
+n71=NAND(n70=1,n43=0)=1.
+n72=NAND(n71=1,n43=0)=1.
+n73=NAND(n72=1,n55=0)=1.
+n74=NAND(n73=1,n39=0)=1.
+n75=NAND(n74=1,n20=1)=0.
+n76=NAND(n75=0,n68=1)=1.
+n77=NAND(n76=1,q4=0)=1.
+n78=NAND(n77=1,n54=1)=0.
+n79=NAND(n78=0,n75=0)=1.
+n80=NAND(n79=1,q4=0)=1.
+n81=NAND(n80=1,n36=0)=1.
+n82=NAND(n81=1,n10=0)=1.
+n83=NAND(n82=1,n28=1)=0.
+n84=NAND(n83=0,n78=0)=1.
+n85=NAND(n84=1,n58=1)=0.
+n86=NAND(n85=0,n74=1)=1.
+n87=NAND(n86=1,q5=0)=1.
+n88=NAND(n87=1,n65=1)=0.
+n89=NAND(n88=0,n70=1)=1.
+n90=NAND(n89=1,q2=1)=0.
+n91=NAND(n90=0,q11=1)=1.
+n92=NAND(n91=1,n57=0)=1.
+n93=NAND(n92=1,n8=1)=0.
+n94=NAND(n93=0,n60=1)=1.
+n95=NAND(n94=1,n64=0)=1.
+n96=NAND(n95=1,n4=1)=0.
+n97=NAND(n96=0,in1=0)=1.
+n98=NAND(n97=1,n57=0)=1.
+n99=NAND(n98=1,n8=1)=0.
+n100=NAND(n99=0,n10=0)=1.
+n101=NAND(n100=1,n35=1)=0.
+n102=NAND(n101=0,n62=1)=1.
+n103=NAND(n102=1,n73=1)=0.
+n104=NAND(n103=0,n98=1)=1.
+n105=NAND(n104=1,n16=1)=0.
+n106=NAND(n105=0,n45=0)=1.
+n107=NAND(n106=1,n77=1)=0.
+n108=NAND(n107=0,n16=1)=1.
+n109=NAND(n108=1,n103=0)=1.
+n110=NAND(n109=1,n15=1)=0.
+n111=NAND(n110=0,n41=0)=1.
+n112=NAND(n111=1,n74=1)=0.
+n113=NAND(n112=0,n71=1)=1.
+n114=NAND(n113=1,n40=1)=0.
+n115=NAND(n114=0,n113=1)=1.
+n116=NAND(n115=1,n34=0)=1.
+n117=NAND(n116=1,n25=0)=1.
+n118=NAND(n117=1,n18=1)=0.
+n119=NAND(n118=0,n59=1)=1.
+n120=NAND(n119=1,n100=1)=0.
+n121=NAND(n120=0,n5=0)=1.
+n122=NAND(n121=1,n29=0)=1.
+n123=NAND(n122=1,n45=0)=1.
+n124=NAND(n123=1,n77=1)=0.
+n125=NAND(n124=0,n15=1)=1.
+n126=NAND(n125=1,n95=1)=0.
+n127=NAND(n126=0,n10=0)=1.
+n128=NAND(n127=1,n18=1)=0.
+n129=NAND(n128=0,n35=1)=1.
+n130=NAND(n129=1,n72=1)=0.
+n131=NAND(n130=0,n2=1)=1.
+n132=NAND(n131=1,n35=1)=0.
+n133=NAND(n132=0,n104=1)=1.
+n134=NAND(n133=1,n13=1)=0.
+n135=NAND(n134=0,q3=0)=1.
+n136=NAND(n135=1,n97=1)=0.
+n137=NAND(n136=0,n26=1)=1.
+n138=NAND(n137=1,n7=0)=1.
+n139=NAND(n138=1,n38=1)=0.
+n140=NAND(n139=0,q4=0)=1.
+n141=NAND(n140=1,n11=1)=0.
+n142=NAND(n141=0,n78=0)=1.
+n143=NAND(n142=1,n51=0)=1.
+n144=NAND(n143=1,n49=0)=1.
+n145=NAND(n144=1,n112=0)=1.
+n146=NAND(n145=1,n1=1)=0.
+n147=NAND(n146=0,n22=0)=1.
+n148=NAND(n147=1,n107=0)=1.
+n149=NAND(n148=1,n18=1)=0.
+n150=NAND(n149=0,n79=1)=1.
+n151=NAND(n150=1,n57=0)=1.
+n152=NAND(n151=1,n70=1)=0.
+n153=NAND(n152=0,n109=1)=1.
+n154=NAND(n153=1,q1=1)=0.
+n155=NAND(n154=0,n73=1)=1.
+n156=NAND(n155=1,n73=1)=0.
+n157=NAND(n156=0,n76=1)=1.
+n158=NAND(n157=1,n40=1)=0.
+n159=NAND(n158=0,n34=0)=1.
+n160=NAND(n159=1,n130=0)=1.
+n161=NAND(n160=1,n57=0)=1.
+n162=NAND(n161=1,n20=1)=0.
+n163=NAND(n162=0,n21=1)=1.
+n164=NAND(n163=1,q4=0)=1.
+n165=NAND(n164=1,n138=1)=0.
+n166=NAND(n165=0,n33=1)=1.
+n167=NAND(n166=1,n59=1)=0.
+n168=NAND(n167=0,n20=1)=1.
+n169=NAND(n168=1,q0=0)=1.
+n170=NAND(n169=1,n161=1)=0.
+n171=NAND(n170=0,n55=0)=1.
+n172=NAND(n171=1,n45=0)=1.
+n173=NAND(n172=1,n16=1)=0.
+n174=NAND(n173=0,n166=1)=1.
+n175=NAND(n174=1,q3=0)=1.
+n176=NAND(n175=1,q6=1)=0.
+n177=NAND(n176=0,n116=1)=1.
+n178=NAND(n177=1,n148=1)=0.
+n179=NAND(n178=0,n82=1)=1.
+n180=NAND(n179=1,n124=0)=1.
+n181=NAND(n180=1,n42=1)=0.
+n182=NAND(n181=0,n142=1)=1.
+n183=NAND(n182=1,in1=0)=1.
+n184=NAND(n183=1,n26=1)=0.
+n185=NAND(n184=0,n139=0)=1.
+n186=NAND(n185=1,n115=1)=0.
+n187=NAND(n186=0,n12=0)=1.
+n188=NAND(n187=1,n63=1)=0.
+n189=NAND(n188=0,n185=1)=1.
+n190=NAND(n189=1,n134=0)=1.
+n191=NAND(n190=1,n122=1)=0.
+n192=NAND(n191=0,n20=1)=1.
+n193=NAND(n192=1,n96=0)=1.
+n194=NAND(n193=1,n89=1)=0.
+n195=NAND(n194=0,n130=0)=1.
+n196=NAND(n195=1,n171=1)=0.
+n197=NAND(n196=0,n158=0)=1.
+n198=NAND(n197=1,n126=0)=1.
+n199=NAND(n198=1,n18=1)=0.
+
+Outputs cycle6: n199=0, q10=1, q11=1, q6=1.
+
+State update:
+q0'=n188=0
+q1'=n159=1
+q2'=n181=0
+q3'=n190=1
+q4'=n167=0
+q5'=n192=1
+q6'=n166=1
+q7'=n170=0
+q8'=n157=1
+q9'=n188=0
+q10'=n194=0
+q11'=n193=1
+
+State cycle7 start:
+q0=0,q1=1,q2=0,q3=1,q4=0,q5=1,q6=1,q7=0,q8=1,q9=0,q10=0,q11=1.
+
+Again this equals state of cycle1 and cycle5! Interesting. q vector same as cycle1. Cycle7 inputs: in0=1,in1=0,in2=1.
+
+So states repeat among a few values. Fine.
+
+Outputs so far:
+n199: [0,1,1,1,0,1,0]
+q10: [1,0,1,0,1,0,1]
+q11: [1,1,1,1,1,1,1]
+q6:  [1,1,1,0,1,1,1]
+
+Wait q6 output cycle6 = q6 state at start of cycle6 = 1. Yes. And q6' (for cycle7)=n166=1. So q6 stays 1.
+
+Hold on, I recorded q6 outputs: cycle0 q6=1 (init), cycle1 q6=1 (state after c0 edge = n166(c0)=1), cycle2 q6=1 (n166(c1)=1), cycle3 q6=0 (n166(c2)=0), cycle4 q6=1 (n166(c3)=1), cycle5 q6=1 (n166(c4)=1), cycle6 q6=1 (n166(c5)=1). Good matches [1,1,1,0,1,1,1].
+
+q10 outputs: c0=1(init), c1=n194(c0)=0, c2=n194(c1)=1, c3=n194(c2)=0, c4=n194(c3)=1, c5=n194(c4)=0, c6=n194(c5)=1. => [1,0,1,0,1,0,1]. Matches.
+
+q11 outputs: c0=1, c1=n193(c0)=1, c2=n193(c1)=1, c3=n193(c2)=1, c4=n193(c3)=1, c5=n193(c4)=1, c6=n193(c5)=1 => all 1 so far. Good.
+
+Continue cycle7.
+
+=== Cycle 7 ===
+Inputs: in0=1, in1=0, in2=1.
+State: q0=0,q1=1,q2=0,q3=1,q4=0,q5=1,q6=1,q7=0,q8=1,q9=0,q10=0,q11=1.
+(This is the same state as cycle1; inputs differ: in0=1 same as c1? c1 in0=1 yes, in1 c1=1 but here in1=0, in2 c1=1 here=1. So in1 differs.)
+
+n0=NAND(in1=0,q8=1)=1.
+n1=NAND(n0=1,in2=1)=0.
+n2=NAND(n1=0,q5=1)=1.
+n3=NAND(n2=1,q0=0)=1.
+n4=NAND(n3=1,q5=1)=0.
+n5=NAND(n4=0,n0=1)=1.
+n6=NAND(n5=1,q8=1)=0.
+n7=NAND(n6=0,n6=0)=1.
+n8=NAND(n7=1,n2=1)=0.
+n9=NAND(n8=0,n5=1)=1.
+n10=NAND(n9=1,n3=1)=0.
+n11=NAND(n10=0,in0=1)=1.
+n12=NAND(n11=1,n6=0)=1.
+n13=NAND(n12=1,in2=1)=0.
+n14=NAND(n13=0,n11=1)=1.
+n15=NAND(n14=1,q0=0)=1.
+n16=NAND(n15=1,n12=1)=0.
+n17=NAND(n16=0,n8=0)=1.
+n18=NAND(n17=1,n3=1)=0.
+n19=NAND(n18=0,q1=1)=1.
+n20=NAND(n19=1,n4=0)=1.
+n21=NAND(n20=1,q0=0)=1.
+n22=NAND(n21=1,n3=1)=0.
+n23=NAND(n22=0,q9=0)=1.
+n24=NAND(n23=1,n12=1)=0.
+n25=NAND(n24=0,n20=1)=1.
+n26=NAND(n25=1,n22=0)=1.
+n27=NAND(n26=1,n23=1)=0.
+n28=NAND(n27=0,n16=0)=1.
+n29=NAND(n28=1,n18=0)=1.
+n30=NAND(n29=1,q3=1)=0.
+n31=NAND(n30=0,q9=0)=1.
+n32=NAND(n31=1,n19=1)=0.
+n33=NAND(n32=0,q7=0)=1.
+n34=NAND(n33=1,n1=0)=1.
+n35=NAND(n34=1,n0=1)=0.
+n36=NAND(n35=0,n8=0)=1.
+n37=NAND(n36=1,in2=1)=0.
+n38=NAND(n37=0,q8=1)=1.
+n39=NAND(n38=1,n18=0)=1.
+n40=NAND(n39=1,n16=0)=1.
+n41=NAND(n40=1,n11=1)=0.
+n42=NAND(n41=0,n25=1)=1.
+n43=NAND(n42=1,n28=1)=0.
+n44=NAND(n43=0,q9=0)=1.
+n45=NAND(n44=1,q10=0)=1.
+n46=NAND(n45=1,q3=1)=0.
+n47=NAND(n46=0,n21=1)=1.
+n48=NAND(n47=1,q6=1)=0.
+n49=NAND(n48=0,n33=1)=1.
+n50=NAND(n49=1,n15=1)=0.
+n51=NAND(n50=0,n9=1)=1.
+n52=NAND(n51=1,n9=1)=0.
+n53=NAND(n52=0,q1=1)=1.
+n54=NAND(n53=1,n38=1)=0.
+n55=NAND(n54=0,q2=0)=1.
+n56=NAND(n55=1,n5=1)=0.
+n57=NAND(n56=0,n13=0)=1.
+n58=NAND(n57=1,n22=0)=1.
+n59=NAND(n58=1,n43=0)=1.
+n60=NAND(n59=1,q8=1)=0.
+n61=NAND(n60=0,n48=0)=1.
+n62=NAND(n61=1,n44=1)=0.
+n63=NAND(n62=0,n41=0)=1.
+n64=NAND(n63=1,n30=0)=1.
+n65=NAND(n64=1,n37=0)=1.
+n66=NAND(n65=1,n1=0)=1.
+n67=NAND(n66=1,q0=0)=1.
+n68=NAND(n67=1,n64=1)=0.
+n69=NAND(n68=0,n35=0)=1.
+n70=NAND(n69=1,n22=0)=1.
+n71=NAND(n70=1,n43=0)=1.
+n72=NAND(n71=1,n43=0)=1.
+n73=NAND(n72=1,n55=1)=0.
+n74=NAND(n73=0,n39=1)=1.
+n75=NAND(n74=1,n20=1)=0.
+n76=NAND(n75=0,n68=0)=1.
+n77=NAND(n76=1,q4=0)=1.
+n78=NAND(n77=1,n54=0)=1.
+n79=NAND(n78=1,n75=0)=1.
+n80=NAND(n79=1,q4=0)=1.
+n81=NAND(n80=1,n36=1)=0.
+n82=NAND(n81=0,n10=0)=1.
+n83=NAND(n82=1,n28=1)=0.
+n84=NAND(n83=0,n78=1)=1.
+n85=NAND(n84=1,n58=1)=0.
+n86=NAND(n85=0,n74=1)=1.
+n87=NAND(n86=1,q5=1)=0.
+n88=NAND(n87=0,n65=1)=1.
+n89=NAND(n88=1,n70=1)=0.
+n90=NAND(n89=0,q2=0)=1.
+n91=NAND(n90=1,q11=1)=0.
+n92=NAND(n91=0,n57=1)=1.
+n93=NAND(n92=1,n8=0)=1.
+n94=NAND(n93=1,n60=0)=1.
+n95=NAND(n94=1,n64=1)=0.
+n96=NAND(n95=0,n4=0)=1.
+n97=NAND(n96=1,in1=0)=1.
+n98=NAND(n97=1,n57=1)=0.
+n99=NAND(n98=0,n8=0)=1.
+n100=NAND(n99=1,n10=0)=1.
+n101=NAND(n100=1,n35=0)=1.
+n102=NAND(n101=1,n62=0)=1.
+n103=NAND(n102=1,n73=0)=1.
+n104=NAND(n103=1,n98=0)=1.
+n105=NAND(n104=1,n16=0)=1.
+n106=NAND(n105=1,n45=1)=0.
+n107=NAND(n106=0,n77=1)=1.
+n108=NAND(n107=1,n16=0)=1.
+n109=NAND(n108=1,n103=1)=0.
+n110=NAND(n109=0,n15=1)=1.
+n111=NAND(n110=1,n41=0)=1.
+n112=NAND(n111=1,n74=1)=0.
+n113=NAND(n112=0,n71=1)=1.
+n114=NAND(n113=1,n40=1)=0.
+n115=NAND(n114=0,n113=1)=1.
+n116=NAND(n115=1,n34=1)=0.
+n117=NAND(n116=0,n25=1)=1.
+n118=NAND(n117=1,n18=0)=1.
+n119=NAND(n118=1,n59=1)=0.
+n120=NAND(n119=0,n100=1)=1.
+n121=NAND(n120=1,n5=1)=0.
+n122=NAND(n121=0,n29=1)=1.
+n123=NAND(n122=1,n45=1)=0.
+n124=NAND(n123=0,n77=1)=1.
+n125=NAND(n124=1,n15=1)=0.
+n126=NAND(n125=0,n95=0)=1.
+n127=NAND(n126=1,n10=0)=1.
+n128=NAND(n127=1,n18=0)=1.
+n129=NAND(n128=1,n35=0)=1.
+n130=NAND(n129=1,n72=1)=0.
+n131=NAND(n130=0,n2=1)=1.
+n132=NAND(n131=1,n35=0)=1.
+n133=NAND(n132=1,n104=1)=0.
+n134=NAND(n133=0,n13=0)=1.
+n135=NAND(n134=1,q3=1)=0.
+n136=NAND(n135=0,n97=1)=1.
+n137=NAND(n136=1,n26=1)=0.
+n138=NAND(n137=0,n7=1)=1.
+n139=NAND(n138=1,n38=1)=0.
+n140=NAND(n139=0,q4=0)=1.
+n141=NAND(n140=1,n11=1)=0.
+n142=NAND(n141=0,n78=1)=1.
+n143=NAND(n142=1,n51=1)=0.
+n144=NAND(n143=0,n49=1)=1.
+n145=NAND(n144=1,n112=0)=1.
+n146=NAND(n145=1,n1=0)=1.
+n147=NAND(n146=1,n22=0)=1.
+n148=NAND(n147=1,n107=1)=0.
+n149=NAND(n148=0,n18=0)=1.
+n150=NAND(n149=1,n79=1)=0.
+n151=NAND(n150=0,n57=1)=1.
+n152=NAND(n151=1,n70=1)=0.
+n153=NAND(n152=0,n109=0)=1.
+n154=NAND(n153=1,q1=1)=0.
+n155=NAND(n154=0,n73=0)=1.
+n156=NAND(n155=1,n73=0)=1.
+n157=NAND(n156=1,n76=1)=0.
+n158=NAND(n157=0,n40=1)=1.
+n159=NAND(n158=1,n34=1)=0.
+n160=NAND(n159=0,n130=0)=1.
+n161=NAND(n160=1,n57=1)=0.
+n162=NAND(n161=0,n20=1)=1.
+n163=NAND(n162=1,n21=1)=0.
+n164=NAND(n163=0,q4=0)=1.
+n165=NAND(n164=1,n138=1)=0.
+n166=NAND(n165=0,n33=1)=1.
+n167=NAND(n166=1,n59=1)=0.
+n168=NAND(n167=0,n20=1)=1.
+n169=NAND(n168=1,q0=0)=1.
+n170=NAND(n169=1,n161=0)=1.
+n171=NAND(n170=1,n55=1)=0.
+n172=NAND(n171=0,n45=1)=1.
+n173=NAND(n172=1,n16=0)=1.
+n174=NAND(n173=1,n166=1)=0.
+n175=NAND(n174=0,q3=1)=1.
+n176=NAND(n175=1,q6=1)=0.
+n177=NAND(n176=0,n116=0)=1.
+n178=NAND(n177=1,n148=0)=1.
+n179=NAND(n178=1,n82=1)=0.
+n180=NAND(n179=0,n124=1)=1.
+n181=NAND(n180=1,n42=1)=0.
+n182=NAND(n181=0,n142=1)=1.
+n183=NAND(n182=1,in1=0)=1.
+n184=NAND(n183=1,n26=1)=0.
+n185=NAND(n184=0,n139=0)=1.
+n186=NAND(n185=1,n115=1)=0.
+n187=NAND(n186=0,n12=1)=1.
+n188=NAND(n187=1,n63=1)=0.
+n189=NAND(n188=0,n185=1)=1.
+n190=NAND(n189=1,n134=1)=0.
+n191=NAND(n190=0,n122=1)=1.
+n192=NAND(n191=1,n20=1)=0.
+n193=NAND(n192=0,n96=1)=1.
+n194=NAND(n193=1,n89=0)=1.
+n195=NAND(n194=1,n130=0)=1.
+n196=NAND(n195=1,n171=0)=1.
+n197=NAND(n196=1,n158=1)=0.
+n198=NAND(n197=0,n126=1)=1.
+n199=NAND(n198=1,n18=0)=1.
+
+Outputs cycle7: n199=1, q10=0, q11=1, q6=1.
+
+State update:
+q0'=n188=0
+q1'=n159=0
+q2'=n181=0
+q3'=n190=0
+q4'=n167=0
+q5'=n192=0
+q6'=n166=1
+q7'=n170=1
+q8'=n157=0
+q9'=n188=0
+q10'=n194=1
+q11'=n193=1
+
+State cycle8 start:
+q0=0,q1=0,q2=0,q3=0,q4=0,q5=0,q6=1,q7=1,q8=0,q9=0,q10=1,q11=1.
+
+This equals state at start of cycle4! Yes (cycle4 start: q0=0,q1=0,q2=0,q3=0,q4=0,q5=0,q6=1,q7=1,q8=0,q9=0,q10=1,q11=1). Same. Cycle8 inputs: in0=1,in1=1,in2=0. Cycle4 inputs were in0=0,in1=1,in2=1. Different.
+
+Outputs so far:
+n199: [0,1,1,1,0,1,0,1]
+q10: [1,0,1,0,1,0,1,0]
+q11: [1,1,1,1,1,1,1,1]
+q6:  [1,1,1,0,1,1,1,1]
+
+=== Cycle 8 ===
+Inputs: in0=1, in1=1, in2=0.
+State: q0=0,q1=0,q2=0,q3=0,q4=0,q5=0,q6=1,q7=1,q8=0,q9=0,q10=1,q11=1.
+
+n0=NAND(in1=1,q8=0)=1.
+n1=NAND(n0=1,in2=0)=1.
+n2=NAND(n1=1,q5=0)=1.
+n3=NAND(n2=1,q0=0)=1.
+n4=NAND(n3=1,q5=0)=1.
+n5=NAND(n4=1,n0=1)=0.
+n6=NAND(n5=0,q8=0)=1.
+n7=NAND(n6=1,n6=1)=0.
+n8=NAND(n7=0,n2=1)=1.
+n9=NAND(n8=1,n5=0)=1.
+n10=NAND(n9=1,n3=1)=0.
+n11=NAND(n10=0,in0=1)=1.
+n12=NAND(n11=1,n6=1)=0.
+n13=NAND(n12=0,in2=0)=1.
+n14=NAND(n13=1,n11=1)=0.
+n15=NAND(n14=0,q0=0)=1.
+n16=NAND(n15=1,n12=0)=1.
+n17=NAND(n16=1,n8=1)=0.
+n18=NAND(n17=0,n3=1)=1.
+n19=NAND(n18=1,q1=0)=1.
+n20=NAND(n19=1,n4=1)=0.
+n21=NAND(n20=0,q0=0)=1.
+n22=NAND(n21=1,n3=1)=0.
+n23=NAND(n22=0,q9=0)=1.
+n24=NAND(n23=1,n12=0)=1.
+n25=NAND(n24=1,n20=0)=1.
+n26=NAND(n25=1,n22=0)=1.
+n27=NAND(n26=1,n23=1)=0.
+n28=NAND(n27=0,n16=1)=1.
+n29=NAND(n28=1,n18=1)=0.
+n30=NAND(n29=0,q3=0)=1.
+n31=NAND(n30=1,q9=0)=1.
+n32=NAND(n31=1,n19=1)=0.
+n33=NAND(n32=0,q7=1)=1.
+n34=NAND(n33=1,n1=1)=0.
+n35=NAND(n34=0,n0=1)=1.
+n36=NAND(n35=1,n8=1)=0.
+n37=NAND(n36=0,in2=0)=1.
+n38=NAND(n37=1,q8=0)=1.
+n39=NAND(n38=1,n18=1)=0.
+n40=NAND(n39=0,n16=1)=1.
+n41=NAND(n40=1,n11=1)=0.
+n42=NAND(n41=0,n25=1)=1.
+n43=NAND(n42=1,n28=1)=0.
+n44=NAND(n43=0,q9=0)=1.
+n45=NAND(n44=1,q10=1)=0.
+n46=NAND(n45=0,q3=0)=1.
+n47=NAND(n46=1,n21=1)=0.
+n48=NAND(n47=0,q6=1)=1.
+n49=NAND(n48=1,n33=1)=0.
+n50=NAND(n49=0,n15=1)=1.
+n51=NAND(n50=1,n9=1)=0.
+n52=NAND(n51=0,n9=1)=1.
+n53=NAND(n52=1,q1=0)=1.
+n54=NAND(n53=1,n38=1)=0.
+n55=NAND(n54=0,q2=0)=1.
+n56=NAND(n55=1,n5=0)=1.
+n57=NAND(n56=1,n13=1)=0.
+n58=NAND(n57=0,n22=0)=1.
+n59=NAND(n58=1,n43=0)=1.
+n60=NAND(n59=1,q8=0)=1.
+n61=NAND(n60=1,n48=1)=0.
+n62=NAND(n61=0,n44=1)=1.
+n63=NAND(n62=1,n41=0)=1.
+n64=NAND(n63=1,n30=1)=0.
+n65=NAND(n64=0,n37=1)=1.
+n66=NAND(n65=1,n1=1)=0.
+n67=NAND(n66=0,q0=0)=1.
+n68=NAND(n67=1,n64=0)=1.
+n69=NAND(n68=1,n35=1)=0.
+n70=NAND(n69=0,n22=0)=1.
+n71=NAND(n70=1,n43=0)=1.
+n72=NAND(n71=1,n43=0)=1.
+n73=NAND(n72=1,n55=1)=0.
+n74=NAND(n73=0,n39=0)=1.
+n75=NAND(n74=1,n20=0)=1.
+n76=NAND(n75=1,n68=1)=0.
+n77=NAND(n76=0,q4=0)=1.
+n78=NAND(n77=1,n54=0)=1.
+n79=NAND(n78=1,n75=1)=0.
+n80=NAND(n79=0,q4=0)=1.
+n81=NAND(n80=1,n36=0)=1.
+n82=NAND(n81=1,n10=0)=1.
+n83=NAND(n82=1,n28=1)=0.
+n84=NAND(n83=0,n78=1)=1.
+n85=NAND(n84=1,n58=1)=0.
+n86=NAND(n85=0,n74=1)=1.
+n87=NAND(n86=1,q5=0)=1.
+n88=NAND(n87=1,n65=1)=0.
+n89=NAND(n88=0,n70=1)=1.
+n90=NAND(n89=1,q2=0)=1.
+n91=NAND(n90=1,q11=1)=0.
+n92=NAND(n91=0,n57=0)=1.
+n93=NAND(n92=1,n8=1)=0.
+n94=NAND(n93=0,n60=1)=1.
+n95=NAND(n94=1,n64=0)=1.
+n96=NAND(n95=1,n4=1)=0.
+n97=NAND(n96=0,in1=1)=1.
+n98=NAND(n97=1,n57=0)=1.
+n99=NAND(n98=1,n8=1)=0.
+n100=NAND(n99=0,n10=0)=1.
+n101=NAND(n100=1,n35=1)=0.
+n102=NAND(n101=0,n62=1)=1.
+n103=NAND(n102=1,n73=0)=1.
+n104=NAND(n103=1,n98=1)=0.
+n105=NAND(n104=0,n16=1)=1.
+n106=NAND(n105=1,n45=0)=1.
+n107=NAND(n106=1,n77=1)=0.
+n108=NAND(n107=0,n16=1)=1.
+n109=NAND(n108=1,n103=1)=0.
+n110=NAND(n109=0,n15=1)=1.
+n111=NAND(n110=1,n41=0)=1.
+n112=NAND(n111=1,n74=1)=0.
+n113=NAND(n112=0,n71=1)=1.
+n114=NAND(n113=1,n40=1)=0.
+n115=NAND(n114=0,n113=1)=1.
+n116=NAND(n115=1,n34=0)=1.
+n117=NAND(n116=1,n25=1)=0.
+n118=NAND(n117=0,n18=1)=1.
+n119=NAND(n118=1,n59=1)=0.
+n120=NAND(n119=0,n100=1)=1.
+n121=NAND(n120=1,n5=0)=1.
+n122=NAND(n121=1,n29=0)=1.
+n123=NAND(n122=1,n45=0)=1.
+n124=NAND(n123=1,n77=1)=0.
+n125=NAND(n124=0,n15=1)=1.
+n126=NAND(n125=1,n95=1)=0.
+n127=NAND(n126=0,n10=0)=1.
+n128=NAND(n127=1,n18=1)=0.
+n129=NAND(n128=0,n35=1)=1.
+n130=NAND(n129=1,n72=1)=0.
+n131=NAND(n130=0,n2=1)=1.
+n132=NAND(n131=1,n35=1)=0.
+n133=NAND(n132=0,n104=0)=1.
+n134=NAND(n133=1,n13=1)=0.
+n135=NAND(n134=0,q3=0)=1.
+n136=NAND(n135=1,n97=1)=0.
+n137=NAND(n136=0,n26=1)=1.
+n138=NAND(n137=1,n7=0)=1.
+n139=NAND(n138=1,n38=1)=0.
+n140=NAND(n139=0,q4=0)=1.
+n141=NAND(n140=1,n11=1)=0.
+n142=NAND(n141=0,n78=1)=1.
+n143=NAND(n142=1,n51=0)=1.
+n144=NAND(n143=1,n49=0)=1.
+n145=NAND(n144=1,n112=0)=1.
+n146=NAND(n145=1,n1=1)=0.
+n147=NAND(n146=0,n22=0)=1.
+n148=NAND(n147=1,n107=0)=1.
+n149=NAND(n148=1,n18=1)=0.
+n150=NAND(n149=0,n79=0)=1.
+n151=NAND(n150=1,n57=0)=1.
+n152=NAND(n151=1,n70=1)=0.
+n153=NAND(n152=0,n109=0)=1.
+n154=NAND(n153=1,q1=0)=1.
+n155=NAND(n154=1,n73=0)=1.
+n156=NAND(n155=1,n73=0)=1.
+n157=NAND(n156=1,n76=0)=1.
+n158=NAND(n157=1,n40=1)=0.
+n159=NAND(n158=0,n34=0)=1.
+n160=NAND(n159=1,n130=0)=1.
+n161=NAND(n160=1,n57=0)=1.
+n162=NAND(n161=1,n20=0)=1.
+n163=NAND(n162=1,n21=1)=0.
+n164=NAND(n163=0,q4=0)=1.
+n165=NAND(n164=1,n138=1)=0.
+n166=NAND(n165=0,n33=1)=1.
+n167=NAND(n166=1,n59=1)=0.
+n168=NAND(n167=0,n20=0)=1.
+n169=NAND(n168=1,q0=0)=1.
+n170=NAND(n169=1,n161=1)=0.
+n171=NAND(n170=0,n55=1)=1.
+n172=NAND(n171=1,n45=0)=1.
+n173=NAND(n172=1,n16=1)=0.
+n174=NAND(n173=0,n166=1)=1.
+n175=NAND(n174=1,q3=0)=1.
+n176=NAND(n175=1,q6=1)=0.
+n177=NAND(n176=0,n116=1)=1.
+n178=NAND(n177=1,n148=1)=0.
+n179=NAND(n178=0,n82=1)=1.
+n180=NAND(n179=1,n124=0)=1.
+n181=NAND(n180=1,n42=1)=0.
+n182=NAND(n181=0,n142=1)=1.
+n183=NAND(n182=1,in1=1)=0.
+n184=NAND(n183=0,n26=1)=1.
+n185=NAND(n184=1,n139=0)=1.
+n186=NAND(n185=1,n115=1)=0.
+n187=NAND(n186=0,n12=0)=1.
+n188=NAND(n187=1,n63=1)=0.
+n189=NAND(n188=0,n185=1)=1.
+n190=NAND(n189=1,n134=0)=1.
+n191=NAND(n190=1,n122=1)=0.
+n192=NAND(n191=0,n20=0)=1.
+n193=NAND(n192=1,n96=0)=1.
+n194=NAND(n193=1,n89=1)=0.
+n195=NAND(n194=0,n130=0)=1.
+n196=NAND(n195=1,n171=1)=0.
+n197=NAND(n196=0,n158=0)=1.
+n198=NAND(n197=1,n126=0)=1.
+n199=NAND(n198=1,n18=1)=0.
+
+Outputs cycle8: n199=0, q10=1, q11=1, q6=1.
+
+State update:
+q0'=n188=0
+q1'=n159=1
+q2'=n181=0
+q3'=n190=1
+q4'=n167=0
+q5'=n192=1
+q6'=n166=1
+q7'=n170=0
+q8'=n157=1
+q9'=n188=0
+q10'=n194=0
+q11'=n193=1
+
+State cycle9 start:
+q0=0,q1=1,q2=0,q3=1,q4=0,q5=1,q6=1,q7=0,q8=1,q9=0,q10=0,q11=1.
+
+Again = state cycle1. Cycle9 inputs: in0=1,in1=1,in2=1. Wait trace in0[9]=1? Let me check: in0 = [1,1,0,0,0,0,0,1,1,0,1,0,...]. index9 = 0. Let me recount in0: positions: 0:1,1:1,2:0,3:0,4:0,5:0,6:0,7:1,8:1,9:0,10:1,11:0,12:0,13:0,14:1,15:0,16:0,17:1,18:1,19:0,20:1,21:0,22:1,23:0. So in0[9]=0. in1[9]=1 (in1: 0:1,1:1,2:1,3:0,4:1,5:1,6:0,7:0,8:1,9:1,10:0,11:0,12:0,13:1,14:1,15:1,16:0,17:0,18:1,19:1,20:1,21:1,22:0,23:1). in1[9]=1. in2[9]=1 (in2: 0:1,1:1,2:0,3:1,4:1,5:1,6:0,7:1,8:0,9:1,10:0,11:0,12:0,13:0,14:0,15:0,16:0,17:1,18:1,19:0,20:0,21:1,22:0,23:0). in2[9]=1.
+
+So cycle9 inputs: in0=0,in1=1,in2=1. That's identical to cycle5 inputs (in0=0,in1=1,in2=1) AND same state as cycle5 (state = cycle1 state). So cycle9 should produce exactly the same n's and outputs and next state as cycle5! Let me verify: cycle5 state = q0=0,q1=1,q2=0,q3=1,q4=0,q5=1,q6=1,q7=0,q8=1,q9=0,q10=0,q11=1; inputs in0=0,in1=1,in2=1. Cycle9 same. Therefore cycle9 outputs = cycle5 outputs: n199=1,q10=0,q11=1,q6=1; next state = cycle6 state = q0=0,q1=1,q2=1,q3=0,q4=0,q5=0,q6=1,q7=0,q8=0,q9=0,q10=1,q11=1.
+
+Wait, but is the state at start of cycle9 really equal to cycle5? Cycle5 start state I wrote: q0=0,q1=1,q2=0,q3=1,q4=0,q5=1,q6=1,q7=0,q8=1,q9=0,q10=0,q11=1. Cycle9 start state (from cycle8 update) = q0=0,q1=1,q2=0,q3=1,q4=0,q5=1,q6=1,q7=0,q8=1,q9=0,q10=0,q11=1. Yes identical. And inputs (0,1,1) identical to cycle5. So cycle9 = cycle5. 
+
+So I can exploit this! The (state, input) pair determines everything. Let me track the pair. This will help consistency and possibly find cycles.
+
+Let me denote the state as a 12-bit vector S=(q0,q1,q2,q3,q4,q5,q6,q7,q8,q9,q10,q11). 
+
+Cycle0 start S0 = (0,0,1,0,1,0,1,1,0,1,1,1). Input I0=(1,1,1). -> S1 = (0,1,0,1,0,1,1,0,1,0,0,1). [from cycle0 update]
+Cycle1 start S1=(0,1,0,1,0,1,1,0,1,0,0,1), I1=(1,1,1) -> S2=(0,1,1,0,1,0,1,0,0,0,1,1). [cycle1 update: q0=0,q1=1,q2=1,q3=0,q4=1,q5=0,q6=1,q7=0,q8=0,q9=0,q10=1,q11=1]
+Wait earlier I wrote state cycle2 start = q0=0,q1=1,q2=1,q3=0,q4=1,q5=0,q6=1,q7=0,q8=0,q9=0,q10=1,q11=1. Yes S2.
+Cycle2 start S2, I2=(0,1,0) -> S3=(0,1,0,1,1,1,0,0,1,0,0,1). [cycle2 update: q0=0,q1=1,q2=0,q3=1,q4=1,q5=1,q6=0,q7=0,q8=1,q9=0,q10=0,q11=1]
+Cycle3 start S3=(0,1,0,1,1,1,0,0,1,0,0,1), I3=(0,0,1) -> S4=(0,0,0,0,0,0,1,1,0,0,1,1). [cycle3 update]
+Cycle4 start S4=(0,0,0,0,0,0,1,1,0,0,1,1), I4=(0,1,1) -> S5=(0,1,0,1,0,1,1,0,1,0,0,1)=S1! [cycle4 update: q0=0,q1=1,q2=0,q3=1,q4=0,q5=1,q6=1,q7=0,q8=1,q9=0,q10=0,q11=1] = S1. 
+Cycle5 start S5=S1, I5=(0,1,1). Note S1 with input (1,1,1) gave S2; here S1 with input (0,1,1) gives S6=(0,1,1,0,0,0,1,0,0,0,1,1). [cycle5 update: q0=0,q1=1,q2=1,q3=0,q4=0,q5=0,q6=1,q7=0,q8=0,q9=0,q10=1,q11=1]
+Cycle6 start S6=(0,1,1,0,0,0,1,0,0,0,1,1), I6=(0,0,0) -> S7=(0,1,0,1,0,1,1,0,1,0,0,1)=S1! [cycle6 update: q0=0,q1=1,q2=0,q3=1,q4=0,q5=1,q6=1,q7=0,q8=1,q9=0,q10=0,q11=1] = S1. 
+Cycle7 start S7=S1, I7=(1,0,1) -> S8=(0,0,0,0,0,0,1,1,0,0,1,1)=S4. [cycle7 update: q0=0,q1=0,q2=0,q3=0,q4=0,q5=0,q6=1,q7=1,q8=0,q9=0,q10=1,q11=1] = S4. 
+Cycle8 start S8=S4, I8=(1,1,0) -> S9=(0,1,0,1,0,1,1,0,1,0,0,1)=S1. [cycle8 update = S1]
+Cycle9 start S9=S1, I9=(0,1,1) = same as I5. -> S10 = same as S6 = (0,1,1,0,0,0,1,0,0,0,1,1). And outputs cycle9 = outputs cycle5 = (n199=1,q10=0,q11=1,q6=1).
+
+Great, this confirms cycle9 = cycle5. Let me record and continue using this state-input map to ensure consistency, but I still need to compute outputs for new (S,I) pairs. 
+
+Let me tabulate outputs per cycle (recorded = f(S_start, I)):
+c0: S0,I0=(1,1,1): n199=0; q10=1,q11=1,q6=1 (these are from S0: q10=1,q11=1,q6=1). 
+c1: S1,I=(1,1,1): n199=1; q's from S1: q10=0,q11=1,q6=1.
+c2: S2,I=(0,1,0): n199=1; q10=1,q11=1,q6=1 (S2 has q10=1,q11=1,q6=1). 
+c3: S3,I=(0,0,1): n199=1; q10=0,q11=1,q6=0 (S3 q10=0,q6=0). 
+c4: S4,I=(0,1,1): n199=0; q10=1,q11=1,q6=1 (S4 q10=1,q6=1). 
+c5: S1,I=(0,1,1): n199=1; q10=0,q11=1,q6=1.
+c6: S6,I=(0,0,0): n199=0; q10=1,q11=1,q6=1 (S6 q10=1,q6=1). 
+c7: S1,I=(1,0,1): n199=1; q10=0,q11=1,q6=1.
+c8: S4,I=(1,1,0): n199=0; q10=1,q11=1,q6=1.
+c9: S1,I=(0,1,1): same as c5: n199=1; q10=0,q11=1,q6=1. -> S10=S6.
+
+So cycle9 outputs: n199=1, q10=0, q11=1, q6=1.
+
+Now S10 = S6 = (0,1,1,0,0,0,1,0,0,0,1,1). 
+Cycle10 input I10 = (in0[10],in1[10],in2[10]) = (1,0,0). 
+Is (S6, (1,0,0)) seen before? S6 was at cycle6 with I=(0,0,0). Different input. So need to compute cycle10.
+
+Outputs so far (cycles 0-9):
+n199: [0,1,1,1,0,1,0,1,0,1]
+q10: [1,0,1,0,1,0,1,0,1,0]
+q11: [1,1,1,1,1,1,1,1,1,1]
+q6:  [1,1,1,0,1,1,1,1,1,1]
+
+Let me double-check q6[8],q6[9]: S4 has q6=1, S1 has q6=1. yes. q10[8]=S4.q10=1, q10[9]=S1.q10=0. Good.
+
+=== Cycle 10 ===
+State S10 = S6 = (q0=0,q1=1,q2=1,q3=0,q4=0,q5=0,q6=1,q7=0,q8=0,q9=0,q10=1,q11=1).
+Inputs I10: in0=1, in1=0, in2=0.
+
+n0=NAND(in1=0,q8=0)=1.
+n1=NAND(n0=1,in2=0)=1.
+n2=NAND(n1=1,q5=0)=1.
+n3=NAND(n2=1,q0=0)=1.
+n4=NAND(n3=1,q5=0)=1.
+n5=NAND(n4=1,n0=1)=0.
+n6=NAND(n5=0,q8=0)=1.
+n7=NAND(n6=1,n6=1)=0.
+n8=NAND(n7=0,n2=1)=1.
+n9=NAND(n8=1,n5=0)=1.
+n10=NAND(n9=1,n3=1)=0.
+n11=NAND(n10=0,in0=1)=1.
+n12=NAND(n11=1,n6=1)=0.
+n13=NAND(n12=0,in2=0)=1.
+n14=NAND(n13=1,n11=1)=0.
+n15=NAND(n14=0,q0=0)=1.
+n16=NAND(n15=1,n12=0)=1.
+n17=NAND(n16=1,n8=1)=0.
+n18=NAND(n17=0,n3=1)=1.
+n19=NAND(n18=1,q1=1)=0.
+n20=NAND(n19=0,n4=1)=1.
+n21=NAND(n20=1,q0=0)=1.
+n22=NAND(n21=1,n3=1)=0.
+n23=NAND(n22=0,q9=0)=1.
+n24=NAND(n23=1,n12=0)=1.
+n25=NAND(n24=1,n20=1)=0.
+n26=NAND(n25=0,n22=0)=1.
+n27=NAND(n26=1,n23=1)=0.
+n28=NAND(n27=0,n16=1)=1.
+n29=NAND(n28=1,n18=1)=0.
+n30=NAND(n29=0,q3=0)=1.
+n31=NAND(n30=1,q9=0)=1.
+n32=NAND(n31=1,n19=0)=1.
+n33=NAND(n32=1,q7=0)=1.
+n34=NAND(n33=1,n1=1)=0.
+n35=NAND(n34=0,n0=1)=1.
+n36=NAND(n35=1,n8=1)=0.
+n37=NAND(n36=0,in2=0)=1.
+n38=NAND(n37=1,q8=0)=1.
+n39=NAND(n38=1,n18=1)=0.
+n40=NAND(n39=0,n16=1)=1.
+n41=NAND(n40=1,n11=1)=0.
+n42=NAND(n41=0,n25=0)=1.
+n43=NAND(n42=1,n28=1)=0.
+n44=NAND(n43=0,q9=0)=1.
+n45=NAND(n44=1,q10=1)=0.
+n46=NAND(n45=0,q3=0)=1.
+n47=NAND(n46=1,n21=1)=0.
+n48=NAND(n47=0,q6=1)=1.
+n49=NAND(n48=1,n33=1)=0.
+n50=NAND(n49=0,n15=1)=1.
+n51=NAND(n50=1,n9=1)=0.
+n52=NAND(n51=0,n9=1)=1.
+n53=NAND(n52=1,q1=1)=0.
+n54=NAND(n53=0,n38=1)=1.
+n55=NAND(n54=1,q2=1)=0.
+n56=NAND(n55=0,n5=0)=1.
+n57=NAND(n56=1,n13=1)=0.
+n58=NAND(n57=0,n22=0)=1.
+n59=NAND(n58=1,n43=0)=1.
+n60=NAND(n59=1,q8=0)=1.
+n61=NAND(n60=1,n48=1)=0.
+n62=NAND(n61=0,n44=1)=1.
+n63=NAND(n62=1,n41=0)=1.
+n64=NAND(n63=1,n30=1)=0.
+n65=NAND(n64=0,n37=1)=1.
+n66=NAND(n65=1,n1=1)=0.
+n67=NAND(n66=0,q0=0)=1.
+n68=NAND(n67=1,n64=0)=1.
+n69=NAND(n68=1,n35=1)=0.
+n70=NAND(n69=0,n22=0)=1.
+n71=NAND(n70=1,n43=0)=1.
+n72=NAND(n71=1,n43=0)=1.
+n73=NAND(n72=1,n55=0)=1.
+n74=NAND(n73=1,n39=0)=1.
+n75=NAND(n74=1,n20=1)=0.
+n76=NAND(n75=0,n68=1)=1.
+n77=NAND(n76=1,q4=0)=1.
+n78=NAND(n77=1,n54=1)=0.
+n79=NAND(n78=0,n75=0)=1.
+n80=NAND(n79=1,q4=0)=1.
+n81=NAND(n80=1,n36=0)=1.
+n82=NAND(n81=1,n10=0)=1.
+n83=NAND(n82=1,n28=1)=0.
+n84=NAND(n83=0,n78=0)=1.
+n85=NAND(n84=1,n58=1)=0.
+n86=NAND(n85=0,n74=1)=1.
+n87=NAND(n86=1,q5=0)=1.
+n88=NAND(n87=1,n65=1)=0.
+n89=NAND(n88=0,n70=1)=1.
+n90=NAND(n89=1,q2=1)=0.
+n91=NAND(n90=0,q11=1)=1.
+n92=NAND(n91=1,n57=0)=1.
+n93=NAND(n92=1,n8=1)=0.
+n94=NAND(n93=0,n60=1)=1.
+n95=NAND(n94=1,n64=0)=1.
+n96=NAND(n95=1,n4=1)=0.
+n97=NAND(n96=0,in1=0)=1.
+n98=NAND(n97=1,n57=0)=1.
+n99=NAND(n98=1,n8=1)=0.
+n100=NAND(n99=0,n10=0)=1.
+n101=NAND(n100=1,n35=1)=0.
+n102=NAND(n101=0,n62=1)=1.
+n103=NAND(n102=1,n73=1)=0.
+n104=NAND(n103=0,n98=1)=1.
+n105=NAND(n104=1,n16=1)=0.
+n106=NAND(n105=0,n45=0)=1.
+n107=NAND(n106=1,n77=1)=0.
+n108=NAND(n107=0,n16=1)=1.
+n109=NAND(n108=1,n103=0)=1.
+n110=NAND(n109=1,n15=1)=0.
+n111=NAND(n110=0,n41=0)=1.
+n112=NAND(n111=1,n74=1)=0.
+n113=NAND(n112=0,n71=1)=1.
+n114=NAND(n113=1,n40=1)=0.
+n115=NAND(n114=0,n113=1)=1.
+n116=NAND(n115=1,n34=0)=1.
+n117=NAND(n116=1,n25=0)=1.
+n118=NAND(n117=1,n18=1)=0.
+n119=NAND(n118=0,n59=1)=1.
+n120=NAND(n119=1,n100=1)=0.
+n121=NAND(n120=0,n5=0)=1.
+n122=NAND(n121=1,n29=0)=1.
+n123=NAND(n122=1,n45=0)=1.
+n124=NAND(n123=1,n77=1)=0.
+n125=NAND(n124=0,n15=1)=1.
+n126=NAND(n125=1,n95=1)=0.
+n127=NAND(n126=0,n10=0)=1.
+n128=NAND(n127=1,n18=1)=0.
+n129=NAND(n128=0,n35=1)=1.
+n130=NAND(n129=1,n72=1)=0.
+n131=NAND(n130=0,n2=1)=1.
+n132=NAND(n131=1,n35=1)=0.
+n133=NAND(n132=0,n104=1)=1.
+n134=NAND(n133=1,n13=1)=0.
+n135=NAND(n134=0,q3=0)=1.
+n136=NAND(n135=1,n97=1)=0.
+n137=NAND(n136=0,n26=1)=1.
+n138=NAND(n137=1,n7=0)=1.
+n139=NAND(n138=1,n38=1)=0.
+n140=NAND(n139=0,q4=0)=1.
+n141=NAND(n140=1,n11=1)=0.
+n142=NAND(n141=0,n78=0)=1.
+n143=NAND(n142=1,n51=0)=1.
+n144=NAND(n143=1,n49=0)=1.
+n145=NAND(n144=1,n112=0)=1.
+n146=NAND(n145=1,n1=1)=0.
+n147=NAND(n146=0,n22=0)=1.
+n148=NAND(n147=1,n107=0)=1.
+n149=NAND(n148=1,n18=1)=0.
+n150=NAND(n149=0,n79=1)=1.
+n151=NAND(n150=1,n57=0)=1.
+n152=NAND(n151=1,n70=1)=0.
+n153=NAND(n152=0,n109=1)=1.
+n154=NAND(n153=1,q1=1)=0.
+n155=NAND(n154=0,n73=1)=1.
+n156=NAND(n155=1,n73=1)=0.
+n157=NAND(n156=0,n76=1)=1.
+n158=NAND(n157=1,n40=1)=0.
+n159=NAND(n158=0,n34=0)=1.
+n160=NAND(n159=1,n130=0)=1.
+n161=NAND(n160=1,n57=0)=1.
+n162=NAND(n161=1,n20=1)=0.
+n163=NAND(n162=0,n21=1)=1.
+n164=NAND(n163=1,q4=0)=1.
+n165=NAND(n164=1,n138=1)=0.
+n166=NAND(n165=0,n33=1)=1.
+n167=NAND(n166=1,n59=1)=0.
+n168=NAND(n167=0,n20=1)=1.
+n169=NAND(n168=1,q0=0)=1.
+n170=NAND(n169=1,n161=1)=0.
+n171=NAND(n170=0,n55=0)=1.
+n172=NAND(n171=1,n45=0)=1.
+n173=NAND(n172=1,n16=1)=0.
+n174=NAND(n173=0,n166=1)=1.
+n175=NAND(n174=1,q3=0)=1.
+n176=NAND(n175=1,q6=1)=0.
+n177=NAND(n176=0,n116=1)=1.
+n178=NAND(n177=1,n148=1)=0.
+n179=NAND(n178=0,n82=1)=1.
+n180=NAND(n179=1,n124=0)=1.
+n181=NAND(n180=1,n42=1)=0.
+n182=NAND(n181=0,n142=1)=1.
+n183=NAND(n182=1,in1=0)=1.
+n184=NAND(n183=1,n26=1)=0.
+n185=NAND(n184=0,n139=0)=1.
+n186=NAND(n185=1,n115=1)=0.
+n187=NAND(n186=0,n12=0)=1.
+n188=NAND(n187=1,n63=1)=0.
+n189=NAND(n188=0,n185=1)=1.
+n190=NAND(n189=1,n134=0)=1.
+n191=NAND(n190=1,n122=1)=0.
+n192=NAND(n191=0,n20=1)=1.
+n193=NAND(n192=1,n96=0)=1.
+n194=NAND(n193=1,n89=1)=0.
+n195=NAND(n194=0,n130=0)=1.
+n196=NAND(n195=1,n171=1)=0.
+n197=NAND(n196=0,n158=0)=1.
+n198=NAND(n197=1,n126=0)=1.
+n199=NAND(n198=1,n18=1)=0.
+
+Outputs cycle10: n199=0; q10=S10.q10=1; q11=S10.q11=1; q6=S10.q6=1.
+
+State update (S11):
+q0'=n188=0
+q1'=n159=1
+q2'=n181=0
+q3'=n190=1
+q4'=n167=0
+q5'=n192=1
+q6'=n166=1
+q7'=n170=0
+q8'=n157=1
+q9'=n188=0
+q10'=n194=0
+q11'=n193=1
+
+S11 = (0,1,0,1,0,1,1,0,1,0,0,1) = S1 again!
+
+So S11=S1. Cycle11 input I11 = (in0[11],in1[11],in2[11]) = (0,0,0). 
+(S1, (0,0,0)) — have we seen S1 with input (0,0,0)? S1 inputs so far: c1 (1,1,1), c5 (0,1,1), c7 (1,0,1), c9 (0,1,1). Not (0,0,0). So compute cycle11.
+
+Outputs so far c0..c10:
+n199: [0,1,1,1,0,1,0,1,0,1,0]
+q10: [1,0,1,0,1,0,1,0,1,0,1]
+q11: [1,1,1,1,1,1,1,1,1,1,1]
+q6:  [1,1,1,0,1,1,1,1,1,1,1]
+
+=== Cycle 11 ===
+State S11 = S1 = (q0=0,q1=1,q2=0,q3=1,q4=0,q5=1,q6=1,q7=0,q8=1,q9=0,q10=0,q11=1).
+Inputs: in0=0,in1=0,in2=0.
+
+n0=NAND(in1=0,q8=1)=1.
+n1=NAND(n0=1,in2=0)=1.
+n2=NAND(n1=1,q5=1)=0.
+n3=NAND(n2=0,q0=0)=1.
+n4=NAND(n3=1,q5=1)=0.
+n5=NAND(n4=0,n0=1)=1.
+n6=NAND(n5=1,q8=1)=0.
+n7=NAND(n6=0,n6=0)=1.
+n8=NAND(n7=1,n2=0)=1.
+n9=NAND(n8=1,n5=1)=0.
+n10=NAND(n9=0,n3=1)=1.
+n11=NAND(n10=1,in0=0)=1.
+n12=NAND(n11=1,n6=0)=1.
+n13=NAND(n12=1,in2=0)=1.
+n14=NAND(n13=1,n11=1)=0.
+n15=NAND(n14=0,q0=0)=1.
+n16=NAND(n15=1,n12=1)=0.
+n17=NAND(n16=0,n8=1)=1.
+n18=NAND(n17=1,n3=1)=0.
+n19=NAND(n18=0,q1=1)=1.
+n20=NAND(n19=1,n4=0)=1.
+n21=NAND(n20=1,q0=0)=1.
+n22=NAND(n21=1,n3=1)=0.
+n23=NAND(n22=0,q9=0)=1.
+n24=NAND(n23=1,n12=1)=0.
+n25=NAND(n24=0,n20=1)=1.
+n26=NAND(n25=1,n22=0)=1.
+n27=NAND(n26=1,n23=1)=0.
+n28=NAND(n27=0,n16=0)=1.
+n29=NAND(n28=1,n18=0)=1.
+n30=NAND(n29=1,q3=1)=0.
+n31=NAND(n30=0,q9=0)=1.
+n32=NAND(n31=1,n19=1)=0.
+n33=NAND(n32=0,q7=0)=1.
+n34=NAND(n33=1,n1=1)=0.
+n35=NAND(n34=0,n0=1)=1.
+n36=NAND(n35=1,n8=1)=0.
+n37=NAND(n36=0,in2=0)=1.
+n38=NAND(n37=1,q8=1)=0.
+n39=NAND(n38=0,n18=0)=1.
+n40=NAND(n39=1,n16=0)=1.
+n41=NAND(n40=1,n11=1)=0.
+n42=NAND(n41=0,n25=1)=1.
+n43=NAND(n42=1,n28=1)=0.
+n44=NAND(n43=0,q9=0)=1.
+n45=NAND(n44=1,q10=0)=1.
+n46=NAND(n45=1,q3=1)=0.
+n47=NAND(n46=0,n21=1)=1.
+n48=NAND(n47=1,q6=1)=0.
+n49=NAND(n48=0,n33=1)=1.
+n50=NAND(n49=1,n15=1)=0.
+n51=NAND(n50=0,n9=0)=1.
+n52=NAND(n51=1,n9=0)=1.
+n53=NAND(n52=1,q1=1)=0.
+n54=NAND(n53=0,n38=0)=1.
+n55=NAND(n54=1,q2=0)=1.
+n56=NAND(n55=1,n5=1)=0.
+n57=NAND(n56=0,n13=1)=1.
+n58=NAND(n57=1,n22=0)=1.
+n59=NAND(n58=1,n43=0)=1.
+n60=NAND(n59=1,q8=1)=0.
+n61=NAND(n60=0,n48=0)=1.
+n62=NAND(n61=1,n44=1)=0.
+n63=NAND(n62=0,n41=0)=1.
+n64=NAND(n63=1,n30=0)=1.
+n65=NAND(n64=1,n37=1)=0.
+n66=NAND(n65=0,n1=1)=1.
+n67=NAND(n66=1,q0=0)=1.
+n68=NAND(n67=1,n64=1)=0.
+n69=NAND(n68=0,n35=1)=1.
+n70=NAND(n69=1,n22=0)=1.
+n71=NAND(n70=1,n43=0)=1.
+n72=NAND(n71=1,n43=0)=1.
+n73=NAND(n72=1,n55=1)=0.
+n74=NAND(n73=0,n39=1)=1.
+n75=NAND(n74=1,n20=1)=0.
+n76=NAND(n75=0,n68=0)=1.
+n77=NAND(n76=1,q4=0)=1.
+n78=NAND(n77=1,n54=1)=0.
+n79=NAND(n78=0,n75=0)=1.
+n80=NAND(n79=1,q4=0)=1.
+n81=NAND(n80=1,n36=0)=1.
+n82=NAND(n81=1,n10=1)=0.
+n83=NAND(n82=0,n28=1)=1.
+n84=NAND(n83=1,n78=0)=1.
+n85=NAND(n84=1,n58=1)=0.
+n86=NAND(n85=0,n74=1)=1.
+n87=NAND(n86=1,q5=1)=0.
+n88=NAND(n87=0,n65=0)=1.
+n89=NAND(n88=1,n70=1)=0.
+n90=NAND(n89=0,q2=0)=1.
+n91=NAND(n90=1,q11=1)=0.
+n92=NAND(n91=0,n57=1)=1.
+n93=NAND(n92=1,n8=1)=0.
+n94=NAND(n93=0,n60=0)=1.
+n95=NAND(n94=1,n64=1)=0.
+n96=NAND(n95=0,n4=0)=1.
+n97=NAND(n96=1,in1=0)=1.
+n98=NAND(n97=1,n57=1)=0.
+n99=NAND(n98=0,n8=1)=1.
+n100=NAND(n99=1,n10=1)=0.
+n101=NAND(n100=0,n35=1)=1.
+n102=NAND(n101=1,n62=0)=1.
+n103=NAND(n102=1,n73=0)=1.
+n104=NAND(n103=1,n98=0)=1.
+n105=NAND(n104=1,n16=0)=1.
+n106=NAND(n105=1,n45=1)=0.
+n107=NAND(n106=0,n77=1)=1.
+n108=NAND(n107=1,n16=0)=1.
+n109=NAND(n108=1,n103=1)=0.
+n110=NAND(n109=0,n15=1)=1.
+n111=NAND(n110=1,n41=0)=1.
+n112=NAND(n111=1,n74=1)=0.
+n113=NAND(n112=0,n71=1)=1.
+n114=NAND(n113=1,n40=1)=0.
+n115=NAND(n114=0,n113=1)=1.
+n116=NAND(n115=1,n34=0)=1.
+n117=NAND(n116=1,n25=1)=0.
+n118=NAND(n117=0,n18=0)=1.
+n119=NAND(n118=1,n59=1)=0.
+n120=NAND(n119=0,n100=0)=1.
+n121=NAND(n120=1,n5=1)=0.
+n122=NAND(n121=0,n29=1)=1.
+n123=NAND(n122=1,n45=1)=0.
+n124=NAND(n123=0,n77=1)=1.
+n125=NAND(n124=1,n15=1)=0.
+n126=NAND(n125=0,n95=0)=1.
+n127=NAND(n126=1,n10=1)=0.
+n128=NAND(n127=0,n18=0)=1.
+n129=NAND(n128=1,n35=1)=0.
+n130=NAND(n129=0,n72=1)=1.
+n131=NAND(n130=1,n2=0)=1.
+n132=NAND(n131=1,n35=1)=0.
+n133=NAND(n132=0,n104=1)=1.
+n134=NAND(n133=1,n13=1)=0.
+n135=NAND(n134=0,q3=1)=1.
+n136=NAND(n135=1,n97=1)=0.
+n137=NAND(n136=0,n26=1)=1.
+n138=NAND(n137=1,n7=1)=0.
+n139=NAND(n138=0,n38=0)=1.
+n140=NAND(n139=1,q4=0)=1.
+n141=NAND(n140=1,n11=1)=0.
+n142=NAND(n141=0,n78=0)=1.
+n143=NAND(n142=1,n51=1)=0.
+n144=NAND(n143=0,n49=1)=1.
+n145=NAND(n144=1,n112=0)=1.
+n146=NAND(n145=1,n1=1)=0.
+n147=NAND(n146=0,n22=0)=1.
+n148=NAND(n147=1,n107=1)=0.
+n149=NAND(n148=0,n18=0)=1.
+n150=NAND(n149=1,n79=1)=0.
+n151=NAND(n150=0,n57=1)=1.
+n152=NAND(n151=1,n70=1)=0.
+n153=NAND(n152=0,n109=0)=1.
+n154=NAND(n153=1,q1=1)=0.
+n155=NAND(n154=0,n73=0)=1.
+n156=NAND(n155=1,n73=0)=1.
+n157=NAND(n156=1,n76=1)=0.
+n158=NAND(n157=0,n40=1)=1.
+n159=NAND(n158=1,n34=0)=1.
+n160=NAND(n159=1,n130=1)=0.
+n161=NAND(n160=0,n57=1)=1.
+n162=NAND(n161=1,n20=1)=0.
+n163=NAND(n162=0,n21=1)=1.
+n164=NAND(n163=1,q4=0)=1.
+n165=NAND(n164=1,n138=0)=1.
+n166=NAND(n165=1,n33=1)=0.
+n167=NAND(n166=0,n59=1)=1.
+n168=NAND(n167=1,n20=1)=0.
+n169=NAND(n168=0,q0=0)=1.
+n170=NAND(n169=1,n161=1)=0.
+n171=NAND(n170=0,n55=1)=1.
+n172=NAND(n171=1,n45=1)=0.
+n173=NAND(n172=0,n16=0)=1.
+n174=NAND(n173=1,n166=0)=1.
+n175=NAND(n174=1,q3=1)=0.
+n176=NAND(n175=0,q6=1)=1.
+n177=NAND(n176=1,n116=1)=0.
+n178=NAND(n177=0,n148=0)=1.
+n179=NAND(n178=1,n82=0)=1.
+n180=NAND(n179=1,n124=1)=0.
+n181=NAND(n180=0,n42=1)=1.
+n182=NAND(n181=1,n142=1)=0.
+n183=NAND(n182=0,in1=0)=1.
+n184=NAND(n183=1,n26=1)=0.
+n185=NAND(n184=0,n139=1)=1.
+n186=NAND(n185=1,n115=1)=0.
+n187=NAND(n186=0,n12=1)=1.
+n188=NAND(n187=1,n63=1)=0.
+n189=NAND(n188=0,n185=1)=1.
+n190=NAND(n189=1,n134=0)=1.
+n191=NAND(n190=1,n122=1)=0.
+n192=NAND(n191=0,n20=1)=1.
+n193=NAND(n192=1,n96=1)=0.
+n194=NAND(n193=0,n89=0)=1.
+n195=NAND(n194=1,n130=1)=0.
+n196=NAND(n195=0,n171=1)=1.
+n197=NAND(n196=1,n158=1)=0.
+n198=NAND(n197=0,n126=1)=1.
+n199=NAND(n198=1,n18=0)=1.
+
+Outputs cycle11: n199=1; q10=S11.q10=0; q11=S11.q11=1; q6=S11.q6=1.
+
+State update S12:
+q0'=n188=0
+q1'=n159=1
+q2'=n181=1
+q3'=n190=1
+q4'=n167=1
+q5'=n192=1
+q6'=n166=0
+q7'=n170=0
+q8'=n157=0
+q9'=n188=0
+q10'=n194=1
+q11'=n193=0
+
+S12 = (0,1,1,1,1,1,0,0,0,0,1,0).
+
+Check: n166 = NAND(n165=1,n33=1)=0. n167=NAND(n166=0,n59=1)=1. n181=NAND(n180=0,n42=1)=1. n190=NAND(n189=1,n134=0)=1. n192=NAND(n191=0,n20=1)=1. n193=NAND(n192=1,n96=1)=0. n194=NAND(n193=0,n89=0)=1. n159=NAND(n158=1,n34=0)=1. n157=NAND(n156=1,n76=1)=0. n170=NAND(n169=1,n161=1)=0. n188=0. Good.
+
+So q11' = 0 now! S12 has q11=0, q6=0, q3=1,q4=1,q5=1,q2=1.
+
+Outputs c0..c11:
+n199: [0,1,1,1,0,1,0,1,0,1,0,1]
+q10: [1,0,1,0,1,0,1,0,1,0,1,0]
+q11: [1,1,1,1,1,1,1,1,1,1,1,1]  (q11 output c11 = S11.q11 = 1; S12.q11=0 affects c12)
+q6:  [1,1,1,0,1,1,1,1,1,1,1,1]  (q6 c11 = S11.q6 =1; S12.q6=0 affects c12)
+
+=== Cycle 12 ===
+State S12 = (q0=0,q1=1,q2=1,q3=1,q4=1,q5=1,q6=0,q7=0,q8=0,q9=0,q10=1,q11=0).
+Inputs I12 = (in0[12],in1[12],in2[12]) = (0,0,0).
+
+n0=NAND(in1=0,q8=0)=1.
+n1=NAND(n0=1,in2=0)=1.
+n2=NAND(n1=1,q5=1)=0.
+n3=NAND(n2=0,q0=0)=1.
+n4=NAND(n3=1,q5=1)=0.
+n5=NAND(n4=0,n0=1)=1.
+n6=NAND(n5=1,q8=0)=1.
+n7=NAND(n6=1,n6=1)=0.
+n8=NAND(n7=0,n2=0)=1.
+n9=NAND(n8=1,n5=1)=0.
+n10=NAND(n9=0,n3=1)=1.
+n11=NAND(n10=1,in0=0)=1.
+n12=NAND(n11=1,n6=1)=0.
+n13=NAND(n12=0,in2=0)=1.
+n14=NAND(n13=1,n11=1)=0.
+n15=NAND(n14=0,q0=0)=1.
+n16=NAND(n15=1,n12=0)=1.
+n17=NAND(n16=1,n8=1)=0.
+n18=NAND(n17=0,n3=1)=1.
+n19=NAND(n18=1,q1=1)=0.
+n20=NAND(n19=0,n4=0)=1.
+n21=NAND(n20=1,q0=0)=1.
+n22=NAND(n21=1,n3=1)=0.
+n23=NAND(n22=0,q9=0)=1.
+n24=NAND(n23=1,n12=0)=1.
+n25=NAND(n24=1,n20=1)=0.
+n26=NAND(n25=0,n22=0)=1.
+n27=NAND(n26=1,n23=1)=0.
+n28=NAND(n27=0,n16=1)=1.
+n29=NAND(n28=1,n18=1)=0.
+n30=NAND(n29=0,q3=1)=1.
+n31=NAND(n30=1,q9=0)=1.
+n32=NAND(n31=1,n19=0)=1.
+n33=NAND(n32=1,q7=0)=1.
+n34=NAND(n33=1,n1=1)=0.
+n35=NAND(n34=0,n0=1)=1.
+n36=NAND(n35=1,n8=1)=0.
+n37=NAND(n36=0,in2=0)=1.
+n38=NAND(n37=1,q8=0)=1.
+n39=NAND(n38=1,n18=1)=0.
+n40=NAND(n39=0,n16=1)=1.
+n41=NAND(n40=1,n11=1)=0.
+n42=NAND(n41=0,n25=0)=1.
+n43=NAND(n42=1,n28=1)=0.
+n44=NAND(n43=0,q9=0)=1.
+n45=NAND(n44=1,q10=1)=0.
+n46=NAND(n45=0,q3=1)=1.
+n47=NAND(n46=1,n21=1)=0.
+n48=NAND(n47=0,q6=0)=1.
+n49=NAND(n48=1,n33=1)=0.
+n50=NAND(n49=0,n15=1)=1.
+n51=NAND(n50=1,n9=0)=1.
+n52=NAND(n51=1,n9=0)=1.
+n53=NAND(n52=1,q1=1)=0.
+n54=NAND(n53=0,n38=1)=1.
+n55=NAND(n54=1,q2=1)=0.
+n56=NAND(n55=0,n5=1)=1.
+n57=NAND(n56=1,n13=1)=0.
+n58=NAND(n57=0,n22=0)=1.
+n59=NAND(n58=1,n43=0)=1.
+n60=NAND(n59=1,q8=0)=1.
+n61=NAND(n60=1,n48=1)=0.
+n62=NAND(n61=0,n44=1)=1.
+n63=NAND(n62=1,n41=0)=1.
+n64=NAND(n63=1,n30=1)=0.
+n65=NAND(n64=0,n37=1)=1.
+n66=NAND(n65=1,n1=1)=0.
+n67=NAND(n66=0,q0=0)=1.
+n68=NAND(n67=1,n64=0)=1.
+n69=NAND(n68=1,n35=1)=0.
+n70=NAND(n69=0,n22=0)=1.
+n71=NAND(n70=1,n43=0)=1.
+n72=NAND(n71=1,n43=0)=1.
+n73=NAND(n72=1,n55=0)=1.
+n74=NAND(n73=1,n39=0)=1.
+n75=NAND(n74=1,n20=1)=0.
+n76=NAND(n75=0,n68=1)=1.
+n77=NAND(n76=1,q4=1)=0.
+n78=NAND(n77=0,n54=1)=1.
+n79=NAND(n78=1,n75=0)=1.
+n80=NAND(n79=1,q4=1)=0.
+n81=NAND(n80=0,n36=0)=1.
+n82=NAND(n81=1,n10=1)=0.
+n83=NAND(n82=0,n28=1)=1.
+n84=NAND(n83=1,n78=1)=0.
+n85=NAND(n84=0,n58=1)=1.
+n86=NAND(n85=1,n74=1)=0.
+n87=NAND(n86=0,q5=1)=1.
+n88=NAND(n87=1,n65=1)=0.
+n89=NAND(n88=0,n70=1)=1.
+n90=NAND(n89=1,q2=1)=0.
+n91=NAND(n90=0,q11=0)=1.
+n92=NAND(n91=1,n57=0)=1.
+n93=NAND(n92=1,n8=1)=0.
+n94=NAND(n93=0,n60=1)=1.
+n95=NAND(n94=1,n64=0)=1.
+n96=NAND(n95=1,n4=0)=1.
+n97=NAND(n96=1,in1=0)=1.
+n98=NAND(n97=1,n57=0)=1.
+n99=NAND(n98=1,n8=1)=0.
+n100=NAND(n99=0,n10=1)=1.
+n101=NAND(n100=1,n35=1)=0.
+n102=NAND(n101=0,n62=1)=1.
+n103=NAND(n102=1,n73=1)=0.
+n104=NAND(n103=0,n98=1)=1.
+n105=NAND(n104=1,n16=1)=0.
+n106=NAND(n105=0,n45=0)=1.
+n107=NAND(n106=1,n77=0)=1.
+n108=NAND(n107=1,n16=1)=0.
+n109=NAND(n108=0,n103=0)=1.
+n110=NAND(n109=1,n15=1)=0.
+n111=NAND(n110=0,n41=0)=1.
+n112=NAND(n111=1,n74=1)=0.
+n113=NAND(n112=0,n71=1)=1.
+n114=NAND(n113=1,n40=1)=0.
+n115=NAND(n114=0,n113=1)=1.
+n116=NAND(n115=1,n34=0)=1.
+n117=NAND(n116=1,n25=0)=1.
+n118=NAND(n117=1,n18=1)=0.
+n119=NAND(n118=0,n59=1)=1.
+n120=NAND(n119=1,n100=1)=0.
+n121=NAND(n120=0,n5=1)=1.
+n122=NAND(n121=1,n29=0)=1.
+n123=NAND(n122=1,n45=0)=1.
+n124=NAND(n123=1,n77=0)=1.
+n125=NAND(n124=1,n15=1)=0.
+n126=NAND(n125=0,n95=1)=1.
+n127=NAND(n126=1,n10=1)=0.
+n128=NAND(n127=0,n18=1)=1.
+n129=NAND(n128=1,n35=1)=0.
+n130=NAND(n129=0,n72=1)=1.
+n131=NAND(n130=1,n2=0)=1.
+n132=NAND(n131=1,n35=1)=0.
+n133=NAND(n132=0,n104=1)=1.
+n134=NAND(n133=1,n13=1)=0.
+n135=NAND(n134=0,q3=1)=1.
+n136=NAND(n135=1,n97=1)=0.
+n137=NAND(n136=0,n26=1)=1.
+n138=NAND(n137=1,n7=0)=1.
+n139=NAND(n138=1,n38=1)=0.
+n140=NAND(n139=0,q4=1)=1.
+n141=NAND(n140=1,n11=1)=0.
+n142=NAND(n141=0,n78=1)=1.
+n143=NAND(n142=1,n51=1)=0.
+n144=NAND(n143=0,n49=0)=1.
+n145=NAND(n144=1,n112=0)=1.
+n146=NAND(n145=1,n1=1)=0.
+n147=NAND(n146=0,n22=0)=1.
+n148=NAND(n147=1,n107=1)=0.
+n149=NAND(n148=0,n18=1)=1.
+n150=NAND(n149=1,n79=1)=0.
+n151=NAND(n150=0,n57=0)=1.
+n152=NAND(n151=1,n70=1)=0.
+n153=NAND(n152=0,n109=1)=1.
+n154=NAND(n153=1,q1=1)=0.
+n155=NAND(n154=0,n73=1)=1.
+n156=NAND(n155=1,n73=1)=0.
+n157=NAND(n156=0,n76=1)=1.
+n158=NAND(n157=1,n40=1)=0.
+n159=NAND(n158=0,n34=0)=1.
+n160=NAND(n159=1,n130=1)=0.
+n161=NAND(n160=0,n57=0)=1.
+n162=NAND(n161=1,n20=1)=0.
+n163=NAND(n162=0,n21=1)=1.
+n164=NAND(n163=1,q4=1)=0.
+n165=NAND(n164=0,n138=1)=1.
+n166=NAND(n165=1,n33=1)=0.
+n167=NAND(n166=0,n59=1)=1.
+n168=NAND(n167=1,n20=1)=0.
+n169=NAND(n168=0,q0=0)=1.
+n170=NAND(n169=1,n161=1)=0.
+n171=NAND(n170=0,n55=0)=1.
+n172=NAND(n171=1,n45=0)=1.
+n173=NAND(n172=1,n16=1)=0.
+n174=NAND(n173=0,n166=0)=1.
+n175=NAND(n174=1,q3=1)=0.
+n176=NAND(n175=0,q6=0)=1.
+n177=NAND(n176=1,n116=1)=0.
+n178=NAND(n177=0,n148=0)=1.
+n179=NAND(n178=1,n82=0)=1.
+n180=NAND(n179=1,n124=1)=0.
+n181=NAND(n180=0,n42=1)=1.
+n182=NAND(n181=1,n142=1)=0.
+n183=NAND(n182=0,in1=0)=1.
+n184=NAND(n183=1,n26=1)=0.
+n185=NAND(n184=0,n139=0)=1.
+n186=NAND(n185=1,n115=1)=0.
+n187=NAND(n186=0,n12=0)=1.
+n188=NAND(n187=1,n63=1)=0.
+n189=NAND(n188=0,n185=1)=1.
+n190=NAND(n189=1,n134=0)=1.
+n191=NAND(n190=1,n122=1)=0.
+n192=NAND(n191=0,n20=1)=1.
+n193=NAND(n192=1,n96=1)=0.
+n194=NAND(n193=0,n89=1)=1.
+n195=NAND(n194=1,n130=1)=0.
+n196=NAND(n195=0,n171=1)=1.
+n197=NAND(n196=1,n158=0)=1.
+n198=NAND(n197=1,n126=1)=0.
+n199=NAND(n198=0,n18=1)=1.
+
+Outputs cycle12: n199=1; q10=S12.q10=1; q11=S12.q11=0; q6=S12.q6=0.
+
+State update S13:
+q0'=n188=0
+q1'=n159=1
+q2'=n181=1
+q3'=n190=1
+q4'=n167=1
+q5'=n192=1
+q6'=n166=0
+q7'=n170=0
+q8'=n157=1
+q9'=n188=0
+q10'=n194=1
+q11'=n193=0
+
+S13=(0,1,1,1,1,1,0,0,1,0,1,0).
+
+Check: n157=NAND(n156=0,n76=1)=1. n166=NAND(n165=1,n33=1)=0. n190=NAND(n189=1,n134=0)=1. n193=NAND(n192=1,n96=1)=0. n194=NAND(n193=0,n89=1)=1. n181=NAND(n180=0,n42=1)=1. n192=NAND(n191=0,n20=1)=1. n167=NAND(n166=0,n59=1)=1. n159=NAND(n158=0,n34=0)=1. n170=NAND(n169=1,n161=1)=0. OK.
+
+Outputs c0..c12:
+n199: [0,1,1,1,0,1,0,1,0,1,0,1,1]
+q10: [1,0,1,0,1,0,1,0,1,0,1,0,1]
+q11: [1,1,1,1,1,1,1,1,1,1,1,1,0]
+q6:  [1,1,1,0,1,1,1,1,1,1,1,1,0]
+
+=== Cycle 13 ===
+State S13=(q0=0,q1=1,q2=1,q3=1,q4=1,q5=1,q6=0,q7=0,q8=1,q9=0,q10=1,q11=0).
+Inputs I13=(in0[13],in1[13],in2[13])=(0,1,0).
+
+n0=NAND(in1=1,q8=1)=0.
+n1=NAND(n0=0,in2=0)=1.
+n2=NAND(n1=1,q5=1)=0.
+n3=NAND(n2=0,q0=0)=1.
+n4=NAND(n3=1,q5=1)=0.
+n5=NAND(n4=0,n0=0)=1.
+n6=NAND(n5=1,q8=1)=0.
+n7=NAND(n6=0,n6=0)=1.
+n8=NAND(n7=1,n2=0)=1.
+n9=NAND(n8=1,n5=1)=0.
+n10=NAND(n9=0,n3=1)=1.
+n11=NAND(n10=1,in0=0)=1.
+n12=NAND(n11=1,n6=0)=1.
+n13=NAND(n12=1,in2=0)=1.
+n14=NAND(n13=1,n11=1)=0.
+n15=NAND(n14=0,q0=0)=1.
+n16=NAND(n15=1,n12=1)=0.
+n17=NAND(n16=0,n8=1)=1.
+n18=NAND(n17=1,n3=1)=0.
+n19=NAND(n18=0,q1=1)=1.
+n20=NAND(n19=1,n4=0)=1.
+n21=NAND(n20=1,q0=0)=1.
+n22=NAND(n21=1,n3=1)=0.
+n23=NAND(n22=0,q9=0)=1.
+n24=NAND(n23=1,n12=1)=0.
+n25=NAND(n24=0,n20=1)=1.
+n26=NAND(n25=1,n22=0)=1.
+n27=NAND(n26=1,n23=1)=0.
+n28=NAND(n27=0,n16=0)=1.
+n29=NAND(n28=1,n18=0)=1.
+n30=NAND(n29=1,q3=1)=0.
+n31=NAND(n30=0,q9=0)=1.
+n32=NAND(n31=1,n19=1)=0.
+n33=NAND(n32=0,q7=0)=1.
+n34=NAND(n33=1,n1=1)=0.
+n35=NAND(n34=0,n0=0)=1.
+n36=NAND(n35=1,n8=1)=0.
+n37=NAND(n36=0,in2=0)=1.
+n38=NAND(n37=1,q8=1)=0.
+n39=NAND(n38=0,n18=0)=1.
+n40=NAND(n39=1,n16=0)=1.
+n41=NAND(n40=1,n11=1)=0.
+n42=NAND(n41=0,n25=1)=1.
+n43=NAND(n42=1,n28=1)=0.
+n44=NAND(n43=0,q9=0)=1.
+n45=NAND(n44=1,q10=1)=0.
+n46=NAND(n45=0,q3=1)=1.
+n47=NAND(n46=1,n21=1)=0.
+n48=NAND(n47=0,q6=0)=1.
+n49=NAND(n48=1,n33=1)=0.
+n50=NAND(n49=0,n15=1)=1.
+n51=NAND(n50=1,n9=0)=1.
+n52=NAND(n51=1,n9=0)=1.
+n53=NAND(n52=1,q1=1)=0.
+n54=NAND(n53=0,n38=0)=1.
+n55=NAND(n54=1,q2=1)=0.
+n56=NAND(n55=0,n5=1)=1.
+n57=NAND(n56=1,n13=1)=0.
+n58=NAND(n57=0,n22=0)=1.
+n59=NAND(n58=1,n43=0)=1.
+n60=NAND(n59=1,q8=1)=0.
+n61=NAND(n60=0,n48=1)=1.
+n62=NAND(n61=1,n44=1)=0.
+n63=NAND(n62=0,n41=0)=1.
+n64=NAND(n63=1,n30=0)=1.
+n65=NAND(n64=1,n37=1)=0.
+n66=NAND(n65=0,n1=1)=1.
+n67=NAND(n66=1,q0=0)=1.
+n68=NAND(n67=1,n64=1)=0.
+n69=NAND(n68=0,n35=1)=1.
+n70=NAND(n69=1,n22=0)=1.
+n71=NAND(n70=1,n43=0)=1.
+n72=NAND(n71=1,n43=0)=1.
+n73=NAND(n72=1,n55=0)=1.
+n74=NAND(n73=1,n39=1)=0.
+n75=NAND(n74=0,n20=1)=1.
+n76=NAND(n75=1,n68=0)=1.
+n77=NAND(n76=1,q4=1)=0.
+n78=NAND(n77=0,n54=1)=1.
+n79=NAND(n78=1,n75=1)=0.
+n80=NAND(n79=0,q4=1)=1.
+n81=NAND(n80=1,n36=0)=1.
+n82=NAND(n81=1,n10=1)=0.
+n83=NAND(n82=0,n28=1)=1.
+n84=NAND(n83=1,n78=1)=0.
+n85=NAND(n84=0,n58=1)=1.
+n86=NAND(n85=1,n74=0)=1.
+n87=NAND(n86=1,q5=1)=0.
+n88=NAND(n87=0,n65=0)=1.
+n89=NAND(n88=1,n70=1)=0.
+n90=NAND(n89=0,q2=1)=1.
+n91=NAND(n90=1,q11=0)=1.
+n92=NAND(n91=1,n57=0)=1.
+n93=NAND(n92=1,n8=1)=0.
+n94=NAND(n93=0,n60=0)=1.
+n95=NAND(n94=1,n64=1)=0.
+n96=NAND(n95=0,n4=0)=1.
+n97=NAND(n96=1,in1=1)=0.
+n98=NAND(n97=0,n57=0)=1.
+n99=NAND(n98=1,n8=1)=0.
+n100=NAND(n99=0,n10=1)=1.
+n101=NAND(n100=1,n35=1)=0.
+n102=NAND(n101=0,n62=0)=1.
+n103=NAND(n102=1,n73=1)=0.
+n104=NAND(n103=0,n98=1)=1.
+n105=NAND(n104=1,n16=0)=1.
+n106=NAND(n105=1,n45=0)=1.
+n107=NAND(n106=1,n77=0)=1.
+n108=NAND(n107=1,n16=0)=1.
+n109=NAND(n108=1,n103=0)=1.
+n110=NAND(n109=1,n15=1)=0.
+n111=NAND(n110=0,n41=0)=1.
+n112=NAND(n111=1,n74=0)=1.
+n113=NAND(n112=1,n71=1)=0.
+n114=NAND(n113=0,n40=1)=1.
+n115=NAND(n114=1,n113=0)=1.
+n116=NAND(n115=1,n34=0)=1.
+n117=NAND(n116=1,n25=1)=0.
+n118=NAND(n117=0,n18=0)=1.
+n119=NAND(n118=1,n59=1)=0.
+n120=NAND(n119=0,n100=1)=1.
+n121=NAND(n120=1,n5=1)=0.
+n122=NAND(n121=0,n29=1)=1.
+n123=NAND(n122=1,n45=0)=1.
+n124=NAND(n123=1,n77=0)=1.
+n125=NAND(n124=1,n15=1)=0.
+n126=NAND(n125=0,n95=0)=1.
+n127=NAND(n126=1,n10=1)=0.
+n128=NAND(n127=0,n18=0)=1.
+n129=NAND(n128=1,n35=1)=0.
+n130=NAND(n129=0,n72=1)=1.
+n131=NAND(n130=1,n2=0)=1.
+n132=NAND(n131=1,n35=1)=0.
+n133=NAND(n132=0,n104=1)=1.
+n134=NAND(n133=1,n13=1)=0.
+n135=NAND(n134=0,q3=1)=1.
+n136=NAND(n135=1,n97=0)=1.
+n137=NAND(n136=1,n26=1)=0.
+n138=NAND(n137=0,n7=1)=1.
+n139=NAND(n138=1,n38=0)=1.
+n140=NAND(n139=1,q4=1)=0.
+n141=NAND(n140=0,n11=1)=1.
+n142=NAND(n141=1,n78=1)=0.
+n143=NAND(n142=0,n51=1)=1.
+n144=NAND(n143=1,n49=0)=1.
+n145=NAND(n144=1,n112=1)=0.
+n146=NAND(n145=0,n1=1)=1.
+n147=NAND(n146=1,n22=0)=1.
+n148=NAND(n147=1,n107=1)=0.
+n149=NAND(n148=0,n18=0)=1.
+n150=NAND(n149=1,n79=0)=1.
+n151=NAND(n150=1,n57=0)=1.
+n152=NAND(n151=1,n70=1)=0.
+n153=NAND(n152=0,n109=1)=1.
+n154=NAND(n153=1,q1=1)=0.
+n155=NAND(n154=0,n73=1)=1.
+n156=NAND(n155=1,n73=1)=0.
+n157=NAND(n156=0,n76=1)=1.
+n158=NAND(n157=1,n40=1)=0.
+n159=NAND(n158=0,n34=0)=1.
+n160=NAND(n159=1,n130=1)=0.
+n161=NAND(n160=0,n57=0)=1.
+n162=NAND(n161=1,n20=1)=0.
+n163=NAND(n162=0,n21=1)=1.
+n164=NAND(n163=1,q4=1)=0.
+n165=NAND(n164=0,n138=1)=1.
+n166=NAND(n165=1,n33=1)=0.
+n167=NAND(n166=0,n59=1)=1.
+n168=NAND(n167=1,n20=1)=0.
+n169=NAND(n168=0,q0=0)=1.
+n170=NAND(n169=1,n161=1)=0.
+n171=NAND(n170=0,n55=0)=1.
+n172=NAND(n171=1,n45=0)=1.
+n173=NAND(n172=1,n16=0)=1.
+n174=NAND(n173=1,n166=0)=1.
+n175=NAND(n174=1,q3=1)=0.
+n176=NAND(n175=0,q6=0)=1.
+n177=NAND(n176=1,n116=1)=0.
+n178=NAND(n177=0,n148=0)=1.
+n179=NAND(n178=1,n82=0)=1.
+n180=NAND(n179=1,n124=1)=0.
+n181=NAND(n180=0,n42=1)=1.
+n182=NAND(n181=1,n142=0)=1.
+n183=NAND(n182=1,in1=1)=0.
+n184=NAND(n183=0,n26=1)=1.
+n185=NAND(n184=1,n139=1)=0.
+n186=NAND(n185=0,n115=1)=1.
+n187=NAND(n186=1,n12=1)=0.
+n188=NAND(n187=0,n63=1)=1.
+n189=NAND(n188=1,n185=0)=1.
+n190=NAND(n189=1,n134=0)=1.
+n191=NAND(n190=1,n122=1)=0.
+n192=NAND(n191=0,n20=1)=1.
+n193=NAND(n192=1,n96=1)=0.
+n194=NAND(n193=0,n89=0)=1.
+n195=NAND(n194=1,n130=1)=0.
+n196=NAND(n195=0,n171=1)=1.
+n197=NAND(n196=1,n158=0)=1.
+n198=NAND(n197=1,n126=1)=0.
+n199=NAND(n198=0,n18=0)=1.
+
+Outputs cycle13: n199=1; q10=S13.q10=1; q11=S13.q11=0; q6=S13.q6=0.
+
+State update S14:
+q0'=n188=1
+q1'=n159=1
+q2'=n181=1
+q3'=n190=1
+q4'=n167=1
+q5'=n192=1
+q6'=n166=0
+q7'=n170=0
+q8'=n157=1
+q9'=n188=1
+q10'=n194=1
+q11'=n193=0
+
+S14=(1,1,1,1,1,1,0,0,1,1,1,0).
+
+Note n188=1 here (first time). Let me double check n187: n186=NAND(n185=0,n115=1)=1; n187=NAND(n186=1,n12=1)=0; n188=NAND(n187=0,n63=1)=1. Yes n188=1. Good. And n185: n184=NAND(n183=0,n26=1)=1; n185=NAND(n184=1,n139=1)=0. yes.
+
+Outputs c0..c13:
+n199: [0,1,1,1,0,1,0,1,0,1,0,1,1,1]
+q10: [1,0,1,0,1,0,1,0,1,0,1,0,1,1]
+q11: [1,1,1,1,1,1,1,1,1,1,1,1,0,0]
+q6:  [1,1,1,0,1,1,1,1,1,1,1,1,0,0]
+
+=== Cycle 14 ===
+State S14=(q0=1,q1=1,q2=1,q3=1,q4=1,q5=1,q6=0,q7=0,q8=1,q9=1,q10=1,q11=0).
+Inputs I14=(in0[14],in1[14],in2[14])=(1,1,0).
+
+n0=NAND(in1=1,q8=1)=0.
+n1=NAND(n0=0,in2=0)=1.
+n2=NAND(n1=1,q5=1)=0.
+n3=NAND(n2=0,q0=1)=1.
+n4=NAND(n3=1,q5=1)=0.
+n5=NAND(n4=0,n0=0)=1.
+n6=NAND(n5=1,q8=1)=0.
+n7=NAND(n6=0,n6=0)=1.
+n8=NAND(n7=1,n2=0)=1.
+n9=NAND(n8=1,n5=1)=0.
+n10=NAND(n9=0,n3=1)=1.
+n11=NAND(n10=1,in0=1)=0.
+n12=NAND(n11=0,n6=0)=1.
+n13=NAND(n12=1,in2=0)=1.
+n14=NAND(n13=1,n11=0)=1.
+n15=NAND(n14=1,q0=1)=0.
+n16=NAND(n15=0,n12=1)=1.
+n17=NAND(n16=1,n8=1)=0.
+n18=NAND(n17=0,n3=1)=1.
+n19=NAND(n18=1,q1=1)=0.
+n20=NAND(n19=0,n4=0)=1.
+n21=NAND(n20=1,q0=1)=0.
+n22=NAND(n21=0,n3=1)=1.
+n23=NAND(n22=1,q9=1)=0.
+n24=NAND(n23=0,n12=1)=1.
+n25=NAND(n24=1,n20=1)=0.
+n26=NAND(n25=0,n22=1)=1.
+n27=NAND(n26=1,n23=0)=1.
+n28=NAND(n27=1,n16=1)=0.
+n29=NAND(n28=0,n18=1)=1.
+n30=NAND(n29=1,q3=1)=0.
+n31=NAND(n30=0,q9=1)=1.
+n32=NAND(n31=1,n19=0)=1.
+n33=NAND(n32=1,q7=0)=1.
+n34=NAND(n33=1,n1=1)=0.
+n35=NAND(n34=0,n0=0)=1.
+n36=NAND(n35=1,n8=1)=0.
+n37=NAND(n36=0,in2=0)=1.
+n38=NAND(n37=1,q8=1)=0.
+n39=NAND(n38=0,n18=1)=1.
+n40=NAND(n39=1,n16=1)=0.
+n41=NAND(n40=0,n11=0)=1.
+n42=NAND(n41=1,n25=0)=1.
+n43=NAND(n42=1,n28=0)=1.
+n44=NAND(n43=1,q9=1)=0.
+n45=NAND(n44=0,q10=1)=1.
+n46=NAND(n45=1,q3=1)=0.
+n47=NAND(n46=0,n21=0)=1.
+n48=NAND(n47=1,q6=0)=1.
+n49=NAND(n48=1,n33=1)=0.
+n50=NAND(n49=0,n15=0)=1.
+n51=NAND(n50=1,n9=0)=1.
+n52=NAND(n51=1,n9=0)=1.
+n53=NAND(n52=1,q1=1)=0.
+n54=NAND(n53=0,n38=0)=1.
+n55=NAND(n54=1,q2=1)=0.
+n56=NAND(n55=0,n5=1)=1.
+n57=NAND(n56=1,n13=1)=0.
+n58=NAND(n57=0,n22=1)=1.
+n59=NAND(n58=1,n43=1)=0.
+n60=NAND(n59=0,q8=1)=1.
+n61=NAND(n60=1,n48=1)=0.
+n62=NAND(n61=0,n44=0)=1.
+n63=NAND(n62=1,n41=1)=0.
+n64=NAND(n63=0,n30=0)=1.
+n65=NAND(n64=1,n37=1)=0.
+n66=NAND(n65=0,n1=1)=1.
+n67=NAND(n66=1,q0=1)=0.
+n68=NAND(n67=0,n64=1)=1.
+n69=NAND(n68=1,n35=1)=0.
+n70=NAND(n69=0,n22=1)=1.
+n71=NAND(n70=1,n43=1)=0.
+n72=NAND(n71=0,n43=1)=1.
+n73=NAND(n72=1,n55=0)=1.
+n74=NAND(n73=1,n39=1)=0.
+n75=NAND(n74=0,n20=1)=1.
+n76=NAND(n75=1,n68=1)=0.
+n77=NAND(n76=0,q4=1)=1.
+n78=NAND(n77=1,n54=1)=0.
+n79=NAND(n78=0,n75=1)=1.
+n80=NAND(n79=1,q4=1)=0.
+n81=NAND(n80=0,n36=0)=1.
+n82=NAND(n81=1,n10=1)=0.
+n83=NAND(n82=0,n28=0)=1.
+n84=NAND(n83=1,n78=0)=1.
+n85=NAND(n84=1,n58=1)=0.
+n86=NAND(n85=0,n74=0)=1.
+n87=NAND(n86=1,q5=1)=0.
+n88=NAND(n87=0,n65=0)=1.
+n89=NAND(n88=1,n70=1)=0.
+n90=NAND(n89=0,q2=1)=1.
+n91=NAND(n90=1,q11=0)=1.
+n92=NAND(n91=1,n57=0)=1.
+n93=NAND(n92=1,n8=1)=0.
+n94=NAND(n93=0,n60=1)=1.
+n95=NAND(n94=1,n64=1)=0.
+n96=NAND(n95=0,n4=0)=1.
+n97=NAND(n96=1,in1=1)=0.
+n98=NAND(n97=0,n57=0)=1.
+n99=NAND(n98=1,n8=1)=0.
+n100=NAND(n99=0,n10=1)=1.
+n101=NAND(n100=1,n35=1)=0.
+n102=NAND(n101=0,n62=1)=1.
+n103=NAND(n102=1,n73=1)=0.
+n104=NAND(n103=0,n98=1)=1.
+n105=NAND(n104=1,n16=1)=0.
+n106=NAND(n105=0,n45=1)=1.
+n107=NAND(n106=1,n77=1)=0.
+n108=NAND(n107=0,n16=1)=1.
+n109=NAND(n108=1,n103=0)=1.
+n110=NAND(n109=1,n15=0)=1.
+n111=NAND(n110=1,n41=1)=0.
+n112=NAND(n111=0,n74=0)=1.
+n113=NAND(n112=1,n71=0)=1.
+n114=NAND(n113=1,n40=0)=1.
+n115=NAND(n114=1,n113=1)=0.
+n116=NAND(n115=0,n34=0)=1.
+n117=NAND(n116=1,n25=0)=1.
+n118=NAND(n117=1,n18=1)=0.
+n119=NAND(n118=0,n59=0)=1.
+n120=NAND(n119=1,n100=1)=0.
+n121=NAND(n120=0,n5=1)=1.
+n122=NAND(n121=1,n29=1)=0.
+n123=NAND(n122=0,n45=1)=1.
+n124=NAND(n123=1,n77=1)=0.
+n125=NAND(n124=0,n15=0)=1.
+n126=NAND(n125=1,n95=0)=1.
+n127=NAND(n126=1,n10=1)=0.
+n128=NAND(n127=0,n18=1)=1.
+n129=NAND(n128=1,n35=1)=0.
+n130=NAND(n129=0,n72=1)=1.
+n131=NAND(n130=1,n2=0)=1.
+n132=NAND(n131=1,n35=1)=0.
+n133=NAND(n132=0,n104=1)=1.
+n134=NAND(n133=1,n13=1)=0.
+n135=NAND(n134=0,q3=1)=1.
+n136=NAND(n135=1,n97=0)=1.
+n137=NAND(n136=1,n26=1)=0.
+n138=NAND(n137=0,n7=1)=1.
+n139=NAND(n138=1,n38=0)=1.
+n140=NAND(n139=1,q4=1)=0.
+n141=NAND(n140=0,n11=0)=1.
+n142=NAND(n141=1,n78=0)=1.
+n143=NAND(n142=1,n51=1)=0.
+n144=NAND(n143=0,n49=0)=1.
+n145=NAND(n144=1,n112=1)=0.
+n146=NAND(n145=0,n1=1)=1.
+n147=NAND(n146=1,n22=1)=0.
+n148=NAND(n147=0,n107=0)=1.
+n149=NAND(n148=1,n18=1)=0.
+n150=NAND(n149=0,n79=1)=1.
+n151=NAND(n150=1,n57=0)=1.
+n152=NAND(n151=1,n70=1)=0.
+n153=NAND(n152=0,n109=1)=1.
+n154=NAND(n153=1,q1=1)=0.
+n155=NAND(n154=0,n73=1)=1.
+n156=NAND(n155=1,n73=1)=0.
+n157=NAND(n156=0,n76=0)=1.
+n158=NAND(n157=1,n40=0)=1.
+n159=NAND(n158=1,n34=0)=1.
+n160=NAND(n159=1,n130=1)=0.
+n161=NAND(n160=0,n57=0)=1.
+n162=NAND(n161=1,n20=1)=0.
+n163=NAND(n162=0,n21=0)=1.
+n164=NAND(n163=1,q4=1)=0.
+n165=NAND(n164=0,n138=1)=1.
+n166=NAND(n165=1,n33=1)=0.
+n167=NAND(n166=0,n59=0)=1.
+n168=NAND(n167=1,n20=1)=0.
+n169=NAND(n168=0,q0=1)=1.
+n170=NAND(n169=1,n161=1)=0.
+n171=NAND(n170=0,n55=0)=1.
+n172=NAND(n171=1,n45=1)=0.
+n173=NAND(n172=0,n16=1)=1.
+n174=NAND(n173=1,n166=0)=1.
+n175=NAND(n174=1,q3=1)=0.
+n176=NAND(n175=0,q6=0)=1.
+n177=NAND(n176=1,n116=1)=0.
+n178=NAND(n177=0,n148=1)=1.
+n179=NAND(n178=1,n82=0)=1.
+n180=NAND(n179=1,n124=0)=1.
+n181=NAND(n180=1,n42=1)=0.
+n182=NAND(n181=0,n142=1)=1.
+n183=NAND(n182=1,in1=1)=0.
+n184=NAND(n183=0,n26=1)=1.
+n185=NAND(n184=1,n139=1)=0.
+n186=NAND(n185=0,n115=0)=1.
+n187=NAND(n186=1,n12=1)=0.
+n188=NAND(n187=0,n63=0)=1.
+n189=NAND(n188=1,n185=0)=1.
+n190=NAND(n189=1,n134=0)=1.
+n191=NAND(n190=1,n122=0)=1.
+n192=NAND(n191=1,n20=1)=0.
+n193=NAND(n192=0,n96=1)=1.
+n194=NAND(n193=1,n89=0)=1.
+n195=NAND(n194=1,n130=1)=0.
+n196=NAND(n195=0,n171=1)=1.
+n197=NAND(n196=1,n158=1)=0.
+n198=NAND(n197=0,n126=1)=1.
+n199=NAND(n198=1,n18=1)=0.
+
+Outputs cycle14: n199=0; q10=S14.q10=1; q11=S14.q11=0; q6=S14.q6=0.
+
+State update S15:
+q0'=n188=1
+q1'=n159=1
+q2'=n181=0
+q3'=n190=1
+q4'=n167=1
+q5'=n192=0
+q6'=n166=0
+q7'=n170=0
+q8'=n157=1
+q9'=n188=1
+q10'=n194=1
+q11'=n193=1
+
+S15=(1,1,0,1,1,0,0,0,1,1,1,1).
+
+Check: n166=NAND(n165=1,n33=1)=0. n167=NAND(n166=0,n59=0)=1. n181=NAND(n180=1,n42=1)=0. n188=NAND(n187=0,n63=0)=1 (NAND(0,0)=1). n190=NAND(n189=1,n134=0)=1. n192=NAND(n191=1,n20=1)=0. n193=NAND(n192=0,n96=1)=1. n194=NAND(n193=1,n89=0)=1. n159=NAND(n158=1,n34=0)=1. n157=NAND(n156=0,n76=0)=1. n170=NAND(n169=1,n161=1)=0. OK. S15.q11=1 (n193=1). Good, q11 recovers to 1.
+
+Outputs c0..c14:
+n199: [0,1,1,1,0,1,0,1,0,1,0,1,1,1,0]
+q10: [1,0,1,0,1,0,1,0,1,0,1,0,1,1,1]
+q11: [1,1,1,1,1,1,1,1,1,1,1,1,0,0,0]
+q6:  [1,1,1,0,1,1,1,1,1,1,1,1,0,0,0]
+
+Wait q11 c14 = S14.q11 = 0. Yes. And S15.q11=1 -> c15 q11=1. q6 c14 = S14.q6=0; S15.q6=0 -> c15 q6=0.
+
+=== Cycle 15 ===
+State S15=(q0=1,q1=1,q2=0,q3=1,q4=1,q5=0,q6=0,q7=0,q8=1,q9=1,q10=1,q11=1).
+Inputs I15=(in0[15],in1[15],in2[15])=(0,1,0).
+
+n0=NAND(in1=1,q8=1)=0.
+n1=NAND(n0=0,in2=0)=1.
+n2=NAND(n1=1,q5=0)=1.
+n3=NAND(n2=1,q0=1)=0.
+n4=NAND(n3=0,q5=0)=1.
+n5=NAND(n4=1,n0=0)=1.
+n6=NAND(n5=1,q8=1)=0.
+n7=NAND(n6=0,n6=0)=1.
+n8=NAND(n7=1,n2=1)=0.
+n9=NAND(n8=0,n5=1)=1.
+n10=NAND(n9=1,n3=0)=1.
+n11=NAND(n10=1,in0=0)=1.
+n12=NAND(n11=1,n6=0)=1.
+n13=NAND(n12=1,in2=0)=1.
+n14=NAND(n13=1,n11=1)=0.
+n15=NAND(n14=0,q0=1)=1.
+n16=NAND(n15=1,n12=1)=0.
+n17=NAND(n16=0,n8=0)=1.
+n18=NAND(n17=1,n3=0)=1.
+n19=NAND(n18=1,q1=1)=0.
+n20=NAND(n19=0,n4=1)=1.
+n21=NAND(n20=1,q0=1)=0.
+n22=NAND(n21=0,n3=0)=1.
+n23=NAND(n22=1,q9=1)=0.
+n24=NAND(n23=0,n12=1)=1.
+n25=NAND(n24=1,n20=1)=0.
+n26=NAND(n25=0,n22=1)=1.
+n27=NAND(n26=1,n23=0)=1.
+n28=NAND(n27=1,n16=0)=1.
+n29=NAND(n28=1,n18=1)=0.
+n30=NAND(n29=0,q3=1)=1.
+n31=NAND(n30=1,q9=1)=0.
+n32=NAND(n31=0,n19=0)=1.
+n33=NAND(n32=1,q7=0)=1.
+n34=NAND(n33=1,n1=1)=0.
+n35=NAND(n34=0,n0=0)=1.
+n36=NAND(n35=1,n8=0)=1.
+n37=NAND(n36=1,in2=0)=1.
+n38=NAND(n37=1,q8=1)=0.
+n39=NAND(n38=0,n18=1)=1.
+n40=NAND(n39=1,n16=0)=1.
+n41=NAND(n40=1,n11=1)=0.
+n42=NAND(n41=0,n25=0)=1.
+n43=NAND(n42=1,n28=1)=0.
+n44=NAND(n43=0,q9=1)=1.
+n45=NAND(n44=1,q10=1)=0.
+n46=NAND(n45=0,q3=1)=1.
+n47=NAND(n46=1,n21=0)=1.
+n48=NAND(n47=1,q6=0)=1.
+n49=NAND(n48=1,n33=1)=0.
+n50=NAND(n49=0,n15=1)=1.
+n51=NAND(n50=1,n9=1)=0.
+n52=NAND(n51=0,n9=1)=1.
+n53=NAND(n52=1,q1=1)=0.
+n54=NAND(n53=0,n38=0)=1.
+n55=NAND(n54=1,q2=0)=1.
+n56=NAND(n55=1,n5=1)=0.
+n57=NAND(n56=0,n13=1)=1.
+n58=NAND(n57=1,n22=1)=0.
+n59=NAND(n58=0,n43=0)=1.
+n60=NAND(n59=1,q8=1)=0.
+n61=NAND(n60=0,n48=1)=1.
+n62=NAND(n61=1,n44=1)=0.
+n63=NAND(n62=0,n41=0)=1.
+n64=NAND(n63=1,n30=1)=0.
+n65=NAND(n64=0,n37=1)=1.
+n66=NAND(n65=1,n1=1)=0.
+n67=NAND(n66=0,q0=1)=1.
+n68=NAND(n67=1,n64=0)=1.
+n69=NAND(n68=1,n35=1)=0.
+n70=NAND(n69=0,n22=1)=1.
+n71=NAND(n70=1,n43=0)=1.
+n72=NAND(n71=1,n43=0)=1.
+n73=NAND(n72=1,n55=1)=0.
+n74=NAND(n73=0,n39=1)=1.
+n75=NAND(n74=1,n20=1)=0.
+n76=NAND(n75=0,n68=1)=1.
+n77=NAND(n76=1,q4=1)=0.
+n78=NAND(n77=0,n54=1)=1.
+n79=NAND(n78=1,n75=0)=1.
+n80=NAND(n79=1,q4=1)=0.
+n81=NAND(n80=0,n36=1)=1.
+n82=NAND(n81=1,n10=1)=0.
+n83=NAND(n82=0,n28=1)=1.
+n84=NAND(n83=1,n78=1)=0.
+n85=NAND(n84=0,n58=0)=1.
+n86=NAND(n85=1,n74=1)=0.
+n87=NAND(n86=0,q5=0)=1.
+n88=NAND(n87=1,n65=1)=0.
+n89=NAND(n88=0,n70=1)=1.
+n90=NAND(n89=1,q2=0)=1.
+n91=NAND(n90=1,q11=1)=0.
+n92=NAND(n91=0,n57=1)=1.
+n93=NAND(n92=1,n8=0)=1.
+n94=NAND(n93=1,n60=0)=1.
+n95=NAND(n94=1,n64=0)=1.
+n96=NAND(n95=1,n4=1)=0.
+n97=NAND(n96=0,in1=1)=1.
+n98=NAND(n97=1,n57=1)=0.
+n99=NAND(n98=0,n8=0)=1.
+n100=NAND(n99=1,n10=1)=0.
+n101=NAND(n100=0,n35=1)=1.
+n102=NAND(n101=1,n62=0)=1.
+n103=NAND(n102=1,n73=0)=1.
+n104=NAND(n103=1,n98=0)=1.
+n105=NAND(n104=1,n16=0)=1.
+n106=NAND(n105=1,n45=0)=1.
+n107=NAND(n106=1,n77=0)=1.
+n108=NAND(n107=1,n16=0)=1.
+n109=NAND(n108=1,n103=1)=0.
+n110=NAND(n109=0,n15=1)=1.
+n111=NAND(n110=1,n41=0)=1.
+n112=NAND(n111=1,n74=1)=0.
+n113=NAND(n112=0,n71=1)=1.
+n114=NAND(n113=1,n40=1)=0.
+n115=NAND(n114=0,n113=1)=1.
+n116=NAND(n115=1,n34=0)=1.
+n117=NAND(n116=1,n25=0)=1.
+n118=NAND(n117=1,n18=1)=0.
+n119=NAND(n118=0,n59=1)=1.
+n120=NAND(n119=1,n100=0)=1.
+n121=NAND(n120=1,n5=1)=0.
+n122=NAND(n121=0,n29=0)=1.
+n123=NAND(n122=1,n45=0)=1.
+n124=NAND(n123=1,n77=0)=1.
+n125=NAND(n124=1,n15=1)=0.
+n126=NAND(n125=0,n95=1)=1.
+n127=NAND(n126=1,n10=1)=0.
+n128=NAND(n127=0,n18=1)=1.
+n129=NAND(n128=1,n35=1)=0.
+n130=NAND(n129=0,n72=1)=1.
+n131=NAND(n130=1,n2=1)=0.
+n132=NAND(n131=0,n35=1)=1.
+n133=NAND(n132=1,n104=1)=0.
+n134=NAND(n133=0,n13=1)=1.
+n135=NAND(n134=1,q3=1)=0.
+n136=NAND(n135=0,n97=1)=1.
+n137=NAND(n136=1,n26=1)=0.
+n138=NAND(n137=0,n7=1)=1.
+n139=NAND(n138=1,n38=0)=1.
+n140=NAND(n139=1,q4=1)=0.
+n141=NAND(n140=0,n11=1)=1.
+n142=NAND(n141=1,n78=1)=0.
+n143=NAND(n142=0,n51=0)=1.
+n144=NAND(n143=1,n49=0)=1.
+n145=NAND(n144=1,n112=0)=1.
+n146=NAND(n145=1,n1=1)=0.
+n147=NAND(n146=0,n22=1)=1.
+n148=NAND(n147=1,n107=1)=0.
+n149=NAND(n148=0,n18=1)=1.
+n150=NAND(n149=1,n79=1)=0.
+n151=NAND(n150=0,n57=1)=1.
+n152=NAND(n151=1,n70=1)=0.
+n153=NAND(n152=0,n109=0)=1.
+n154=NAND(n153=1,q1=1)=0.
+n155=NAND(n154=0,n73=0)=1.
+n156=NAND(n155=1,n73=0)=1.
+n157=NAND(n156=1,n76=1)=0.
+n158=NAND(n157=0,n40=1)=1.
+n159=NAND(n158=1,n34=0)=1.
+n160=NAND(n159=1,n130=1)=0.
+n161=NAND(n160=0,n57=1)=1.
+n162=NAND(n161=1,n20=1)=0.
+n163=NAND(n162=0,n21=0)=1.
+n164=NAND(n163=1,q4=1)=0.
+n165=NAND(n164=0,n138=1)=1.
+n166=NAND(n165=1,n33=1)=0.
+n167=NAND(n166=0,n59=1)=1.
+n168=NAND(n167=1,n20=1)=0.
+n169=NAND(n168=0,q0=1)=1.
+n170=NAND(n169=1,n161=1)=0.
+n171=NAND(n170=0,n55=1)=1.
+n172=NAND(n171=1,n45=0)=1.
+n173=NAND(n172=1,n16=0)=1.
+n174=NAND(n173=1,n166=0)=1.
+n175=NAND(n174=1,q3=1)=0.
+n176=NAND(n175=0,q6=0)=1.
+n177=NAND(n176=1,n116=1)=0.
+n178=NAND(n177=0,n148=0)=1.
+n179=NAND(n178=1,n82=0)=1.
+n180=NAND(n179=1,n124=1)=0.
+n181=NAND(n180=0,n42=1)=1.
+n182=NAND(n181=1,n142=0)=1.
+n183=NAND(n182=1,in1=1)=0.
+n184=NAND(n183=0,n26=1)=1.
+n185=NAND(n184=1,n139=1)=0.
+n186=NAND(n185=0,n115=1)=1.
+n187=NAND(n186=1,n12=1)=0.
+n188=NAND(n187=0,n63=1)=1.
+n189=NAND(n188=1,n185=0)=1.
+n190=NAND(n189=1,n134=1)=0.
+n191=NAND(n190=0,n122=1)=1.
+n192=NAND(n191=1,n20=1)=0.
+n193=NAND(n192=0,n96=0)=1.
+n194=NAND(n193=1,n89=1)=0.
+n195=NAND(n194=0,n130=1)=1.
+n196=NAND(n195=1,n171=1)=0.
+n197=NAND(n196=0,n158=1)=1.
+n198=NAND(n197=1,n126=1)=0.
+n199=NAND(n198=0,n18=1)=1.
+
+Outputs cycle15: n199=1; q10=S15.q10=1; q11=S15.q11=1; q6=S15.q6=0.
+
+State update S16:
+q0'=n188=1
+q1'=n159=1
+q2'=n181=1
+q3'=n190=0
+q4'=n167=1
+q5'=n192=0
+q6'=n166=0
+q7'=n170=0
+q8'=n157=0
+q9'=n188=1
+q10'=n194=0
+q11'=n193=1
+
+S16=(1,1,1,0,1,0,0,0,0,1,0,1).
+
+Check: n188=NAND(n187=0,n63=1)=1. n190=NAND(n189=1,n134=1)=0. n157=NAND(n156=1,n76=1)=0. n166=NAND(n165=1,n33=1)=0. n167=NAND(n166=0,n59=1)=1. n181=NAND(n180=0,n42=1)=1. n192=NAND(n191=1,n20=1)=0. n193=NAND(n192=0,n96=0)=1. n194=NAND(n193=1,n89=1)=0. n159=NAND(n158=1,n34=0)=1. n170=NAND(n169=1,n161=1)=0. OK.
+
+Outputs c0..c15:
+n199: [0,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1]
+q10: [1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,1]
+q11: [1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,1]
+q6:  [1,1,1,0,1,1,1,1,1,1,1,1,0,0,0,0]
+
+=== Cycle 16 ===
+State S16=(q0=1,q1=1,q2=1,q3=0,q4=1,q5=0,q6=0,q7=0,q8=0,q9=1,q10=0,q11=1).
+Inputs I16=(in0[16],in1[16],in2[16])=(0,0,0).
+
+n0=NAND(in1=0,q8=0)=1.
+n1=NAND(n0=1,in2=0)=1.
+n2=NAND(n1=1,q5=0)=1.
+n3=NAND(n2=1,q0=1)=0.
+n4=NAND(n3=0,q5=0)=1.
+n5=NAND(n4=1,n0=1)=0.
+n6=NAND(n5=0,q8=0)=1.
+n7=NAND(n6=1,n6=1)=0.
+n8=NAND(n7=0,n2=1)=1.
+n9=NAND(n8=1,n5=0)=1.
+n10=NAND(n9=1,n3=0)=1.
+n11=NAND(n10=1,in0=0)=1.
+n12=NAND(n11=1,n6=1)=0.
+n13=NAND(n12=0,in2=0)=1.
+n14=NAND(n13=1,n11=1)=0.
+n15=NAND(n14=0,q0=1)=1.
+n16=NAND(n15=1,n12=0)=1.
+n17=NAND(n16=1,n8=1)=0.
+n18=NAND(n17=0,n3=0)=1.
+n19=NAND(n18=1,q1=1)=0.
+n20=NAND(n19=0,n4=1)=1.
+n21=NAND(n20=1,q0=1)=0.
+n22=NAND(n21=0,n3=0)=1.
+n23=NAND(n22=1,q9=1)=0.
+n24=NAND(n23=0,n12=0)=1.
+n25=NAND(n24=1,n20=1)=0.
+n26=NAND(n25=0,n22=1)=1.
+n27=NAND(n26=1,n23=0)=1.
+n28=NAND(n27=1,n16=1)=0.
+n29=NAND(n28=0,n18=1)=1.
+n30=NAND(n29=1,q3=0)=1.
+n31=NAND(n30=1,q9=1)=0.
+n32=NAND(n31=0,n19=0)=1.
+n33=NAND(n32=1,q7=0)=1.
+n34=NAND(n33=1,n1=1)=0.
+n35=NAND(n34=0,n0=1)=1.
+n36=NAND(n35=1,n8=1)=0.
+n37=NAND(n36=0,in2=0)=1.
+n38=NAND(n37=1,q8=0)=1.
+n39=NAND(n38=1,n18=1)=0.
+n40=NAND(n39=0,n16=1)=1.
+n41=NAND(n40=1,n11=1)=0.
+n42=NAND(n41=0,n25=0)=1.
+n43=NAND(n42=1,n28=0)=1.
+n44=NAND(n43=1,q9=1)=0.
+n45=NAND(n44=0,q10=0)=1.
+n46=NAND(n45=1,q3=0)=1.
+n47=NAND(n46=1,n21=0)=1.
+n48=NAND(n47=1,q6=0)=1.
+n49=NAND(n48=1,n33=1)=0.
+n50=NAND(n49=0,n15=1)=1.
+n51=NAND(n50=1,n9=1)=0.
+n52=NAND(n51=0,n9=1)=1.
+n53=NAND(n52=1,q1=1)=0.
+n54=NAND(n53=0,n38=1)=1.
+n55=NAND(n54=1,q2=1)=0.
+n56=NAND(n55=0,n5=0)=1.
+n57=NAND(n56=1,n13=1)=0.
+n58=NAND(n57=0,n22=1)=1.
+n59=NAND(n58=1,n43=1)=0.
+n60=NAND(n59=0,q8=0)=1.
+n61=NAND(n60=1,n48=1)=0.
+n62=NAND(n61=0,n44=0)=1.
+n63=NAND(n62=1,n41=0)=1.
+n64=NAND(n63=1,n30=1)=0.
+n65=NAND(n64=0,n37=1)=1.
+n66=NAND(n65=1,n1=1)=0.
+n67=NAND(n66=0,q0=1)=1.
+n68=NAND(n67=1,n64=0)=1.
+n69=NAND(n68=1,n35=1)=0.
+n70=NAND(n69=0,n22=1)=1.
+n71=NAND(n70=1,n43=1)=0.
+n72=NAND(n71=0,n43=1)=1.
+n73=NAND(n72=1,n55=0)=1.
+n74=NAND(n73=1,n39=0)=1.
+n75=NAND(n74=1,n20=1)=0.
+n76=NAND(n75=0,n68=1)=1.
+n77=NAND(n76=1,q4=1)=0.
+n78=NAND(n77=0,n54=1)=1.
+n79=NAND(n78=1,n75=0)=1.
+n80=NAND(n79=1,q4=1)=0.
+n81=NAND(n80=0,n36=0)=1.
+n82=NAND(n81=1,n10=1)=0.
+n83=NAND(n82=0,n28=0)=1.
+n84=NAND(n83=1,n78=1)=0.
+n85=NAND(n84=0,n58=1)=1.
+n86=NAND(n85=1,n74=1)=0.
+n87=NAND(n86=0,q5=0)=1.
+n88=NAND(n87=1,n65=1)=0.
+n89=NAND(n88=0,n70=1)=1.
+n90=NAND(n89=1,q2=1)=0.
+n91=NAND(n90=0,q11=1)=1.
+n92=NAND(n91=1,n57=0)=1.
+n93=NAND(n92=1,n8=1)=0.
+n94=NAND(n93=0,n60=1)=1.
+n95=NAND(n94=1,n64=0)=1.
+n96=NAND(n95=1,n4=1)=0.
+n97=NAND(n96=0,in1=0)=1.
+n98=NAND(n97=1,n57=0)=1.
+n99=NAND(n98=1,n8=1)=0.
+n100=NAND(n99=0,n10=1)=1.
+n101=NAND(n100=1,n35=1)=0.
+n102=NAND(n101=0,n62=1)=1.
+n103=NAND(n102=1,n73=1)=0.
+n104=NAND(n103=0,n98=1)=1.
+n105=NAND(n104=1,n16=1)=0.
+n106=NAND(n105=0,n45=1)=1.
+n107=NAND(n106=1,n77=0)=1.
+n108=NAND(n107=1,n16=1)=0.
+n109=NAND(n108=0,n103=0)=1.
+n110=NAND(n109=1,n15=1)=0.
+n111=NAND(n110=0,n41=0)=1.
+n112=NAND(n111=1,n74=1)=0.
+n113=NAND(n112=0,n71=0)=1.
+n114=NAND(n113=1,n40=1)=0.
+n115=NAND(n114=0,n113=1)=1.
+n116=NAND(n115=1,n34=0)=1.
+n117=NAND(n116=1,n25=0)=1.
+n118=NAND(n117=1,n18=1)=0.
+n119=NAND(n118=0,n59=0)=1.
+n120=NAND(n119=1,n100=1)=0.
+n121=NAND(n120=0,n5=0)=1.
+n122=NAND(n121=1,n29=1)=0.
+n123=NAND(n122=0,n45=1)=1.
+n124=NAND(n123=1,n77=0)=1.
+n125=NAND(n124=1,n15=1)=0.
+n126=NAND(n125=0,n95=1)=1.
+n127=NAND(n126=1,n10=1)=0.
+n128=NAND(n127=0,n18=1)=1.
+n129=NAND(n128=1,n35=1)=0.
+n130=NAND(n129=0,n72=1)=1.
+n131=NAND(n130=1,n2=1)=0.
+n132=NAND(n131=0,n35=1)=1.
+n133=NAND(n132=1,n104=1)=0.
+n134=NAND(n133=0,n13=1)=1.
+n135=NAND(n134=1,q3=0)=1.
+n136=NAND(n135=1,n97=1)=0.
+n137=NAND(n136=0,n26=1)=1.
+n138=NAND(n137=1,n7=0)=1.
+n139=NAND(n138=1,n38=1)=0.
+n140=NAND(n139=0,q4=1)=1.
+n141=NAND(n140=1,n11=1)=0.
+n142=NAND(n141=0,n78=1)=1.
+n143=NAND(n142=1,n51=0)=1.
+n144=NAND(n143=1,n49=0)=1.
+n145=NAND(n144=1,n112=0)=1.
+n146=NAND(n145=1,n1=1)=0.
+n147=NAND(n146=0,n22=1)=1.
+n148=NAND(n147=1,n107=1)=0.
+n149=NAND(n148=0,n18=1)=1.
+n150=NAND(n149=1,n79=1)=0.
+n151=NAND(n150=0,n57=0)=1.
+n152=NAND(n151=1,n70=1)=0.
+n153=NAND(n152=0,n109=1)=1.
+n154=NAND(n153=1,q1=1)=0.
+n155=NAND(n154=0,n73=1)=1.
+n156=NAND(n155=1,n73=1)=0.
+n157=NAND(n156=0,n76=1)=1.
+n158=NAND(n157=1,n40=1)=0.
+n159=NAND(n158=0,n34=0)=1.
+n160=NAND(n159=1,n130=1)=0.
+n161=NAND(n160=0,n57=0)=1.
+n162=NAND(n161=1,n20=1)=0.
+n163=NAND(n162=0,n21=0)=1.
+n164=NAND(n163=1,q4=1)=0.
+n165=NAND(n164=0,n138=1)=1.
+n166=NAND(n165=1,n33=1)=0.
+n167=NAND(n166=0,n59=0)=1.
+n168=NAND(n167=1,n20=1)=0.
+n169=NAND(n168=0,q0=1)=1.
+n170=NAND(n169=1,n161=1)=0.
+n171=NAND(n170=0,n55=0)=1.
+n172=NAND(n171=1,n45=1)=0.
+n173=NAND(n172=0,n16=1)=1.
+n174=NAND(n173=1,n166=0)=1.
+n175=NAND(n174=1,q3=0)=1.
+n176=NAND(n175=1,q6=0)=1.
+n177=NAND(n176=1,n116=1)=0.
+n178=NAND(n177=0,n148=0)=1.
+n179=NAND(n178=1,n82=0)=1.
+n180=NAND(n179=1,n124=1)=0.
+n181=NAND(n180=0,n42=1)=1.
+n182=NAND(n181=1,n142=1)=0.
+n183=NAND(n182=0,in1=0)=1.
+n184=NAND(n183=1,n26=1)=0.
+n185=NAND(n184=0,n139=0)=1.
+n186=NAND(n185=1,n115=1)=0.
+n187=NAND(n186=0,n12=0)=1.
+n188=NAND(n187=1,n63=1)=0.
+n189=NAND(n188=0,n185=1)=1.
+n190=NAND(n189=1,n134=1)=0.
+n191=NAND(n190=0,n122=0)=1.
+n192=NAND(n191=1,n20=1)=0.
+n193=NAND(n192=0,n96=0)=1.
+n194=NAND(n193=1,n89=1)=0.
+n195=NAND(n194=0,n130=1)=1.
+n196=NAND(n195=1,n171=1)=0.
+n197=NAND(n196=0,n158=0)=1.
+n198=NAND(n197=1,n126=1)=0.
+n199=NAND(n198=0,n18=1)=1.
+
+Outputs cycle16: n199=1; q10=S16.q10=0; q11=S16.q11=1; q6=S16.q6=0.
+
+State update S17:
+q0'=n188=0
+q1'=n159=1
+q2'=n181=1
+q3'=n190=0
+q4'=n167=1
+q5'=n192=0
+q6'=n166=0
+q7'=n170=0
+q8'=n157=1
+q9'=n188=0
+q10'=n194=0
+q11'=n193=1
+
+S17=(0,1,1,0,1,0,0,0,1,0,0,1).
+
+Check: n188=NAND(n187=1,n63=1)=0 (n187=NAND(n186=0,n12=0)=1). n166=NAND(n165=1,n33=1)=0. n157=NAND(n156=0,n76=1)=1. n190=NAND(n189=1,n134=1)=0. n167=NAND(n166=0,n59=0)=1. n181=NAND(n180=0,n42=1)=1. n192=NAND(n191=1,n20=1)=0. n193=NAND(n192=0,n96=0)=1. n194=NAND(n193=1,n89=1)=0. n159=NAND(n158=0,n34=0)=1. n170=NAND(n169=1,n161=1)=0. OK.
+
+Outputs c0..c16:
+n199: [0,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,1]
+q10: [1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,1,0]
+q11: [1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,1,1]
+q6:  [1,1,1,0,1,1,1,1,1,1,1,1,0,0,0,0,0]
+
+=== Cycle 17 ===
+State S17=(q0=0,q1=1,q2=1,q3=0,q4=1,q5=0,q6=0,q7=0,q8=1,q9=0,q10=0,q11=1).
+Inputs I17=(in0[17],in1[17],in2[17])=(1,0,1).
+
+n0=NAND(in1=0,q8=1)=1.
+n1=NAND(n0=1,in2=1)=0.
+n2=NAND(n1=0,q5=0)=1.
+n3=NAND(n2=1,q0=0)=1.
+n4=NAND(n3=1,q5=0)=1.
+n5=NAND(n4=1,n0=1)=0.
+n6=NAND(n5=0,q8=1)=1.
+n7=NAND(n6=1,n6=1)=0.
+n8=NAND(n7=0,n2=1)=1.
+n9=NAND(n8=1,n5=0)=1.
+n10=NAND(n9=1,n3=1)=0.
+n11=NAND(n10=0,in0=1)=1.
+n12=NAND(n11=1,n6=1)=0.
+n13=NAND(n12=0,in2=1)=1.
+n14=NAND(n13=1,n11=1)=0.
+n15=NAND(n14=0,q0=0)=1.
+n16=NAND(n15=1,n12=0)=1.
+n17=NAND(n16=1,n8=1)=0.
+n18=NAND(n17=0,n3=1)=1.
+n19=NAND(n18=1,q1=1)=0.
+n20=NAND(n19=0,n4=1)=1.
+n21=NAND(n20=1,q0=0)=1.
+n22=NAND(n21=1,n3=1)=0.
+n23=NAND(n22=0,q9=0)=1.
+n24=NAND(n23=1,n12=0)=1.
+n25=NAND(n24=1,n20=1)=0.
+n26=NAND(n25=0,n22=0)=1.
+n27=NAND(n26=1,n23=1)=0.
+n28=NAND(n27=0,n16=1)=1.
+n29=NAND(n28=1,n18=1)=0.
+n30=NAND(n29=0,q3=0)=1.
+n31=NAND(n30=1,q9=0)=1.
+n32=NAND(n31=1,n19=0)=1.
+n33=NAND(n32=1,q7=0)=1.
+n34=NAND(n33=1,n1=0)=1.
+n35=NAND(n34=1,n0=1)=0.
+n36=NAND(n35=0,n8=1)=1.
+n37=NAND(n36=1,in2=1)=0.
+n38=NAND(n37=0,q8=1)=1.
+n39=NAND(n38=1,n18=1)=0.
+n40=NAND(n39=0,n16=1)=1.
+n41=NAND(n40=1,n11=1)=0.
+n42=NAND(n41=0,n25=0)=1.
+n43=NAND(n42=1,n28=1)=0.
+n44=NAND(n43=0,q9=0)=1.
+n45=NAND(n44=1,q10=0)=1.
+n46=NAND(n45=1,q3=0)=1.
+n47=NAND(n46=1,n21=1)=0.
+n48=NAND(n47=0,q6=0)=1.
+n49=NAND(n48=1,n33=1)=0.
+n50=NAND(n49=0,n15=1)=1.
+n51=NAND(n50=1,n9=1)=0.
+n52=NAND(n51=0,n9=1)=1.
+n53=NAND(n52=1,q1=1)=0.
+n54=NAND(n53=0,n38=1)=1.
+n55=NAND(n54=1,q2=1)=0.
+n56=NAND(n55=0,n5=0)=1.
+n57=NAND(n56=1,n13=1)=0.
+n58=NAND(n57=0,n22=0)=1.
+n59=NAND(n58=1,n43=0)=1.
+n60=NAND(n59=1,q8=1)=0.
+n61=NAND(n60=0,n48=1)=1.
+n62=NAND(n61=1,n44=1)=0.
+n63=NAND(n62=0,n41=0)=1.
+n64=NAND(n63=1,n30=1)=0.
+n65=NAND(n64=0,n37=0)=1.
+n66=NAND(n65=1,n1=0)=1.
+n67=NAND(n66=1,q0=0)=1.
+n68=NAND(n67=1,n64=0)=1.
+n69=NAND(n68=1,n35=0)=1.
+n70=NAND(n69=1,n22=0)=1.
+n71=NAND(n70=1,n43=0)=1.
+n72=NAND(n71=1,n43=0)=1.
+n73=NAND(n72=1,n55=0)=1.
+n74=NAND(n73=1,n39=0)=1.
+n75=NAND(n74=1,n20=1)=0.
+n76=NAND(n75=0,n68=1)=1.
+n77=NAND(n76=1,q4=1)=0.
+n78=NAND(n77=0,n54=1)=1.
+n79=NAND(n78=1,n75=0)=1.
+n80=NAND(n79=1,q4=1)=0.
+n81=NAND(n80=0,n36=1)=1.
+n82=NAND(n81=1,n10=0)=1.
+n83=NAND(n82=1,n28=1)=0.
+n84=NAND(n83=0,n78=1)=1.
+n85=NAND(n84=1,n58=1)=0.
+n86=NAND(n85=0,n74=1)=1.
+n87=NAND(n86=1,q5=0)=1.
+n88=NAND(n87=1,n65=1)=0.
+n89=NAND(n88=0,n70=1)=1.
+n90=NAND(n89=1,q2=1)=0.
+n91=NAND(n90=0,q11=1)=1.
+n92=NAND(n91=1,n57=0)=1.
+n93=NAND(n92=1,n8=1)=0.
+n94=NAND(n93=0,n60=0)=1.
+n95=NAND(n94=1,n64=0)=1.
+n96=NAND(n95=1,n4=1)=0.
+n97=NAND(n96=0,in1=0)=1.
+n98=NAND(n97=1,n57=0)=1.
+n99=NAND(n98=1,n8=1)=0.
+n100=NAND(n99=0,n10=0)=1.
+n101=NAND(n100=1,n35=0)=1.
+n102=NAND(n101=1,n62=0)=1.
+n103=NAND(n102=1,n73=1)=0.
+n104=NAND(n103=0,n98=1)=1.
+n105=NAND(n104=1,n16=1)=0.
+n106=NAND(n105=0,n45=1)=1.
+n107=NAND(n106=1,n77=0)=1.
+n108=NAND(n107=1,n16=1)=0.
+n109=NAND(n108=0,n103=0)=1.
+n110=NAND(n109=1,n15=1)=0.
+n111=NAND(n110=0,n41=0)=1.
+n112=NAND(n111=1,n74=1)=0.
+n113=NAND(n112=0,n71=1)=1.
+n114=NAND(n113=1,n40=1)=0.
+n115=NAND(n114=0,n113=1)=1.
+n116=NAND(n115=1,n34=1)=0.
+n117=NAND(n116=0,n25=0)=1.
+n118=NAND(n117=1,n18=1)=0.
+n119=NAND(n118=0,n59=1)=1.
+n120=NAND(n119=1,n100=1)=0.
+n121=NAND(n120=0,n5=0)=1.
+n122=NAND(n121=1,n29=0)=1.
+n123=NAND(n122=1,n45=1)=0.
+n124=NAND(n123=0,n77=0)=1.
+n125=NAND(n124=1,n15=1)=0.
+n126=NAND(n125=0,n95=1)=1.
+n127=NAND(n126=1,n10=0)=1.
+n128=NAND(n127=1,n18=1)=0.
+n129=NAND(n128=0,n35=0)=1.
+n130=NAND(n129=1,n72=1)=0.
+n131=NAND(n130=0,n2=1)=1.
+n132=NAND(n131=1,n35=0)=1.
+n133=NAND(n132=1,n104=1)=0.
+n134=NAND(n133=0,n13=1)=1.
+n135=NAND(n134=1,q3=0)=1.
+n136=NAND(n135=1,n97=1)=0.
+n137=NAND(n136=0,n26=1)=1.
+n138=NAND(n137=1,n7=0)=1.
+n139=NAND(n138=1,n38=1)=0.
+n140=NAND(n139=0,q4=1)=1.
+n141=NAND(n140=1,n11=1)=0.
+n142=NAND(n141=0,n78=1)=1.
+n143=NAND(n142=1,n51=0)=1.
+n144=NAND(n143=1,n49=0)=1.
+n145=NAND(n144=1,n112=0)=1.
+n146=NAND(n145=1,n1=0)=1.
+n147=NAND(n146=1,n22=0)=1.
+n148=NAND(n147=1,n107=1)=0.
+n149=NAND(n148=0,n18=1)=1.
+n150=NAND(n149=1,n79=1)=0.
+n151=NAND(n150=0,n57=0)=1.
+n152=NAND(n151=1,n70=1)=0.
+n153=NAND(n152=0,n109=1)=1.
+n154=NAND(n153=1,q1=1)=0.
+n155=NAND(n154=0,n73=1)=1.
+n156=NAND(n155=1,n73=1)=0.
+n157=NAND(n156=0,n76=1)=1.
+n158=NAND(n157=1,n40=1)=0.
+n159=NAND(n158=0,n34=1)=1.
+n160=NAND(n159=1,n130=0)=1.
+n161=NAND(n160=1,n57=0)=1.
+n162=NAND(n161=1,n20=1)=0.
+n163=NAND(n162=0,n21=1)=1.
+n164=NAND(n163=1,q4=1)=0.
+n165=NAND(n164=0,n138=1)=1.
+n166=NAND(n165=1,n33=1)=0.
+n167=NAND(n166=0,n59=1)=1.
+n168=NAND(n167=1,n20=1)=0.
+n169=NAND(n168=0,q0=0)=1.
+n170=NAND(n169=1,n161=1)=0.
+n171=NAND(n170=0,n55=0)=1.
+n172=NAND(n171=1,n45=1)=0.
+n173=NAND(n172=0,n16=1)=1.
+n174=NAND(n173=1,n166=0)=1.
+n175=NAND(n174=1,q3=0)=1.
+n176=NAND(n175=1,q6=0)=1.
+n177=NAND(n176=1,n116=0)=1.
+n178=NAND(n177=1,n148=0)=1.
+n179=NAND(n178=1,n82=1)=0.
+n180=NAND(n179=0,n124=1)=1.
+n181=NAND(n180=1,n42=1)=0.
+n182=NAND(n181=0,n142=1)=1.
+n183=NAND(n182=1,in1=0)=1.
+n184=NAND(n183=1,n26=1)=0.
+n185=NAND(n184=0,n139=0)=1.
+n186=NAND(n185=1,n115=1)=0.
+n187=NAND(n186=0,n12=0)=1.
+n188=NAND(n187=1,n63=1)=0.
+n189=NAND(n188=0,n185=1)=1.
+n190=NAND(n189=1,n134=1)=0.
+n191=NAND(n190=0,n122=1)=1.
+n192=NAND(n191=1,n20=1)=0.
+n193=NAND(n192=0,n96=0)=1.
+n194=NAND(n193=1,n89=1)=0.
+n195=NAND(n194=0,n130=0)=1.
+n196=NAND(n195=1,n171=1)=0.
+n197=NAND(n196=0,n158=0)=1.
+n198=NAND(n197=1,n126=1)=0.
+n199=NAND(n198=0,n18=1)=1.
+
+Outputs cycle17: n199=1; q10=S17.q10=0; q11=S17.q11=1; q6=S17.q6=0.
+
+State update S18:
+q0'=n188=0
+q1'=n159=1
+q2'=n181=0
+q3'=n190=0
+q4'=n167=1
+q5'=n192=0
+q6'=n166=0
+q7'=n170=0
+q8'=n157=1
+q9'=n188=0
+q10'=n194=0
+q11'=n193=1
+
+S18=(0,1,0,0,1,0,0,0,1,0,0,1).
+
+Check: n166=NAND(n165=1,n33=1)=0. n167=NAND(n166=0,n59=1)=1. n181=NAND(n180=1,n42=1)=0. n188=NAND(n187=1,n63=1)=0. n190=NAND(n189=1,n134=1)=0. n192=NAND(n191=1,n20=1)=0. n193=NAND(n192=0,n96=0)=1. n194=NAND(n193=1,n89=1)=0. n157=NAND(n156=0,n76=1)=1. n159=NAND(n158=0,n34=1)=1. n170=NAND(n169=1,n161=1)=0. OK.
+
+Outputs c0..c17:
+n199: [0,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,1,1]
+q10: [1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,1,0,0]
+q11: [1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,1,1,1]
+q6:  [1,1,1,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0]
+
+=== Cycle 18 ===
+State S18=(q0=0,q1=1,q2=0,q3=0,q4=1,q5=0,q6=0,q7=0,q8=1,q9=0,q10=0,q11=1).
+Inputs I18=(in0[18],in1[18],in2[18])=(1,1,1).
+
+n0=NAND(in1=1,q8=1)=0.
+n1=NAND(n0=0,in2=1)=1.
+n2=NAND(n1=1,q5=0)=1.
+n3=NAND(n2=1,q0=0)=1.
+n4=NAND(n3=1,q5=0)=1.
+n5=NAND(n4=1,n0=0)=1.
+n6=NAND(n5=1,q8=1)=0.
+n7=NAND(n6=0,n6=0)=1.
+n8=NAND(n7=1,n2=1)=0.
+n9=NAND(n8=0,n5=1)=1.
+n10=NAND(n9=1,n3=1)=0.
+n11=NAND(n10=0,in0=1)=1.
+n12=NAND(n11=1,n6=0)=1.
+n13=NAND(n12=1,in2=1)=0.
+n14=NAND(n13=0,n11=1)=1.
+n15=NAND(n14=1,q0=0)=1.
+n16=NAND(n15=1,n12=1)=0.
+n17=NAND(n16=0,n8=0)=1.
+n18=NAND(n17=1,n3=1)=0.
+n19=NAND(n18=0,q1=1)=1.
+n20=NAND(n19=1,n4=1)=0.
+n21=NAND(n20=0,q0=0)=1.
+n22=NAND(n21=1,n3=1)=0.
+n23=NAND(n22=0,q9=0)=1.
+n24=NAND(n23=1,n12=1)=0.
+n25=NAND(n24=0,n20=0)=1.
+n26=NAND(n25=1,n22=0)=1.
+n27=NAND(n26=1,n23=1)=0.
+n28=NAND(n27=0,n16=0)=1.
+n29=NAND(n28=1,n18=0)=1.
+n30=NAND(n29=1,q3=0)=1.
+n31=NAND(n30=1,q9=0)=1.
+n32=NAND(n31=1,n19=1)=0.
+n33=NAND(n32=0,q7=0)=1.
+n34=NAND(n33=1,n1=1)=0.
+n35=NAND(n34=0,n0=0)=1.
+n36=NAND(n35=1,n8=0)=1.
+n37=NAND(n36=1,in2=1)=0.
+n38=NAND(n37=0,q8=1)=1.
+n39=NAND(n38=1,n18=0)=1.
+n40=NAND(n39=1,n16=0)=1.
+n41=NAND(n40=1,n11=1)=0.
+n42=NAND(n41=0,n25=1)=1.
+n43=NAND(n42=1,n28=1)=0.
+n44=NAND(n43=0,q9=0)=1.
+n45=NAND(n44=1,q10=0)=1.
+n46=NAND(n45=1,q3=0)=1.
+n47=NAND(n46=1,n21=1)=0.
+n48=NAND(n47=0,q6=0)=1.
+n49=NAND(n48=1,n33=1)=0.
+n50=NAND(n49=0,n15=1)=1.
+n51=NAND(n50=1,n9=1)=0.
+n52=NAND(n51=0,n9=1)=1.
+n53=NAND(n52=1,q1=1)=0.
+n54=NAND(n53=0,n38=1)=1.
+n55=NAND(n54=1,q2=0)=1.
+n56=NAND(n55=1,n5=1)=0.
+n57=NAND(n56=0,n13=0)=1.
+n58=NAND(n57=1,n22=0)=1.
+n59=NAND(n58=1,n43=0)=1.
+n60=NAND(n59=1,q8=1)=0.
+n61=NAND(n60=0,n48=1)=1.
+n62=NAND(n61=1,n44=1)=0.
+n63=NAND(n62=0,n41=0)=1.
+n64=NAND(n63=1,n30=1)=0.
+n65=NAND(n64=0,n37=0)=1.
+n66=NAND(n65=1,n1=1)=0.
+n67=NAND(n66=0,q0=0)=1.
+n68=NAND(n67=1,n64=0)=1.
+n69=NAND(n68=1,n35=1)=0.
+n70=NAND(n69=0,n22=0)=1.
+n71=NAND(n70=1,n43=0)=1.
+n72=NAND(n71=1,n43=0)=1.
+n73=NAND(n72=1,n55=1)=0.
+n74=NAND(n73=0,n39=1)=1.
+n75=NAND(n74=1,n20=0)=1.
+n76=NAND(n75=1,n68=1)=0.
+n77=NAND(n76=0,q4=1)=1.
+n78=NAND(n77=1,n54=1)=0.
+n79=NAND(n78=0,n75=1)=1.
+n80=NAND(n79=1,q4=1)=0.
+n81=NAND(n80=0,n36=1)=1.
+n82=NAND(n81=1,n10=0)=1.
+n83=NAND(n82=1,n28=1)=0.
+n84=NAND(n83=0,n78=0)=1.
+n85=NAND(n84=1,n58=1)=0.
+n86=NAND(n85=0,n74=1)=1.
+n87=NAND(n86=1,q5=0)=1.
+n88=NAND(n87=1,n65=1)=0.
+n89=NAND(n88=0,n70=1)=1.
+n90=NAND(n89=1,q2=0)=1.
+n91=NAND(n90=1,q11=1)=0.
+n92=NAND(n91=0,n57=1)=1.
+n93=NAND(n92=1,n8=0)=1.
+n94=NAND(n93=1,n60=0)=1.
+n95=NAND(n94=1,n64=0)=1.
+n96=NAND(n95=1,n4=1)=0.
+n97=NAND(n96=0,in1=1)=1.
+n98=NAND(n97=1,n57=1)=0.
+n99=NAND(n98=0,n8=0)=1.
+n100=NAND(n99=1,n10=0)=1.
+n101=NAND(n100=1,n35=1)=0.
+n102=NAND(n101=0,n62=0)=1.
+n103=NAND(n102=1,n73=0)=1.
+n104=NAND(n103=1,n98=0)=1.
+n105=NAND(n104=1,n16=0)=1.
+n106=NAND(n105=1,n45=1)=0.
+n107=NAND(n106=0,n77=1)=1.
+n108=NAND(n107=1,n16=0)=1.
+n109=NAND(n108=1,n103=1)=0.
+n110=NAND(n109=0,n15=1)=1.
+n111=NAND(n110=1,n41=0)=1.
+n112=NAND(n111=1,n74=1)=0.
+n113=NAND(n112=0,n71=1)=1.
+n114=NAND(n113=1,n40=1)=0.
+n115=NAND(n114=0,n113=1)=1.
+n116=NAND(n115=1,n34=0)=1.
+n117=NAND(n116=1,n25=1)=0.
+n118=NAND(n117=0,n18=0)=1.
+n119=NAND(n118=1,n59=1)=0.
+n120=NAND(n119=0,n100=1)=1.
+n121=NAND(n120=1,n5=1)=0.
+n122=NAND(n121=0,n29=1)=1.
+n123=NAND(n122=1,n45=1)=0.
+n124=NAND(n123=0,n77=1)=1.
+n125=NAND(n124=1,n15=1)=0.
+n126=NAND(n125=0,n95=1)=1.
+n127=NAND(n126=1,n10=0)=1.
+n128=NAND(n127=1,n18=0)=1.
+n129=NAND(n128=1,n35=1)=0.
+n130=NAND(n129=0,n72=1)=1.
+n131=NAND(n130=1,n2=1)=0.
+n132=NAND(n131=0,n35=1)=1.
+n133=NAND(n132=1,n104=1)=0.
+n134=NAND(n133=0,n13=0)=1.
+n135=NAND(n134=1,q3=0)=1.
+n136=NAND(n135=1,n97=1)=0.
+n137=NAND(n136=0,n26=1)=1.
+n138=NAND(n137=1,n7=1)=0.
+n139=NAND(n138=0,n38=1)=1.
+n140=NAND(n139=1,q4=1)=0.
+n141=NAND(n140=0,n11=1)=1.
+n142=NAND(n141=1,n78=0)=1.
+n143=NAND(n142=1,n51=0)=1.
+n144=NAND(n143=1,n49=0)=1.
+n145=NAND(n144=1,n112=0)=1.
+n146=NAND(n145=1,n1=1)=0.
+n147=NAND(n146=0,n22=0)=1.
+n148=NAND(n147=1,n107=1)=0.
+n149=NAND(n148=0,n18=0)=1.
+n150=NAND(n149=1,n79=1)=0.
+n151=NAND(n150=0,n57=1)=1.
+n152=NAND(n151=1,n70=1)=0.
+n153=NAND(n152=0,n109=0)=1.
+n154=NAND(n153=1,q1=1)=0.
+n155=NAND(n154=0,n73=0)=1.
+n156=NAND(n155=1,n73=0)=1.
+n157=NAND(n156=1,n76=0)=1.
+n158=NAND(n157=1,n40=1)=0.
+n159=NAND(n158=0,n34=0)=1.
+n160=NAND(n159=1,n130=1)=0.
+n161=NAND(n160=0,n57=1)=1.
+n162=NAND(n161=1,n20=0)=1.
+n163=NAND(n162=1,n21=1)=0.
+n164=NAND(n163=0,q4=1)=1.
+n165=NAND(n164=1,n138=0)=1.
+n166=NAND(n165=1,n33=1)=0.
+n167=NAND(n166=0,n59=1)=1.
+n168=NAND(n167=1,n20=0)=1.
+n169=NAND(n168=1,q0=0)=1.
+n170=NAND(n169=1,n161=1)=0.
+n171=NAND(n170=0,n55=1)=1.
+n172=NAND(n171=1,n45=1)=0.
+n173=NAND(n172=0,n16=0)=1.
+n174=NAND(n173=1,n166=0)=1.
+n175=NAND(n174=1,q3=0)=1.
+n176=NAND(n175=1,q6=0)=1.
+n177=NAND(n176=1,n116=1)=0.
+n178=NAND(n177=0,n148=0)=1.
+n179=NAND(n178=1,n82=1)=0.
+n180=NAND(n179=0,n124=1)=1.
+n181=NAND(n180=1,n42=1)=0.
+n182=NAND(n181=0,n142=1)=1.
+n183=NAND(n182=1,in1=1)=0.
+n184=NAND(n183=0,n26=1)=1.
+n185=NAND(n184=1,n139=1)=0.
+n186=NAND(n185=0,n115=1)=1.
+n187=NAND(n186=1,n12=1)=0.
+n188=NAND(n187=0,n63=1)=1.
+n189=NAND(n188=1,n185=0)=1.
+n190=NAND(n189=1,n134=1)=0.
+n191=NAND(n190=0,n122=1)=1.
+n192=NAND(n191=1,n20=0)=1.
+n193=NAND(n192=1,n96=0)=1.
+n194=NAND(n193=1,n89=1)=0.
+n195=NAND(n194=0,n130=1)=1.
+n196=NAND(n195=1,n171=1)=0.
+n197=NAND(n196=0,n158=0)=1.
+n198=NAND(n197=1,n126=1)=0.
+n199=NAND(n198=0,n18=0)=1.
+
+Outputs cycle18: n199=1; q10=S18.q10=0; q11=S18.q11=1; q6=S18.q6=0.
+
+State update S19:
+q0'=n188=1
+q1'=n159=1
+q2'=n181=0
+q3'=n190=0
+q4'=n167=1
+q5'=n192=1
+q6'=n166=0
+q7'=n170=0
+q8'=n157=1
+q9'=n188=1
+q10'=n194=0
+q11'=n193=1
+
+S19=(1,1,0,0,1,1,0,0,1,1,0,1).
+
+Check: n188=NAND(n187=0,n63=1)=1 (n187=NAND(n186=1,n12=1)=0). n166=NAND(n165=1,n33=1)=0. n190=NAND(n189=1,n134=1)=0. n192=NAND(n191=1,n20=0)=1. n193=NAND(n192=1,n96=0)=1. n194=NAND(n193=1,n89=1)=0. n157=NAND(n156=1,n76=0)=1. n159=NAND(n158=0,n34=0)=1. n167=NAND(n166=0,n59=1)=1. n181=NAND(n180=1,n42=1)=0. n170=NAND(n169=1,n161=1)=0. OK.
+
+Outputs c0..c18:
+n199: [0,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,1,1,1]
+q10: [1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,1,0,0,0]
+q11: [1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,1,1,1,1]
+q6:  [1,1,1,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0]
+
+=== Cycle 19 ===
+State S19=(q0=1,q1=1,q2=0,q3=0,q4=1,q5=1,q6=0,q7=0,q8=1,q9=1,q10=0,q11=1).
+Inputs I19=(in0[19],in1[19],in2[19])=(0,1,0).
+
+n0=NAND(in1=1,q8=1)=0.
+n1=NAND(n0=0,in2=0)=1.
+n2=NAND(n1=1,q5=1)=0.
+n3=NAND(n2=0,q0=1)=1.
+n4=NAND(n3=1,q5=1)=0.
+n5=NAND(n4=0,n0=0)=1.
+n6=NAND(n5=1,q8=1)=0.
+n7=NAND(n6=0,n6=0)=1.
+n8=NAND(n7=1,n2=0)=1.
+n9=NAND(n8=1,n5=1)=0.
+n10=NAND(n9=0,n3=1)=1.
+n11=NAND(n10=1,in0=0)=1.
+n12=NAND(n11=1,n6=0)=1.
+n13=NAND(n12=1,in2=0)=1.
+n14=NAND(n13=1,n11=1)=0.
+n15=NAND(n14=0,q0=1)=1.
+n16=NAND(n15=1,n12=1)=0.
+n17=NAND(n16=0,n8=1)=1.
+n18=NAND(n17=1,n3=1)=0.
+n19=NAND(n18=0,q1=1)=1.
+n20=NAND(n19=1,n4=0)=1.
+n21=NAND(n20=1,q0=1)=0.
+n22=NAND(n21=0,n3=1)=1.
+n23=NAND(n22=1,q9=1)=0.
+n24=NAND(n23=0,n12=1)=1.
+n25=NAND(n24=1,n20=1)=0.
+n26=NAND(n25=0,n22=1)=1.
+n27=NAND(n26=1,n23=0)=1.
+n28=NAND(n27=1,n16=0)=1.
+n29=NAND(n28=1,n18=0)=1.
+n30=NAND(n29=1,q3=0)=1.
+n31=NAND(n30=1,q9=1)=0.
+n32=NAND(n31=0,n19=1)=1.
+n33=NAND(n32=1,q7=0)=1.
+n34=NAND(n33=1,n1=1)=0.
+n35=NAND(n34=0,n0=0)=1.
+n36=NAND(n35=1,n8=1)=0.
+n37=NAND(n36=0,in2=0)=1.
+n38=NAND(n37=1,q8=1)=0.
+n39=NAND(n38=0,n18=0)=1.
+n40=NAND(n39=1,n16=0)=1.
+n41=NAND(n40=1,n11=1)=0.
+n42=NAND(n41=0,n25=0)=1.
+n43=NAND(n42=1,n28=1)=0.
+n44=NAND(n43=0,q9=1)=1.
+n45=NAND(n44=1,q10=0)=1.
+n46=NAND(n45=1,q3=0)=1.
+n47=NAND(n46=1,n21=0)=1.
+n48=NAND(n47=1,q6=0)=1.
+n49=NAND(n48=1,n33=1)=0.
+n50=NAND(n49=0,n15=1)=1.
+n51=NAND(n50=1,n9=0)=1.
+n52=NAND(n51=1,n9=0)=1.
+n53=NAND(n52=1,q1=1)=0.
+n54=NAND(n53=0,n38=0)=1.
+n55=NAND(n54=1,q2=0)=1.
+n56=NAND(n55=1,n5=1)=0.
+n57=NAND(n56=0,n13=1)=1.
+n58=NAND(n57=1,n22=1)=0.
+n59=NAND(n58=0,n43=0)=1.
+n60=NAND(n59=1,q8=1)=0.
+n61=NAND(n60=0,n48=1)=1.
+n62=NAND(n61=1,n44=1)=0.
+n63=NAND(n62=0,n41=0)=1.
+n64=NAND(n63=1,n30=1)=0.
+n65=NAND(n64=0,n37=1)=1.
+n66=NAND(n65=1,n1=1)=0.
+n67=NAND(n66=0,q0=1)=1.
+n68=NAND(n67=1,n64=0)=1.
+n69=NAND(n68=1,n35=1)=0.
+n70=NAND(n69=0,n22=1)=1.
+n71=NAND(n70=1,n43=0)=1.
+n72=NAND(n71=1,n43=0)=1.
+n73=NAND(n72=1,n55=1)=0.
+n74=NAND(n73=0,n39=1)=1.
+n75=NAND(n74=1,n20=1)=0.
+n76=NAND(n75=0,n68=1)=1.
+n77=NAND(n76=1,q4=1)=0.
+n78=NAND(n77=0,n54=1)=1.
+n79=NAND(n78=1,n75=0)=1.
+n80=NAND(n79=1,q4=1)=0.
+n81=NAND(n80=0,n36=0)=1.
+n82=NAND(n81=1,n10=1)=0.
+n83=NAND(n82=0,n28=1)=1.
+n84=NAND(n83=1,n78=1)=0.
+n85=NAND(n84=0,n58=0)=1.
+n86=NAND(n85=1,n74=1)=0.
+n87=NAND(n86=0,q5=1)=1.
+n88=NAND(n87=1,n65=1)=0.
+n89=NAND(n88=0,n70=1)=1.
+n90=NAND(n89=1,q2=0)=1.
+n91=NAND(n90=1,q11=1)=0.
+n92=NAND(n91=0,n57=1)=1.
+n93=NAND(n92=1,n8=1)=0.
+n94=NAND(n93=0,n60=0)=1.
+n95=NAND(n94=1,n64=0)=1.
+n96=NAND(n95=1,n4=0)=1.
+n97=NAND(n96=1,in1=1)=0.
+n98=NAND(n97=0,n57=1)=1.
+n99=NAND(n98=1,n8=1)=0.
+n100=NAND(n99=0,n10=1)=1.
+n101=NAND(n100=1,n35=1)=0.
+n102=NAND(n101=0,n62=0)=1.
+n103=NAND(n102=1,n73=0)=1.
+n104=NAND(n103=1,n98=1)=0.
+n105=NAND(n104=0,n16=0)=1.
+n106=NAND(n105=1,n45=1)=0.
+n107=NAND(n106=0,n77=0)=1.
+n108=NAND(n107=1,n16=0)=1.
+n109=NAND(n108=1,n103=1)=0.
+n110=NAND(n109=0,n15=1)=1.
+n111=NAND(n110=1,n41=0)=1.
+n112=NAND(n111=1,n74=1)=0.
+n113=NAND(n112=0,n71=1)=1.
+n114=NAND(n113=1,n40=1)=0.
+n115=NAND(n114=0,n113=1)=1.
+n116=NAND(n115=1,n34=0)=1.
+n117=NAND(n116=1,n25=0)=1.
+n118=NAND(n117=1,n18=0)=1.
+n119=NAND(n118=1,n59=1)=0.
+n120=NAND(n119=0,n100=1)=1.
+n121=NAND(n120=1,n5=1)=0.
+n122=NAND(n121=0,n29=1)=1.
+n123=NAND(n122=1,n45=1)=0.
+n124=NAND(n123=0,n77=0)=1.
+n125=NAND(n124=1,n15=1)=0.
+n126=NAND(n125=0,n95=1)=1.
+n127=NAND(n126=1,n10=1)=0.
+n128=NAND(n127=0,n18=0)=1.
+n129=NAND(n128=1,n35=1)=0.
+n130=NAND(n129=0,n72=1)=1.
+n131=NAND(n130=1,n2=0)=1.
+n132=NAND(n131=1,n35=1)=0.
+n133=NAND(n132=0,n104=0)=1.
+n134=NAND(n133=1,n13=1)=0.
+n135=NAND(n134=0,q3=0)=1.
+n136=NAND(n135=1,n97=0)=1.
+n137=NAND(n136=1,n26=1)=0.
+n138=NAND(n137=0,n7=1)=1.
+n139=NAND(n138=1,n38=0)=1.
+n140=NAND(n139=1,q4=1)=0.
+n141=NAND(n140=0,n11=1)=1.
+n142=NAND(n141=1,n78=1)=0.
+n143=NAND(n142=0,n51=1)=1.
+n144=NAND(n143=1,n49=0)=1.
+n145=NAND(n144=1,n112=0)=1.
+n146=NAND(n145=1,n1=1)=0.
+n147=NAND(n146=0,n22=1)=1.
+n148=NAND(n147=1,n107=1)=0.
+n149=NAND(n148=0,n18=0)=1.
+n150=NAND(n149=1,n79=1)=0.
+n151=NAND(n150=0,n57=1)=1.
+n152=NAND(n151=1,n70=1)=0.
+n153=NAND(n152=0,n109=0)=1.
+n154=NAND(n153=1,q1=1)=0.
+n155=NAND(n154=0,n73=0)=1.
+n156=NAND(n155=1,n73=0)=1.
+n157=NAND(n156=1,n76=1)=0.
+n158=NAND(n157=0,n40=1)=1.
+n159=NAND(n158=1,n34=0)=1.
+n160=NAND(n159=1,n130=1)=0.
+n161=NAND(n160=0,n57=1)=1.
+n162=NAND(n161=1,n20=1)=0.
+n163=NAND(n162=0,n21=0)=1.
+n164=NAND(n163=1,q4=1)=0.
+n165=NAND(n164=0,n138=1)=1.
+n166=NAND(n165=1,n33=1)=0.
+n167=NAND(n166=0,n59=1)=1.
+n168=NAND(n167=1,n20=1)=0.
+n169=NAND(n168=0,q0=1)=1.
+n170=NAND(n169=1,n161=1)=0.
+n171=NAND(n170=0,n55=1)=1.
+n172=NAND(n171=1,n45=1)=0.
+n173=NAND(n172=0,n16=0)=1.
+n174=NAND(n173=1,n166=0)=1.
+n175=NAND(n174=1,q3=0)=1.
+n176=NAND(n175=1,q6=0)=1.
+n177=NAND(n176=1,n116=1)=0.
+n178=NAND(n177=0,n148=0)=1.
+n179=NAND(n178=1,n82=0)=1.
+n180=NAND(n179=1,n124=1)=0.
+n181=NAND(n180=0,n42=1)=1.
+n182=NAND(n181=1,n142=0)=1.
+n183=NAND(n182=1,in1=1)=0.
+n184=NAND(n183=0,n26=1)=1.
+n185=NAND(n184=1,n139=1)=0.
+n186=NAND(n185=0,n115=1)=1.
+n187=NAND(n186=1,n12=1)=0.
+n188=NAND(n187=0,n63=1)=1.
+n189=NAND(n188=1,n185=0)=1.
+n190=NAND(n189=1,n134=0)=1.
+n191=NAND(n190=1,n122=1)=0.
+n192=NAND(n191=0,n20=1)=1.
+n193=NAND(n192=1,n96=1)=0.
+n194=NAND(n193=0,n89=1)=1.
+n195=NAND(n194=1,n130=1)=0.
+n196=NAND(n195=0,n171=1)=1.
+n197=NAND(n196=1,n158=1)=0.
+n198=NAND(n197=0,n126=1)=1.
+n199=NAND(n198=1,n18=0)=1.
+
+Outputs cycle19: n199=1; q10=S19.q10=0; q11=S19.q11=1; q6=S19.q6=0.
+
+State update S20:
+q0'=n188=1
+q1'=n159=1
+q2'=n181=1
+q3'=n190=1
+q4'=n167=1
+q5'=n192=1
+q6'=n166=0
+q7'=n170=0
+q8'=n157=0
+q9'=n188=1
+q10'=n194=1
+q11'=n193=0
+
+S20=(1,1,1,1,1,1,0,0,0,1,1,0).
+
+Check: n166=NAND(n165=1,n33=1)=0. n167=NAND(n166=0,n59=1)=1. n181=NAND(n180=0,n42=1)=1. n188=NAND(n187=0,n63=1)=1. n190=NAND(n189=1,n134=0)=1. n192=NAND(n191=0,n20=1)=1. n193=NAND(n192=1,n96=1)=0. n194=NAND(n193=0,n89=1)=1. n157=NAND(n156=1,n76=1)=0. n159=NAND(n158=1,n34=0)=1. n170=NAND(n169=1,n161=1)=0. OK.
+
+Outputs c0..c19:
+n199: [0,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,1,1,1,1]
+q10: [1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,1,0,0,0,0]
+q11: [1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,1,1,1,1,1]
+q6:  [1,1,1,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0]
+
+=== Cycle 20 ===
+State S20=(q0=1,q1=1,q2=1,q3=1,q4=1,q5=1,q6=0,q7=0,q8=0,q9=1,q10=1,q11=0).
+Inputs I20=(in0[20],in1[20],in2[20])=(1,1,0).
+
+n0=NAND(in1=1,q8=0)=1.
+n1=NAND(n0=1,in2=0)=1.
+n2=NAND(n1=1,q5=1)=0.
+n3=NAND(n2=0,q0=1)=1.
+n4=NAND(n3=1,q5=1)=0.
+n5=NAND(n4=0,n0=1)=1.
+n6=NAND(n5=1,q8=0)=1.
+n7=NAND(n6=1,n6=1)=0.
+n8=NAND(n7=0,n2=0)=1.
+n9=NAND(n8=1,n5=1)=0.
+n10=NAND(n9=0,n3=1)=1.
+n11=NAND(n10=1,in0=1)=0.
+n12=NAND(n11=0,n6=1)=1.
+n13=NAND(n12=1,in2=0)=1.
+n14=NAND(n13=1,n11=0)=1.
+n15=NAND(n14=1,q0=1)=0.
+n16=NAND(n15=0,n12=1)=1.
+n17=NAND(n16=1,n8=1)=0.
+n18=NAND(n17=0,n3=1)=1.
+n19=NAND(n18=1,q1=1)=0.
+n20=NAND(n19=0,n4=0)=1.
+n21=NAND(n20=1,q0=1)=0.
+n22=NAND(n21=0,n3=1)=1.
+n23=NAND(n22=1,q9=1)=0.
+n24=NAND(n23=0,n12=1)=1.
+n25=NAND(n24=1,n20=1)=0.
+n26=NAND(n25=0,n22=1)=1.
+n27=NAND(n26=1,n23=0)=1.
+n28=NAND(n27=1,n16=1)=0.
+n29=NAND(n28=0,n18=1)=1.
+n30=NAND(n29=1,q3=1)=0.
+n31=NAND(n30=0,q9=1)=1.
+n32=NAND(n31=1,n19=0)=1.
+n33=NAND(n32=1,q7=0)=1.
+n34=NAND(n33=1,n1=1)=0.
+n35=NAND(n34=0,n0=1)=1.
+n36=NAND(n35=1,n8=1)=0.
+n37=NAND(n36=0,in2=0)=1.
+n38=NAND(n37=1,q8=0)=1.
+n39=NAND(n38=1,n18=1)=0.
+n40=NAND(n39=0,n16=1)=1.
+n41=NAND(n40=1,n11=0)=1.
+n42=NAND(n41=1,n25=0)=1.
+n43=NAND(n42=1,n28=0)=1.
+n44=NAND(n43=1,q9=1)=0.
+n45=NAND(n44=0,q10=1)=1.
+n46=NAND(n45=1,q3=1)=0.
+n47=NAND(n46=0,n21=0)=1.
+n48=NAND(n47=1,q6=0)=1.
+n49=NAND(n48=1,n33=1)=0.
+n50=NAND(n49=0,n15=0)=1.
+n51=NAND(n50=1,n9=0)=1.
+n52=NAND(n51=1,n9=0)=1.
+n53=NAND(n52=1,q1=1)=0.
+n54=NAND(n53=0,n38=1)=1.
+n55=NAND(n54=1,q2=1)=0.
+n56=NAND(n55=0,n5=1)=1.
+n57=NAND(n56=1,n13=1)=0.
+n58=NAND(n57=0,n22=1)=1.
+n59=NAND(n58=1,n43=1)=0.
+n60=NAND(n59=0,q8=0)=1.
+n61=NAND(n60=1,n48=1)=0.
+n62=NAND(n61=0,n44=0)=1.
+n63=NAND(n62=1,n41=1)=0.
+n64=NAND(n63=0,n30=0)=1.
+n65=NAND(n64=1,n37=1)=0.
+n66=NAND(n65=0,n1=1)=1.
+n67=NAND(n66=1,q0=1)=0.
+n68=NAND(n67=0,n64=1)=1.
+n69=NAND(n68=1,n35=1)=0.
+n70=NAND(n69=0,n22=1)=1.
+n71=NAND(n70=1,n43=1)=0.
+n72=NAND(n71=0,n43=1)=1.
+n73=NAND(n72=1,n55=0)=1.
+n74=NAND(n73=1,n39=0)=1.
+n75=NAND(n74=1,n20=1)=0.
+n76=NAND(n75=0,n68=1)=1.
+n77=NAND(n76=1,q4=1)=0.
+n78=NAND(n77=0,n54=1)=1.
+n79=NAND(n78=1,n75=0)=1.
+n80=NAND(n79=1,q4=1)=0.
+n81=NAND(n80=0,n36=0)=1.
+n82=NAND(n81=1,n10=1)=0.
+n83=NAND(n82=0,n28=0)=1.
+n84=NAND(n83=1,n78=1)=0.
+n85=NAND(n84=0,n58=1)=1.
+n86=NAND(n85=1,n74=1)=0.
+n87=NAND(n86=0,q5=1)=1.
+n88=NAND(n87=1,n65=0)=1.
+n89=NAND(n88=1,n70=1)=0.
+n90=NAND(n89=0,q2=1)=1.
+n91=NAND(n90=1,q11=0)=1.
+n92=NAND(n91=1,n57=0)=1.
+n93=NAND(n92=1,n8=1)=0.
+n94=NAND(n93=0,n60=1)=1.
+n95=NAND(n94=1,n64=1)=0.
+n96=NAND(n95=0,n4=0)=1.
+n97=NAND(n96=1,in1=1)=0.
+n98=NAND(n97=0,n57=0)=1.
+n99=NAND(n98=1,n8=1)=0.
+n100=NAND(n99=0,n10=1)=1.
+n101=NAND(n100=1,n35=1)=0.
+n102=NAND(n101=0,n62=1)=1.
+n103=NAND(n102=1,n73=1)=0.
+n104=NAND(n103=0,n98=1)=1.
+n105=NAND(n104=1,n16=1)=0.
+n106=NAND(n105=0,n45=1)=1.
+n107=NAND(n106=1,n77=0)=1.
+n108=NAND(n107=1,n16=1)=0.
+n109=NAND(n108=0,n103=0)=1.
+n110=NAND(n109=1,n15=0)=1.
+n111=NAND(n110=1,n41=1)=0.
+n112=NAND(n111=0,n74=1)=1.
+n113=NAND(n112=1,n71=0)=1.
+n114=NAND(n113=1,n40=1)=0.
+n115=NAND(n114=0,n113=1)=1.
+n116=NAND(n115=1,n34=0)=1.
+n117=NAND(n116=1,n25=0)=1.
+n118=NAND(n117=1,n18=1)=0.
+n119=NAND(n118=0,n59=0)=1.
+n120=NAND(n119=1,n100=1)=0.
+n121=NAND(n120=0,n5=1)=1.
+n122=NAND(n121=1,n29=1)=0.
+n123=NAND(n122=0,n45=1)=1.
+n124=NAND(n123=1,n77=0)=1.
+n125=NAND(n124=1,n15=0)=1.
+n126=NAND(n125=1,n95=0)=1.
+n127=NAND(n126=1,n10=1)=0.
+n128=NAND(n127=0,n18=1)=1.
+n129=NAND(n128=1,n35=1)=0.
+n130=NAND(n129=0,n72=1)=1.
+n131=NAND(n130=1,n2=0)=1.
+n132=NAND(n131=1,n35=1)=0.
+n133=NAND(n132=0,n104=1)=1.
+n134=NAND(n133=1,n13=1)=0.
+n135=NAND(n134=0,q3=1)=1.
+n136=NAND(n135=1,n97=0)=1.
+n137=NAND(n136=1,n26=1)=0.
+n138=NAND(n137=0,n7=0)=1.
+n139=NAND(n138=1,n38=1)=0.
+n140=NAND(n139=0,q4=1)=1.
+n141=NAND(n140=1,n11=0)=1.
+n142=NAND(n141=1,n78=1)=0.
+n143=NAND(n142=0,n51=1)=1.
+n144=NAND(n143=1,n49=0)=1.
+n145=NAND(n144=1,n112=1)=0.
+n146=NAND(n145=0,n1=1)=1.
+n147=NAND(n146=1,n22=1)=0.
+n148=NAND(n147=0,n107=1)=1.
+n149=NAND(n148=1,n18=1)=0.
+n150=NAND(n149=0,n79=1)=1.
+n151=NAND(n150=1,n57=0)=1.
+n152=NAND(n151=1,n70=1)=0.
+n153=NAND(n152=0,n109=1)=1.
+n154=NAND(n153=1,q1=1)=0.
+n155=NAND(n154=0,n73=1)=1.
+n156=NAND(n155=1,n73=1)=0.
+n157=NAND(n156=0,n76=1)=1.
+n158=NAND(n157=1,n40=1)=0.
+n159=NAND(n158=0,n34=0)=1.
+n160=NAND(n159=1,n130=1)=0.
+n161=NAND(n160=0,n57=0)=1.
+n162=NAND(n161=1,n20=1)=0.
+n163=NAND(n162=0,n21=0)=1.
+n164=NAND(n163=1,q4=1)=0.
+n165=NAND(n164=0,n138=1)=1.
+n166=NAND(n165=1,n33=1)=0.
+n167=NAND(n166=0,n59=0)=1.
+n168=NAND(n167=1,n20=1)=0.
+n169=NAND(n168=0,q0=1)=1.
+n170=NAND(n169=1,n161=1)=0.
+n171=NAND(n170=0,n55=0)=1.
+n172=NAND(n171=1,n45=1)=0.
+n173=NAND(n172=0,n16=1)=1.
+n174=NAND(n173=1,n166=0)=1.
+n175=NAND(n174=1,q3=1)=0.
+n176=NAND(n175=0,q6=0)=1.
+n177=NAND(n176=1,n116=1)=0.
+n178=NAND(n177=0,n148=1)=1.
+n179=NAND(n178=1,n82=0)=1.
+n180=NAND(n179=1,n124=1)=0.
+n181=NAND(n180=0,n42=1)=1.
+n182=NAND(n181=1,n142=0)=1.
+n183=NAND(n182=1,in1=1)=0.
+n184=NAND(n183=0,n26=1)=1.
+n185=NAND(n184=1,n139=0)=1.
+n186=NAND(n185=1,n115=1)=0.
+n187=NAND(n186=0,n12=1)=1.
+n188=NAND(n187=1,n63=0)=1.
+n189=NAND(n188=1,n185=1)=0.
+n190=NAND(n189=0,n134=0)=1.
+n191=NAND(n190=1,n122=0)=1.
+n192=NAND(n191=1,n20=1)=0.
+n193=NAND(n192=0,n96=1)=1.
+n194=NAND(n193=1,n89=0)=1.
+n195=NAND(n194=1,n130=1)=0.
+n196=NAND(n195=0,n171=1)=1.
+n197=NAND(n196=1,n158=0)=1.
+n198=NAND(n197=1,n126=1)=0.
+n199=NAND(n198=0,n18=1)=1.
+
+Outputs cycle20: n199=1; q10=S20.q10=1; q11=S20.q11=0; q6=S20.q6=0.
+
+State update S21:
+q0'=n188=1
+q1'=n159=1
+q2'=n181=1
+q3'=n190=1
+q4'=n167=1
+q5'=n192=0
+q6'=n166=0
+q7'=n170=0
+q8'=n157=1
+q9'=n188=1
+q10'=n194=1
+q11'=n193=1
+
+S21=(1,1,1,1,1,0,0,0,1,1,1,1).
+
+Check: n166=NAND(n165=1,n33=1)=0. n167=NAND(n166=0,n59=0)=1. n181=NAND(n180=0,n42=1)=1. n188=NAND(n187=1,n63=0)=1. n190=NAND(n189=0,n134=0)=1. n192=NAND(n191=1,n20=1)=0. n193=NAND(n192=0,n96=1)=1. n194=NAND(n193=1,n89=0)=1. n157=NAND(n156=0,n76=1)=1. n159=NAND(n158=0,n34=0)=1. n170=NAND(n169=1,n161=1)=0. OK. q11 recovers to 1 (n193=1).
+
+Outputs c0..c20:
+n199: [0,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,1,1,1,1,1]
+q10: [1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,1,0,0,0,0,1]
+q11: [1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,1,1,1,1,1,0]
+q6:  [1,1,1,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0]
+
+=== Cycle 21 ===
+State S21=(q0=1,q1=1,q2=1,q3=1,q4=1,q5=0,q6=0,q7=0,q8=1,q9=1,q10=1,q11=1).
+Inputs I21=(in0[21],in1[21],in2[21])=(0,1,1).
+
+n0=NAND(in1=1,q8=1)=0.
+n1=NAND(n0=0,in2=1)=1.
+n2=NAND(n1=1,q5=0)=1.
+n3=NAND(n2=1,q0=1)=0.
+n4=NAND(n3=0,q5=0)=1.
+n5=NAND(n4=1,n0=0)=1.
+n6=NAND(n5=1,q8=1)=0.
+n7=NAND(n6=0,n6=0)=1.
+n8=NAND(n7=1,n2=1)=0.
+n9=NAND(n8=0,n5=1)=1.
+n10=NAND(n9=1,n3=0)=1.
+n11=NAND(n10=1,in0=0)=1.
+n12=NAND(n11=1,n6=0)=1.
+n13=NAND(n12=1,in2=1)=0.
+n14=NAND(n13=0,n11=1)=1.
+n15=NAND(n14=1,q0=1)=0.
+n16=NAND(n15=0,n12=1)=1.
+n17=NAND(n16=1,n8=0)=1.
+n18=NAND(n17=1,n3=0)=1.
+n19=NAND(n18=1,q1=1)=0.
+n20=NAND(n19=0,n4=1)=1.
+n21=NAND(n20=1,q0=1)=0.
+n22=NAND(n21=0,n3=0)=1.
+n23=NAND(n22=1,q9=1)=0.
+n24=NAND(n23=0,n12=1)=1.
+n25=NAND(n24=1,n20=1)=0.
+n26=NAND(n25=0,n22=1)=1.
+n27=NAND(n26=1,n23=0)=1.
+n28=NAND(n27=1,n16=1)=0.
+n29=NAND(n28=0,n18=1)=1.
+n30=NAND(n29=1,q3=1)=0.
+n31=NAND(n30=0,q9=1)=1.
+n32=NAND(n31=1,n19=0)=1.
+n33=NAND(n32=1,q7=0)=1.
+n34=NAND(n33=1,n1=1)=0.
+n35=NAND(n34=0,n0=0)=1.
+n36=NAND(n35=1,n8=0)=1.
+n37=NAND(n36=1,in2=1)=0.
+n38=NAND(n37=0,q8=1)=1.
+n39=NAND(n38=1,n18=1)=0.
+n40=NAND(n39=0,n16=1)=1.
+n41=NAND(n40=1,n11=1)=0.
+n42=NAND(n41=0,n25=0)=1.
+n43=NAND(n42=1,n28=0)=1.
+n44=NAND(n43=1,q9=1)=0.
+n45=NAND(n44=0,q10=1)=1.
+n46=NAND(n45=1,q3=1)=0.
+n47=NAND(n46=0,n21=0)=1.
+n48=NAND(n47=1,q6=0)=1.
+n49=NAND(n48=1,n33=1)=0.
+n50=NAND(n49=0,n15=0)=1.
+n51=NAND(n50=1,n9=1)=0.
+n52=NAND(n51=0,n9=1)=1.
+n53=NAND(n52=1,q1=1)=0.
+n54=NAND(n53=0,n38=1)=1.
+n55=NAND(n54=1,q2=1)=0.
+n56=NAND(n55=0,n5=1)=1.
+n57=NAND(n56=1,n13=0)=1.
+n58=NAND(n57=1,n22=1)=0.
+n59=NAND(n58=0,n43=1)=1.
+n60=NAND(n59=1,q8=1)=0.
+n61=NAND(n60=0,n48=1)=1.
+n62=NAND(n61=1,n44=0)=1.
+n63=NAND(n62=1,n41=0)=1.
+n64=NAND(n63=1,n30=0)=1.
+n65=NAND(n64=1,n37=0)=1.
+n66=NAND(n65=1,n1=1)=0.
+n67=NAND(n66=0,q0=1)=1.
+n68=NAND(n67=1,n64=1)=0.
+n69=NAND(n68=0,n35=1)=1.
+n70=NAND(n69=1,n22=1)=0.
+n71=NAND(n70=0,n43=1)=1.
+n72=NAND(n71=1,n43=1)=0.
+n73=NAND(n72=0,n55=0)=1.
+n74=NAND(n73=1,n39=0)=1.
+n75=NAND(n74=1,n20=1)=0.
+n76=NAND(n75=0,n68=0)=1.
+n77=NAND(n76=1,q4=1)=0.
+n78=NAND(n77=0,n54=1)=1.
+n79=NAND(n78=1,n75=0)=1.
+n80=NAND(n79=1,q4=1)=0.
+n81=NAND(n80=0,n36=1)=1.
+n82=NAND(n81=1,n10=1)=0.
+n83=NAND(n82=0,n28=0)=1.
+n84=NAND(n83=1,n78=1)=0.
+n85=NAND(n84=0,n58=0)=1.
+n86=NAND(n85=1,n74=1)=0.
+n87=NAND(n86=0,q5=0)=1.
+n88=NAND(n87=1,n65=1)=0.
+n89=NAND(n88=0,n70=0)=1.
+n90=NAND(n89=1,q2=1)=0.
+n91=NAND(n90=0,q11=1)=1.
+n92=NAND(n91=1,n57=1)=0.
+n93=NAND(n92=0,n8=0)=1.
+n94=NAND(n93=1,n60=0)=1.
+n95=NAND(n94=1,n64=1)=0.
+n96=NAND(n95=0,n4=1)=1.
+n97=NAND(n96=1,in1=1)=0.
+n98=NAND(n97=0,n57=1)=1.
+n99=NAND(n98=1,n8=0)=1.
+n100=NAND(n99=1,n10=1)=0.
+n101=NAND(n100=0,n35=1)=1.
+n102=NAND(n101=1,n62=1)=0.
+n103=NAND(n102=0,n73=1)=1.
+n104=NAND(n103=1,n98=1)=0.
+n105=NAND(n104=0,n16=1)=1.
+n106=NAND(n105=1,n45=1)=0.
+n107=NAND(n106=0,n77=0)=1.
+n108=NAND(n107=1,n16=1)=0.
+n109=NAND(n108=0,n103=1)=1.
+n110=NAND(n109=1,n15=0)=1.
+n111=NAND(n110=1,n41=0)=1.
+n112=NAND(n111=1,n74=1)=0.
+n113=NAND(n112=0,n71=1)=1.
+n114=NAND(n113=1,n40=1)=0.
+n115=NAND(n114=0,n113=1)=1.
+n116=NAND(n115=1,n34=0)=1.
+n117=NAND(n116=1,n25=0)=1.
+n118=NAND(n117=1,n18=1)=0.
+n119=NAND(n118=0,n59=1)=1.
+n120=NAND(n119=1,n100=0)=1.
+n121=NAND(n120=1,n5=1)=0.
+n122=NAND(n121=0,n29=1)=1.
+n123=NAND(n122=1,n45=1)=0.
+n124=NAND(n123=0,n77=0)=1.
+n125=NAND(n124=1,n15=0)=1.
+n126=NAND(n125=1,n95=0)=1.
+n127=NAND(n126=1,n10=1)=0.
+n128=NAND(n127=0,n18=1)=1.
+n129=NAND(n128=1,n35=1)=0.
+n130=NAND(n129=0,n72=0)=1.
+n131=NAND(n130=1,n2=1)=0.
+n132=NAND(n131=0,n35=1)=1.
+n133=NAND(n132=1,n104=0)=1.
+n134=NAND(n133=1,n13=0)=1.
+n135=NAND(n134=1,q3=1)=0.
+n136=NAND(n135=0,n97=0)=1.
+n137=NAND(n136=1,n26=1)=0.
+n138=NAND(n137=0,n7=1)=1.
+n139=NAND(n138=1,n38=1)=0.
+n140=NAND(n139=0,q4=1)=1.
+n141=NAND(n140=1,n11=1)=0.
+n142=NAND(n141=0,n78=1)=1.
+n143=NAND(n142=1,n51=0)=1.
+n144=NAND(n143=1,n49=0)=1.
+n145=NAND(n144=1,n112=0)=1.
+n146=NAND(n145=1,n1=1)=0.
+n147=NAND(n146=0,n22=1)=1.
+n148=NAND(n147=1,n107=1)=0.
+n149=NAND(n148=0,n18=1)=1.
+n150=NAND(n149=1,n79=1)=0.
+n151=NAND(n150=0,n57=1)=1.
+n152=NAND(n151=1,n70=0)=1.
+n153=NAND(n152=1,n109=1)=0.
+n154=NAND(n153=0,q1=1)=1.
+n155=NAND(n154=1,n73=1)=0.
+n156=NAND(n155=0,n73=1)=1.
+n157=NAND(n156=1,n76=1)=0.
+n158=NAND(n157=0,n40=1)=1.
+n159=NAND(n158=1,n34=0)=1.
+n160=NAND(n159=1,n130=1)=0.
+n161=NAND(n160=0,n57=1)=1.
+n162=NAND(n161=1,n20=1)=0.
+n163=NAND(n162=0,n21=0)=1.
+n164=NAND(n163=1,q4=1)=0.
+n165=NAND(n164=0,n138=1)=1.
+n166=NAND(n165=1,n33=1)=0.
+n167=NAND(n166=0,n59=1)=1.
+n168=NAND(n167=1,n20=1)=0.
+n169=NAND(n168=0,q0=1)=1.
+n170=NAND(n169=1,n161=1)=0.
+n171=NAND(n170=0,n55=0)=1.
+n172=NAND(n171=1,n45=1)=0.
+n173=NAND(n172=0,n16=1)=1.
+n174=NAND(n173=1,n166=0)=1.
+n175=NAND(n174=1,q3=1)=0.
+n176=NAND(n175=0,q6=0)=1.
+n177=NAND(n176=1,n116=1)=0.
+n178=NAND(n177=0,n148=0)=1.
+n179=NAND(n178=1,n82=0)=1.
+n180=NAND(n179=1,n124=1)=0.
+n181=NAND(n180=0,n42=1)=1.
+n182=NAND(n181=1,n142=1)=0.
+n183=NAND(n182=0,in1=1)=1.
+n184=NAND(n183=1,n26=1)=0.
+n185=NAND(n184=0,n139=0)=1.
+n186=NAND(n185=1,n115=1)=0.
+n187=NAND(n186=0,n12=1)=1.
+n188=NAND(n187=1,n63=1)=0.
+n189=NAND(n188=0,n185=1)=1.
+n190=NAND(n189=1,n134=1)=0.
+n191=NAND(n190=0,n122=1)=1.
+n192=NAND(n191=1,n20=1)=0.
+n193=NAND(n192=0,n96=1)=1.
+n194=NAND(n193=1,n89=1)=0.
+n195=NAND(n194=0,n130=1)=1.
+n196=NAND(n195=1,n171=1)=0.
+n197=NAND(n196=0,n158=1)=1.
+n198=NAND(n197=1,n126=1)=0.
+n199=NAND(n198=0,n18=1)=1.
+
+Outputs cycle21: n199=1; q10=S21.q10=1; q11=S21.q11=1; q6=S21.q6=0.
+
+State update S22:
+q0'=n188=0
+q1'=n159=1
+q2'=n181=1
+q3'=n190=0
+q4'=n167=1
+q5'=n192=0
+q6'=n166=0
+q7'=n170=0
+q8'=n157=0
+q9'=n188=0
+q10'=n194=0
+q11'=n193=1
+
+S22=(0,1,1,0,1,0,0,0,0,0,0,1).
+
+Check: n188=NAND(n187=1,n63=1)=0. n190=NAND(n189=1,n134=1)=0. n157=NAND(n156=1,n76=1)=0. n166=NAND(n165=1,n33=1)=0. n167=NAND(n166=0,n59=1)=1. n181=NAND(n180=0,n42=1)=1. n192=NAND(n191=1,n20=1)=0. n193=NAND(n192=0,n96=1)=1. n194=NAND(n193=1,n89=1)=0. n159=NAND(n158=1,n34=0)=1. n170=NAND(n169=1,n161=1)=0. OK.
+
+Outputs c0..c21:
+n199: [0,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,1,1,1,1,1,1]
+q10: [1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,1,0,0,0,0,1,1]
+q11: [1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,1,1,1,1,1,0,1]
+q6:  [1,1,1,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0]
+
+=== Cycle 22 ===
+State S22=(q0=0,q1=1,q2=1,q3=0,q4=1,q5=0,q6=0,q7=0,q8=0,q9=0,q10=0,q11=1).
+Inputs I22=(in0[22],in1[22],in2[22])=(1,0,0).
+
+n0=NAND(in1=0,q8=0)=1.
+n1=NAND(n0=1,in2=0)=1.
+n2=NAND(n1=1,q5=0)=1.
+n3=NAND(n2=1,q0=0)=1.
+n4=NAND(n3=1,q5=0)=1.
+n5=NAND(n4=1,n0=1)=0.
+n6=NAND(n5=0,q8=0)=1.
+n7=NAND(n6=1,n6=1)=0.
+n8=NAND(n7=0,n2=1)=1.
+n9=NAND(n8=1,n5=0)=1.
+n10=NAND(n9=1,n3=1)=0.
+n11=NAND(n10=0,in0=1)=1.
+n12=NAND(n11=1,n6=1)=0.
+n13=NAND(n12=0,in2=0)=1.
+n14=NAND(n13=1,n11=1)=0.
+n15=NAND(n14=0,q0=0)=1.
+n16=NAND(n15=1,n12=0)=1.
+n17=NAND(n16=1,n8=1)=0.
+n18=NAND(n17=0,n3=1)=1.
+n19=NAND(n18=1,q1=1)=0.
+n20=NAND(n19=0,n4=1)=1.
+n21=NAND(n20=1,q0=0)=1.
+n22=NAND(n21=1,n3=1)=0.
+n23=NAND(n22=0,q9=0)=1.
+n24=NAND(n23=1,n12=0)=1.
+n25=NAND(n24=1,n20=1)=0.
+n26=NAND(n25=0,n22=0)=1.
+n27=NAND(n26=1,n23=1)=0.
+n28=NAND(n27=0,n16=1)=1.
+n29=NAND(n28=1,n18=1)=0.
+n30=NAND(n29=0,q3=0)=1.
+n31=NAND(n30=1,q9=0)=1.
+n32=NAND(n31=1,n19=0)=1.
+n33=NAND(n32=1,q7=0)=1.
+n34=NAND(n33=1,n1=1)=0.
+n35=NAND(n34=0,n0=1)=1.
+n36=NAND(n35=1,n8=1)=0.
+n37=NAND(n36=0,in2=0)=1.
+n38=NAND(n37=1,q8=0)=1.
+n39=NAND(n38=1,n18=1)=0.
+n40=NAND(n39=0,n16=1)=1.
+n41=NAND(n40=1,n11=1)=0.
+n42=NAND(n41=0,n25=0)=1.
+n43=NAND(n42=1,n28=1)=0.
+n44=NAND(n43=0,q9=0)=1.
+n45=NAND(n44=1,q10=0)=1.
+n46=NAND(n45=1,q3=0)=1.
+n47=NAND(n46=1,n21=1)=0.
+n48=NAND(n47=0,q6=0)=1.
+n49=NAND(n48=1,n33=1)=0.
+n50=NAND(n49=0,n15=1)=1.
+n51=NAND(n50=1,n9=1)=0.
+n52=NAND(n51=0,n9=1)=1.
+n53=NAND(n52=1,q1=1)=0.
+n54=NAND(n53=0,n38=1)=1.
+n55=NAND(n54=1,q2=1)=0.
+n56=NAND(n55=0,n5=0)=1.
+n57=NAND(n56=1,n13=1)=0.
+n58=NAND(n57=0,n22=0)=1.
+n59=NAND(n58=1,n43=0)=1.
+n60=NAND(n59=1,q8=0)=1.
+n61=NAND(n60=1,n48=1)=0.
+n62=NAND(n61=0,n44=1)=1.
+n63=NAND(n62=1,n41=0)=1.
+n64=NAND(n63=1,n30=1)=0.
+n65=NAND(n64=0,n37=1)=1.
+n66=NAND(n65=1,n1=1)=0.
+n67=NAND(n66=0,q0=0)=1.
+n68=NAND(n67=1,n64=0)=1.
+n69=NAND(n68=1,n35=1)=0.
+n70=NAND(n69=0,n22=0)=1.
+n71=NAND(n70=1,n43=0)=1.
+n72=NAND(n71=1,n43=0)=1.
+n73=NAND(n72=1,n55=0)=1.
+n74=NAND(n73=1,n39=0)=1.
+n75=NAND(n74=1,n20=1)=0.
+n76=NAND(n75=0,n68=1)=1.
+n77=NAND(n76=1,q4=1)=0.
+n78=NAND(n77=0,n54=1)=1.
+n79=NAND(n78=1,n75=0)=1.
+n80=NAND(n79=1,q4=1)=0.
+n81=NAND(n80=0,n36=0)=1.
+n82=NAND(n81=1,n10=0)=1.
+n83=NAND(n82=1,n28=1)=0.
+n84=NAND(n83=0,n78=1)=1.
+n85=NAND(n84=1,n58=1)=0.
+n86=NAND(n85=0,n74=1)=1.
+n87=NAND(n86=1,q5=0)=1.
+n88=NAND(n87=1,n65=1)=0.
+n89=NAND(n88=0,n70=1)=1.
+n90=NAND(n89=1,q2=1)=0.
+n91=NAND(n90=0,q11=1)=1.
+n92=NAND(n91=1,n57=0)=1.
+n93=NAND(n92=1,n8=1)=0.
+n94=NAND(n93=0,n60=1)=1.
+n95=NAND(n94=1,n64=0)=1.
+n96=NAND(n95=1,n4=1)=0.
+n97=NAND(n96=0,in1=0)=1.
+n98=NAND(n97=1,n57=0)=1.
+n99=NAND(n98=1,n8=1)=0.
+n100=NAND(n99=0,n10=0)=1.
+n101=NAND(n100=1,n35=1)=0.
+n102=NAND(n101=0,n62=1)=1.
+n103=NAND(n102=1,n73=1)=0.
+n104=NAND(n103=0,n98=1)=1.
+n105=NAND(n104=1,n16=1)=0.
+n106=NAND(n105=0,n45=1)=1.
+n107=NAND(n106=1,n77=0)=1.
+n108=NAND(n107=1,n16=1)=0.
+n109=NAND(n108=0,n103=0)=1.
+n110=NAND(n109=1,n15=1)=0.
+n111=NAND(n110=0,n41=0)=1.
+n112=NAND(n111=1,n74=1)=0.
+n113=NAND(n112=0,n71=1)=1.
+n114=NAND(n113=1,n40=1)=0.
+n115=NAND(n114=0,n113=1)=1.
+n116=NAND(n115=1,n34=0)=1.
+n117=NAND(n116=1,n25=0)=1.
+n118=NAND(n117=1,n18=1)=0.
+n119=NAND(n118=0,n59=1)=1.
+n120=NAND(n119=1,n100=1)=0.
+n121=NAND(n120=0,n5=0)=1.
+n122=NAND(n121=1,n29=0)=1.
+n123=NAND(n122=1,n45=1)=0.
+n124=NAND(n123=0,n77=0)=1.
+n125=NAND(n124=1,n15=1)=0.
+n126=NAND(n125=0,n95=1)=1.
+n127=NAND(n126=1,n10=0)=1.
+n128=NAND(n127=1,n18=1)=0.
+n129=NAND(n128=0,n35=1)=1.
+n130=NAND(n129=1,n72=1)=0.
+n131=NAND(n130=0,n2=1)=1.
+n132=NAND(n131=1,n35=1)=0.
+n133=NAND(n132=0,n104=1)=1.
+n134=NAND(n133=1,n13=1)=0.
+n135=NAND(n134=0,q3=0)=1.
+n136=NAND(n135=1,n97=1)=0.
+n137=NAND(n136=0,n26=1)=1.
+n138=NAND(n137=1,n7=0)=1.
+n139=NAND(n138=1,n38=1)=0.
+n140=NAND(n139=0,q4=1)=1.
+n141=NAND(n140=1,n11=1)=0.
+n142=NAND(n141=0,n78=1)=1.
+n143=NAND(n142=1,n51=0)=1.
+n144=NAND(n143=1,n49=0)=1.
+n145=NAND(n144=1,n112=0)=1.
+n146=NAND(n145=1,n1=1)=0.
+n147=NAND(n146=0,n22=0)=1.
+n148=NAND(n147=1,n107=1)=0.
+n149=NAND(n148=0,n18=1)=1.
+n150=NAND(n149=1,n79=1)=0.
+n151=NAND(n150=0,n57=0)=1.
+n152=NAND(n151=1,n70=1)=0.
+n153=NAND(n152=0,n109=1)=1.
+n154=NAND(n153=1,q1=1)=0.
+n155=NAND(n154=0,n73=1)=1.
+n156=NAND(n155=1,n73=1)=0.
+n157=NAND(n156=0,n76=1)=1.
+n158=NAND(n157=1,n40=1)=0.
+n159=NAND(n158=0,n34=0)=1.
+n160=NAND(n159=1,n130=0)=1.
+n161=NAND(n160=1,n57=0)=1.
+n162=NAND(n161=1,n20=1)=0.
+n163=NAND(n162=0,n21=1)=1.
+n164=NAND(n163=1,q4=1)=0.
+n165=NAND(n164=0,n138=1)=1.
+n166=NAND(n165=1,n33=1)=0.
+n167=NAND(n166=0,n59=1)=1.
+n168=NAND(n167=1,n20=1)=0.
+n169=NAND(n168=0,q0=0)=1.
+n170=NAND(n169=1,n161=1)=0.
+n171=NAND(n170=0,n55=0)=1.
+n172=NAND(n171=1,n45=1)=0.
+n173=NAND(n172=0,n16=1)=1.
+n174=NAND(n173=1,n166=0)=1.
+n175=NAND(n174=1,q3=0)=1.
+n176=NAND(n175=1,q6=0)=1.
+n177=NAND(n176=1,n116=1)=0.
+n178=NAND(n177=0,n148=0)=1.
+n179=NAND(n178=1,n82=1)=0.
+n180=NAND(n179=0,n124=1)=1.
+n181=NAND(n180=1,n42=1)=0.
+n182=NAND(n181=0,n142=1)=1.
+n183=NAND(n182=1,in1=0)=1.
+n184=NAND(n183=1,n26=1)=0.
+n185=NAND(n184=0,n139=0)=1.
+n186=NAND(n185=1,n115=1)=0.
+n187=NAND(n186=0,n12=0)=1.
+n188=NAND(n187=1,n63=1)=0.
+n189=NAND(n188=0,n185=1)=1.
+n190=NAND(n189=1,n134=0)=1.
+n191=NAND(n190=1,n122=1)=0.
+n192=NAND(n191=0,n20=1)=1.
+n193=NAND(n192=1,n96=0)=1.
+n194=NAND(n193=1,n89=1)=0.
+n195=NAND(n194=0,n130=0)=1.
+n196=NAND(n195=1,n171=1)=0.
+n197=NAND(n196=0,n158=0)=1.
+n198=NAND(n197=1,n126=1)=0.
+n199=NAND(n198=0,n18=1)=1.
+
+Outputs cycle22: n199=1; q10=S22.q10=0; q11=S22.q11=1; q6=S22.q6=0.
+
+State update S23:
+q0'=n188=0
+q1'=n159=1
+q2'=n181=0
+q3'=n190=1
+q4'=n167=1
+q5'=n192=1
+q6'=n166=0
+q7'=n170=0
+q8'=n157=1
+q9'=n188=0
+q10'=n194=0
+q11'=n193=1
+
+S23=(0,1,0,1,1,1,0,0,1,0,0,1).
+
+Check: n166=NAND(n165=1,n33=1)=0. n167=NAND(n166=0,n59=1)=1. n181=NAND(n180=1,n42=1)=0. n188=NAND(n187=1,n63=1)=0. n190=NAND(n189=1,n134=0)=1. n192=NAND(n191=0,n20=1)=1. n193=NAND(n192=1,n96=0)=1. n194=NAND(n193=1,n89=1)=0. n157=NAND(n156=0,n76=1)=1. n159=NAND(n158=0,n34=0)=1. n170=NAND(n169=1,n161=1)=0. OK.
+
+Outputs c0..c22:
+n199: [0,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,1,1,1,1,1,1,1]
+q10: [1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,1,0,0,0,0,1,1,0]
+q11: [1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,1,1,1,1,1,0,1,1]
+q6:  [1,1,1,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0]
+
+=== Cycle 23 ===
+State S23=(q0=0,q1=1,q2=0,q3=1,q4=1,q5=1,q6=0,q7=0,q8=1,q9=0,q10=0,q11=1).
+Inputs I23=(in0[23],in1[23],in2[23])=(0,1,0).
+
+n0=NAND(in1=1,q8=1)=0.
+n1=NAND(n0=0,in2=0)=1.
+n2=NAND(n1=1,q5=1)=0.
+n3=NAND(n2=0,q0=0)=1.
+n4=NAND(n3=1,q5=1)=0.
+n5=NAND(n4=0,n0=0)=1.
+n6=NAND(n5=1,q8=1)=0.
+n7=NAND(n6=0,n6=0)=1.
+n8=NAND(n7=1,n2=0)=1.
+n9=NAND(n8=1,n5=1)=0.
+n10=NAND(n9=0,n3=1)=1.
+n11=NAND(n10=1,in0=0)=1.
+n12=NAND(n11=1,n6=0)=1.
+n13=NAND(n12=1,in2=0)=1.
+n14=NAND(n13=1,n11=1)=0.
+n15=NAND(n14=0,q0=0)=1.
+n16=NAND(n15=1,n12=1)=0.
+n17=NAND(n16=0,n8=1)=1.
+n18=NAND(n17=1,n3=1)=0.
+n19=NAND(n18=0,q1=1)=1.
+n20=NAND(n19=1,n4=0)=1.
+n21=NAND(n20=1,q0=0)=1.
+n22=NAND(n21=1,n3=1)=0.
+n23=NAND(n22=0,q9=0)=1.
+n24=NAND(n23=1,n12=1)=0.
+n25=NAND(n24=0,n20=1)=1.
+n26=NAND(n25=1,n22=0)=1.
+n27=NAND(n26=1,n23=1)=0.
+n28=NAND(n27=0,n16=0)=1.
+n29=NAND(n28=1,n18=0)=1.
+n30=NAND(n29=1,q3=1)=0.
+n31=NAND(n30=0,q9=0)=1.
+n32=NAND(n31=1,n19=1)=0.
+n33=NAND(n32=0,q7=0)=1.
+n34=NAND(n33=1,n1=1)=0.
+n35=NAND(n34=0,n0=0)=1.
+n36=NAND(n35=1,n8=1)=0.
+n37=NAND(n36=0,in2=0)=1.
+n38=NAND(n37=1,q8=1)=0.
+n39=NAND(n38=0,n18=0)=1.
+n40=NAND(n39=1,n16=0)=1.
+n41=NAND(n40=1,n11=1)=0.
+n42=NAND(n41=0,n25=1)=1.
+n43=NAND(n42=1,n28=1)=0.
+n44=NAND(n43=0,q9=0)=1.
+n45=NAND(n44=1,q10=0)=1.
+n46=NAND(n45=1,q3=1)=0.
+n47=NAND(n46=0,n21=1)=1.
+n48=NAND(n47=1,q6=0)=1.
+n49=NAND(n48=1,n33=1)=0.
+n50=NAND(n49=0,n15=1)=1.
+n51=NAND(n50=1,n9=0)=1.
+n52=NAND(n51=1,n9=0)=1.
+n53=NAND(n52=1,q1=1)=0.
+n54=NAND(n53=0,n38=0)=1.
+n55=NAND(n54=1,q2=0)=1.
+n56=NAND(n55=1,n5=1)=0.
+n57=NAND(n56=0,n13=1)=1.
+n58=NAND(n57=1,n22=0)=1.
+n59=NAND(n58=1,n43=0)=1.
+n60=NAND(n59=1,q8=1)=0.
+n61=NAND(n60=0,n48=1)=1.
+n62=NAND(n61=1,n44=1)=0.
+n63=NAND(n62=0,n41=0)=1.
+n64=NAND(n63=1,n30=0)=1.
+n65=NAND(n64=1,n37=1)=0.
+n66=NAND(n65=0,n1=1)=1.
+n67=NAND(n66=1,q0=0)=1.
+n68=NAND(n67=1,n64=1)=0.
+n69=NAND(n68=0,n35=1)=1.
+n70=NAND(n69=1,n22=0)=1.
+n71=NAND(n70=1,n43=0)=1.
+n72=NAND(n71=1,n43=0)=1.
+n73=NAND(n72=1,n55=1)=0.
+n74=NAND(n73=0,n39=1)=1.
+n75=NAND(n74=1,n20=1)=0.
+n76=NAND(n75=0,n68=0)=1.
+n77=NAND(n76=1,q4=1)=0.
+n78=NAND(n77=0,n54=1)=1.
+n79=NAND(n78=1,n75=0)=1.
+n80=NAND(n79=1,q4=1)=0.
+n81=NAND(n80=0,n36=0)=1.
+n82=NAND(n81=1,n10=1)=0.
+n83=NAND(n82=0,n28=1)=1.
+n84=NAND(n83=1,n78=1)=0.
+n85=NAND(n84=0,n58=1)=1.
+n86=NAND(n85=1,n74=1)=0.
+n87=NAND(n86=0,q5=1)=1.
+n88=NAND(n87=1,n65=0)=1.
+n89=NAND(n88=1,n70=1)=0.
+n90=NAND(n89=0,q2=0)=1.
+n91=NAND(n90=1,q11=1)=0.
+n92=NAND(n91=0,n57=1)=1.
+n93=NAND(n92=1,n8=1)=0.
+n94=NAND(n93=0,n60=0)=1.
+n95=NAND(n94=1,n64=1)=0.
+n96=NAND(n95=0,n4=0)=1.
+n97=NAND(n96=1,in1=1)=0.
+n98=NAND(n97=0,n57=1)=1.
+n99=NAND(n98=1,n8=1)=0.
+n100=NAND(n99=0,n10=1)=1.
+n101=NAND(n100=1,n35=1)=0.
+n102=NAND(n101=0,n62=0)=1.
+n103=NAND(n102=1,n73=0)=1.
+n104=NAND(n103=1,n98=1)=0.
+n105=NAND(n104=0,n16=0)=1.
+n106=NAND(n105=1,n45=1)=0.
+n107=NAND(n106=0,n77=0)=1.
+n108=NAND(n107=1,n16=0)=1.
+n109=NAND(n108=1,n103=1)=0.
+n110=NAND(n109=0,n15=1)=1.
+n111=NAND(n110=1,n41=0)=1.
+n112=NAND(n111=1,n74=1)=0.
+n113=NAND(n112=0,n71=1)=1.
+n114=NAND(n113=1,n40=1)=0.
+n115=NAND(n114=0,n113=1)=1.
+n116=NAND(n115=1,n34=0)=1.
+n117=NAND(n116=1,n25=1)=0.
+n118=NAND(n117=0,n18=0)=1.
+n119=NAND(n118=1,n59=1)=0.
+n120=NAND(n119=0,n100=1)=1.
+n121=NAND(n120=1,n5=1)=0.
+n122=NAND(n121=0,n29=1)=1.
+n123=NAND(n122=1,n45=1)=0.
+n124=NAND(n123=0,n77=0)=1.
+n125=NAND(n124=1,n15=1)=0.
+n126=NAND(n125=0,n95=0)=1.
+n127=NAND(n126=1,n10=1)=0.
+n128=NAND(n127=0,n18=0)=1.
+n129=NAND(n128=1,n35=1)=0.
+n130=NAND(n129=0,n72=1)=1.
+n131=NAND(n130=1,n2=0)=1.
+n132=NAND(n131=1,n35=1)=0.
+n133=NAND(n132=0,n104=0)=1.
+n134=NAND(n133=1,n13=1)=0.
+n135=NAND(n134=0,q3=1)=1.
+n136=NAND(n135=1,n97=0)=1.
+n137=NAND(n136=1,n26=1)=0.
+n138=NAND(n137=0,n7=1)=1.
+n139=NAND(n138=1,n38=0)=1.
+n140=NAND(n139=1,q4=1)=0.
+n141=NAND(n140=0,n11=1)=1.
+n142=NAND(n141=1,n78=1)=0.
+n143=NAND(n142=0,n51=1)=1.
+n144=NAND(n143=1,n49=0)=1.
+n145=NAND(n144=1,n112=0)=1.
+n146=NAND(n145=1,n1=1)=0.
+n147=NAND(n146=0,n22=0)=1.
+n148=NAND(n147=1,n107=1)=0.
+n149=NAND(n148=0,n18=0)=1.
+n150=NAND(n149=1,n79=1)=0.
+n151=NAND(n150=0,n57=1)=1.
+n152=NAND(n151=1,n70=1)=0.
+n153=NAND(n152=0,n109=0)=1.
+n154=NAND(n153=1,q1=1)=0.
+n155=NAND(n154=0,n73=0)=1.
+n156=NAND(n155=1,n73=0)=1.
+n157=NAND(n156=1,n76=1)=0.
+n158=NAND(n157=0,n40=1)=1.
+n159=NAND(n158=1,n34=0)=1.
+n160=NAND(n159=1,n130=1)=0.
+n161=NAND(n160=0,n57=1)=1.
+n162=NAND(n161=1,n20=1)=0.
+n163=NAND(n162=0,n21=1)=1.
+n164=NAND(n163=1,q4=1)=0.
+n165=NAND(n164=0,n138=1)=1.
+n166=NAND(n165=1,n33=1)=0.
+n167=NAND(n166=0,n59=1)=1.
+n168=NAND(n167=1,n20=1)=0.
+n169=NAND(n168=0,q0=0)=1.
+n170=NAND(n169=1,n161=1)=0.
+n171=NAND(n170=0,n55=1)=1.
+n172=NAND(n171=1,n45=1)=0.
+n173=NAND(n172=0,n16=0)=1.
+n174=NAND(n173=1,n166=0)=1.
+n175=NAND(n174=1,q3=1)=0.
+n176=NAND(n175=0,q6=0)=1.
+n177=NAND(n176=1,n116=1)=0.
+n178=NAND(n177=0,n148=0)=1.
+n179=NAND(n178=1,n82=0)=1.
+n180=NAND(n179=1,n124=1)=0.
+n181=NAND(n180=0,n42=1)=1.
+n182=NAND(n181=1,n142=0)=1.
+n183=NAND(n182=1,in1=1)=0.
+n184=NAND(n183=0,n26=1)=1.
+n185=NAND(n184=1,n139=1)=0.
+n186=NAND(n185=0,n115=1)=1.
+n187=NAND(n186=1,n12=1)=0.
+n188=NAND(n187=0,n63=1)=1.
+n189=NAND(n188=1,n185=0)=1.
+n190=NAND(n189=1,n134=0)=1.
+n191=NAND(n190=1,n122=1)=0.
+n192=NAND(n191=0,n20=1)=1.
+n193=NAND(n192=1,n96=1)=0.
+n194=NAND(n193=0,n89=0)=1.
+n195=NAND(n194=1,n130=1)=0.
+n196=NAND(n195=0,n171=1)=1.
+n197=NAND(n196=1,n158=1)=0.
+n198=NAND(n197=0,n126=1)=1.
+n199=NAND(n198=1,n18=0)=1.
+
+Outputs cycle23: n199=1; q10=S23.q10=0; q11=S23.q11=1; q6=S23.q6=0.
+
+We don't need S24 (only 24 cycles, record c0..c23). 
+
+Final outputs:
+n199: [0,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1]
+q10: [1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,1,0,0,0,0,1,1,0,0]
+q11: [1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,1,1,1,1,1,0,1,1,1]
+q6:  [1,1,1,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0]
+
+Wait, I need to double check the counts = 24 each. Let me count n199: indices 0..23.
+n199: 0:0,1:1,2:1,3:1,4:0,5:1,6:0,7:1,8:0,9:1,10:0,11:1,12:1,13:1,14:0,15:1,16:1,17:1,18:1,19:1,20:1,21:1,22:1,23:1. That's 24. Good. Note from c15 onward n199 is all 1 except... c14=0, c15=1,c16=1,...,c23=1. And c4=0,c6=0,c8=0,c10=0. Let me list n199 zeros: c0=0,c4=0,c6=0,c8=0,c10=0,c14=0. Rest 1. Count zeros=6, ones=18.
+
+Hold on, let me re-examine c9. I claimed c9 = c5 (same state S1 and same input (0,1,1)). c5 n199=1. So c9 n199=1. In my n199 list index9=1. Good. And c8 n199=0 (computed). c10=0 (computed). Good.
+
+Now let me reconsider potential error sources. The most error-prone are the many NAND evaluations. Given I cross-checked DFF inputs each cycle and used state-pair repetition (c9=c5 confirmed by identical S and I), I'm fairly confident. But let me do a few more consistency checks.
+
+Important cross-check: The state sequence I derived should be internally consistent: S_{t+1} depends only on S_t and I_t. I used that to identify S5=S1, S7=S1, S9=S1, S11=S1, S8=S4. Let me re-verify S5=S1 carefully because it's load-bearing for c9.
+
+S1 (start c1) from c0 update: q0=0,q1=1,q2=0,q3=1,q4=0,q5=1,q6=1,q7=0,q8=1,q9=0,q10=0,q11=1.
+S5 (start c5) from c4 update: q0=0,q1=1,q2=0,q3=1,q4=0,q5=1,q6=1,q7=0,q8=1,q9=0,q10=0,q11=1. Identical. Good. c5 input (0,1,1). c9 input: in0[9]=0,in1[9]=1,in2[9]=1 = (0,1,1). Same. And S9 (start c9) from c8 update = S1 (computed). So c9 ≡ c5. Outputs c9 = c5 = (n199=1,q10=0,q11=1,q6=1). My list has c9: n199=1,q10=0,q11=1,q6=1. 
+
+But wait: q10 output at c9 = S9.q10 = S1.q10 = 0. Yes. q6 c9 = S1.q6=1. Good.
+
+Now, S6 (start c6) from c5 update = (0,1,1,0,0,0,1,0,0,0,1,1). And S10 (start c10) from c9 update should equal S6 (since c9≡c5). My S10 = S6 indeed. Good, consistent.
+
+Now check q10 list: q10 output at cycle t = S_t.q10.
+S0.q10=1 (init) -> c0=1 ✓
+S1.q10=0 -> c1=0 ✓
+S2.q10=1 -> c2=1 ✓
+S3.q10=0 -> c3=0 ✓
+S4.q10=1 -> c4=1 ✓
+S5=S1.q10=0 -> c5=0 ✓
+S6.q10=1 -> c6=1 ✓
+S7=S1.q10=0 -> c7=0 ✓
+S8=S4.q10=1 -> c8=1 ✓
+S9=S1.q10=0 -> c9=0 ✓
+S10=S6.q10=1 -> c10=1 ✓
+S11=S1.q10=0 -> c11=0 ✓
+S12.q10=1 -> c12=1 ✓
+S13.q10=1 -> c13=1 ✓ (S13=(0,1,1,1,1,1,0,0,1,0,1,0), q10=1)
+S14.q10=1 -> c14=1 ✓ (S14 q10=1)
+S15.q10=1 -> c15=1 ✓ (S15 q10=1)
+S16.q10=0 -> c16=0 ✓ (S16 q10=0)
+S17.q10=0 -> c17=0 ✓ (S17 q10=0)
+S18.q10=0 -> c18=0 ✓
+S19.q10=0 -> c19=0 ✓
+S20.q10=1 -> c20=1 ✓
+S21.q10=1 -> c21=1 ✓
+S22.q10=0 -> c22=0 ✓
+S23.q10=0 -> c23=0 ✓
+So q10 = [1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,1,0,0,0,0,1,1,0,0]. Matches. Good.
+
+q11 output = S_t.q11:
+S0.q11=1 c0; S1.q11=1 c1; S2.q11=1 c2; S3.q11=1 c3; S4.q11=1 c4; S1 c5=1; S6.q11=1 c6; S1 c7=1; S4.q11=1 c8; S1 c9=1; S6.q11=1 c10; S1.q11=1 c11; S12.q11=0 c12; S13.q11=0 c13; S14.q11=0 c14; S15.q11=1 c15; S16.q11=1 c16; S17.q11=1 c17; S18.q11=1 c18; S19.q11=1 c19; S20.q11=0 c20; S21.q11=1 c21; S22.q11=1 c22; S23.q11=1 c23.
+=> q11=[1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,1,1,1,1,1,0,1,1,1]. Matches. Good.
+
+q6 output = S_t.q6:
+S0.q6=1 c0; S1.q6=1; S2.q6=1; S3.q6=0 c3; S4.q6=1 c4; S1 c5=1; S6.q6=1 c6; S1 c7=1; S4.q6=1 c8; S1 c9=1; S6.q6=1 c10; S1.q6=1 c11; S12.q6=0 c12; S13.q6=0 c13; S14.q6=0 c14; S15.q6=0 c15; S16.q6=0 c16; S17.q6=0 c17; S18.q6=0 c18; S19.q6=0 c19; S20.q6=0 c20; S21.q6=0 c21; S22.q6=0 c22; S23.q6=0 c23.
+=> q6=[1,1,1,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0]. Matches.
+
+Now the only remaining risk is n199 computation errors. n199 depends on n198 and n18: n199 = NAND(n198,n18) = 1 unless n198=1 AND n18=1. So n199=0 iff n198=1 and n18=1.
+
+Let me verify for each cycle where I got n199=0 that indeed n198=1 and n18=1; and for a couple where n199=1 that not both are 1.
+
+c0: n18=1, n198=1 -> n199=0. ✓ (I had n198=1,n18=1.)
+c4: n18=1,n198=1 ->0. ✓
+c6: n18=1,n198=1 ->0. ✓
+c8: n18=1,n198=1 ->0. ✓
+c10: n18=1,n198=1 ->0. ✓
+c14: n18=1,n198=1 ->0. ✓ (c14: n198=1,n18=1 -> n199=0). yes.
+
+For c12 I got n199=1 with n198=0,n18=1 -> NAND(0,1)=1. OK. c13 n198=0,n18=0 ->1. c15 n198=0,n18=1 ->1. c16 n198=0,n18=1 ->1. c17 n198=0,n18=1 ->1. c18 n198=0,n18=0 ->1. c19 n198=1,n18=0 ->1. c20 n198=0,n18=1 ->1. c21 n198=0,n18=1 ->1. c22 n198=0,n18=1 ->1. c23 n198=1,n18=0 ->1.
+
+Let me sanity-check c23 n198: n197=NAND(n196=1,n158=1)=0; n198=NAND(n197=0,n126=1)=1. And n18=0. So n199=NAND(1,0)=1. Good.
+
+I'm fairly confident. However, given the enormous manual computation, there's residual risk. Let me at least re-verify the very first cycle's n18 and n198 chain and a middle one (c14) since it flipped q0/q9.
+
+Actually, the state transitions are the most critical (errors propagate). I double-checked the DFF input nets each cycle. The repetitions (S5=S1 etc.) that emerged are consistent and were used only for c9 (fully) — and I verified S9=S1 independently via c8 update, and the input matched c5, so c9=c5 is solid. Everything else I computed explicitly.
+
+One more: let me verify c14 produced n188=1 (which set q0,q9 to 1 for c15). In c14, n63=0 (NAND(n62=1,n41=1)=0), n187=0 (NAND(n186=1,n12=1)=0), n188=NAND(n187=0,n63=0)=1. Yes. Good. And in c13 n188=1 too (set q0,q9=1 for c14): c13 n187=0,n63=1 -> n188=NAND(0,1)=1. Yes. So q0=q9=1 in S14. Consistent with S14=(1,...,q9=1). Good.
+
+I'm confident enough. Let me also double check that I read in0/in1/in2 traces correctly for the indices used.
+
+in0: [1,1,0,0,0,0,0,1,1,0,1,0,0,0,1,0,0,1,1,0,1,0,1,0]
+ indices:0=1,1=1,2=0,3=0,4=0,5=0,6=0,7=1,8=1,9=0,10=1,11=0,12=0,13=0,14=1,15=0,16=0,17=1,18=1,19=0,20=1,21=0,22=1,23=0. 
+ Used: c10 in0=1 ✓, c14 in0=1 ✓, c17 in0=1 ✓, c18 in0=1 ✓, c20 in0=1 ✓, c22 in0=1 ✓. Others 0 where used. Good.
+
+in1: [1,1,1,0,1,1,0,0,1,1,0,0,0,1,1,1,0,0,1,1,1,1,0,1]
+ indices:0=1,1=1,2=1,3=0,4=1,5=1,6=0,7=0,8=1,9=1,10=0,11=0,12=0,13=1,14=1,15=1,16=0,17=0,18=1,19=1,20=1,21=1,22=0,23=1.
+ Used: c7 in1=0 ✓, c10 in1=0 ✓, c11 in1=0 ✓, c12 in1=0 ✓, c13 in1=1 ✓, c16 in1=0 ✓, c17 in1=0 ✓, c22 in1=0 ✓, c23 in1=1 ✓. Good.
+
+in2: [1,1,0,1,1,1,0,1,0,1,0,0,0,0,0,0,0,1,1,0,0,1,0,0]
+ indices:0=1,1=1,2=0,3=1,4=1,5=1,6=0,7=1,8=0,9=1,10=0,11=0,12=0,13=0,14=0,15=0,16=0,17=1,18=1,19=0,20=0,21=1,22=0,23=0.
+ Used: c2 in2=0 ✓, c8 in2=0 ✓, c13 in2=0 ✓, c17 in2=1 ✓, c18 in2=1 ✓, c21 in2=1 ✓. Good.
+
+All consistent. Final answer.
+
+Let me write the final JSON with exactly the three? No—four outputs: n199, q10, q11, q6. The outputs list is ["n199","q10","q11","q6"]. I'll include all four.
+
+Final:
+n199: [0,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1]
+q10: [1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,1,0,0,0,0,1,1,0,0]
+q11: [1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,1,1,1,1,1,0,1,1,1]
+q6: [1,1,1,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0]
+
+Let me count q6: [1,1,1,0, 1,1,1,1, 1,1,1,1, 0,0,0,0, 0,0,0,0, 0,0,0,0] = groups of 4: (1,1,1,0),(1,1,1,1),(1,1,1,1),(0,0,0,0),(0,0,0,0),(0,0,0,0) = 24. Good.
+
+q10 groups: (1,0,1,0),(1,0,1,0),(1,0,1,0),(1,1,1,1),(0,0,0,0),(1,1,0,0) = 24. Let me verify against list: indices 0-3:1,0,1,0; 4-7:1,0,1,0; 8-11:1,0,1,0; 12-15:1,1,1,1; 16-19:0,0,0,0; 20-23:1,1,0,0. Matches my list [1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,1,0,0,0,0,1,1,0,0]. Good.
+
+q11 groups: (1,1,1,1),(1,1,1,1),(1,1,1,1),(0,0,0,1),(1,1,1,1),(0,1,1,1). Indices:0-3 all1;4-7 all1;8-11 all1;12-15:0,0,0,1;16-19:1,1,1,1;20-23:0,1,1,1. Matches [1×12, 0,0,0,1, 1,1,1,1, 0,1,1,1]. My list: [1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,1,1,1,1,1,0,1,1,1]. index15=1 ✓, index16-19=1, index20=0,21=1,22=1,23=1. Good.
+
+n199 groups: indices0-3:0,1,1,1;4-7:0,1,0,1;8-11:0,1,0,1;12-15:1,1,0,1;16-19:1,1,1,1;20-23:1,1,1,1. = [0,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1]. Matches. Good.
+
+Done.
+
+
+=== response ===
+I simulated the circuit cycle by cycle. At each cycle I applied the input trace, held the current DFF states, evaluated all 200 NAND gates in topological order (n0→n199), recorded the outputs, then clocked all 12 DFFs simultaneously.
+
+Key bookkeeping: the DFF state at the start of cycle t determines outputs q6/q10/q11 for that cycle, while n199 is the settled combinational output. The next state is loaded from d nets {n188→q0,q9; n159→q1; n181→q2; n190→q3; n167→q4; n192→q5; n166→q6; n170→q7; n157→q8; n194→q10; n193→q11}.
+
+I cross‑checked by tracking (state, input) pairs — e.g. the state entering cycle 9 equals that entering cycle 5 with the same input (0,1,1), so cycle 9 reproduces cycle 5 exactly — and verified every DFF input net each cycle.
+
+Recorded traces (cycle 0 first):
+
+```json
+{"n199": [0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1], "q10": [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0], "q11": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1], "q6": [1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}
+```

@@ -1,0 +1,5199 @@
+model: deepseek/deepseek-v4-pro
+circuit: mix_s5302_d20_c48
+score: {'status': 'ok', 'prefix_cycles': 48, 'pointwise': 1.0, 'exact': True}
+
+=== reasoning ===
+We need answer simulated output trace for given circuit. Need work carefully. Need produce json mapping outputs q10,q11,q13,q2,q3,q5 to lists of 48 values. We cannot run code, but can manually compute or reason. Large circuit 20 DFFs, 20 gates groups per cycle? Actually gates: for each i 0..19, 5 NAND gates c{i}_0..4, dff d = c{i}_4 to q{i}. So combinational logic maps current q and inputs to next q. Outputs are q10, q11, q13, q2, q3, q5 current states for cycles 0..47. Need simulate 48 cycles. We can do manually but large. Need accuracy. We can derive boolean equations for each next state and simulate step by step. We have enough time. But careful.
+
+Let's restate circuit. DFFs q0..q19, init values:
+q0=1
+q1=0
+q2=1
+q3=0
+q4=1
+q5=1
+q6=1
+q7=1
+q8=0
+q9=1
+q10=1
+q11=0
+q12=0
+q13=1
+q14=1
+q15=1
+q16=0
+q17=0
+q18=1
+q19=0
+
+Inputs in0, in1 traces length 48.
+
+Gates define c_i_j. Need compute next state D_i = c_i_4 as function of current q and inputs. We can derive Boolean equations simplified using NAND.
+
+NAND: y = NOT(a & b) = 1 if any 0 else 0.
+
+Since each group has chain of NANDs, often can derive. Let's derive each c_i_4 maybe invert or function.
+
+Let variables. I can simulate using boolean equations.
+
+Need be careful: every gate output is a net driven by one gate. The combinational graph acyclic because c_i_0 etc feed next c_i_1 etc. Okay.
+
+Let's derive each c_i_4.
+
+Define N = NAND.
+
+Group 0:
+c0_0 = N(q17,q17) = NOT q17.
+c0_1 = N(c0_0, q14) = NOT(NOT q17 & q14) = q17 OR NOT q14? Wait NOT( (¬q17) & q14 ) = q17 OR ¬q14.
+c0_2 = N(c0_1, q19) = NOT( (q17 OR ¬q14) & q19 ) = ¬q19 OR (¬q17 & q14)? Actually Boolean: ¬((q17 + ¬q14) * q19) = (¬q17 * q14) + ¬q19.
+c0_3 = N(c0_2, q14) = NOT( ((¬q17*q14)+¬q19) & q14 ). Note ((¬q17*q14)+¬q19)*q14 = ¬q17*q14 + ¬q19*q14. So NOT = (q17 OR ¬q14) & (q19 OR ¬q14)? Maybe.
+c0_4 = N(c0_3, in1) = NOT(c0_3 & in1).
+
+This is messy. Maybe can simplify with known logic. But perhaps manual step simulation can track q values, compute gates via nested.
+
+For 48 cycles, manual all gate computations is possible but many. We need outputs q10,q11,q13,q2,q3,q5 only, but to compute next all q. Need compute all D.
+
+We need efficient. Could derive all D_i as boolean functions, simplify using algebra, then implement by hand table. There are 20 functions with 5 NAND chain each. We can simplify each. Then simulate with pencil.
+
+Let's derive each D_i = c_i_4 in simple sum-of-products.
+
+Let me define helper: N(x,y) = not(x&y) = ¬x ∨ ¬y.
+
+Each group:
+d = N(chain3, b) where chain3 = N(chain2, variable). So generally invert.
+
+Maybe derive using De Morgan.
+
+Let's label q0..q19, inputs A=in0, B=in1.
+
+For each i, gates:
+g0 = N(a0,b0)
+g1 = N(g0,b1)
+g2 = N(g1,b2)
+g3 = N(g2,b3)
+g4 = N(g3,b4)
+where variables given.
+
+We can compute d = ¬(g3 & b4) = ¬g3 ∨ ¬b4. g3 = ¬(g2 & b3) = ¬g2 ∨ ¬b3. Then g2 = ¬(g1 & b2) = ¬g1 ∨ ¬b2. g1 = ¬(g0 & b1) = ¬g0 ∨ ¬b1. g0 = ¬(a0 & b0) = ¬a0 ∨ ¬b0.
+
+Thus d = ¬( ¬( ¬( ¬(a0&b0) & b1) & b2) & b3) & b4? Actually. Could simplify by layers.
+
+Maybe derive d = (a0 & b0 & ¬b1?) Not trivial.
+
+Let's do algebra for each. Maybe represent d as NAND of ... We can also do truth-table? Too many variables up to 5.
+
+Let's derive using Boolean algebra with variables.
+
+General formula for 5 NAND chain with inputs x0=a0, x1=b0? Let's define h0 = N(a0,b0). h1 = N(h0,b1). h2 = N(h1,b2). h3 = N(h2,b3). h4 = N(h3,b4).
+
+h0 = ¬(a0 b0).
+h1 = ¬(h0 b1) = ¬(¬(a0 b0) & b1) = (a0 b0) ∨ ¬b1.
+h2 = ¬(h1 b2) = ¬(((a0 b0) ∨ ¬b1) & b2) = (¬a0 ∨ ¬b0) & b1 ∨ ¬b2? Let's derive: ¬((A ∨ ¬B1) & B2) = (¬A & B1) ∨ ¬B2, where A=a0&b0. So h2 = (¬(a0 b0) & b1) ∨ ¬b2. That equals h0 & b1 ∨ ¬b2.
+h3 = ¬(h2 b3) = ¬h2 ∨ ¬b3 = ¬(h0 b1 ∨ ¬b2) ∨ ¬b3 = (¬(h0 b1) & b2) ∨ ¬b3 = ( (a0 b0) ∨ ¬b1 ) & b2 ∨ ¬b3. So h3 = h1 & b2 ∨ ¬b3? Wait h1 = (a0 b0) ∨ ¬b1. Yes h3 = h1 & b2 ∨ ¬b3.
+h4 = ¬(h3 b4) = ¬h3 ∨ ¬b4 = ¬(h1 & b2 ∨ ¬b3) ∨ ¬b4 = (¬(h1 & b2) & b3) ∨ ¬b4 = (¬h1 ∨ ¬b2) & b3 ∨ ¬b4. And ¬h1 = h0 & b1? Actually h1 = h0? h1 = N(h0,b1) = ¬(h0 b1). ¬h1 = h0 b1. h0 = ¬(a0 b0). So ¬h1 = b1 & ¬(a0 b0). Thus h4 = (b3 & (b1 & ¬(a0 b0) ∨ ¬b2)) ∨ ¬b4 = (b3 & b1 & ¬(a0 b0)) ∨ (b3 & ¬b2) ∨ ¬b4.
+
+So general formula:
+D = (b4? not) Actually h4 = (b3 & b1 & ¬(a0 & b0)) ∨ (b3 & ¬b2) ∨ ¬b4.
+Where a0,b0 are first NAND inputs; b1,b2,b3,b4 are subsequent inputs. Nice.
+
+Let's verify with group 0: a0=q17, b0=q17, b1=q14, b2=q19, b3=q14, b4=in1.
+Then D0 = (b3 & b1 & ¬(a0&b0)) ∨ (b3 & ¬b2) ∨ ¬b4
+= (q14 & q14 & ¬(q17)) ∨ (q14 & ¬q19) ∨ ¬in1
+= (q14 & ¬q17) ∨ (q14 & ¬q19) ∨ ¬in1.
+Since q17&q17 = q17, ¬q17. So D0 = (q14 & (¬q17 ∨ ¬q19)) ∨ ¬in1. Wait q14 & ¬q17 OR q14 & ¬q19 = q14 & (¬q17 ∨ ¬q19). Yes.
+
+This formula may simplify manual.
+
+Let's derive all D_i using this general formula. Need ensure variable mapping per group. Let's list each group variables (a0,b0,b1,b2,b3,b4).
+
+Group 0:
+a0 q17, b0 q17, b1 q14, b2 q19, b3 q14, b4 in1.
+D0 = (b3 & b1 & ¬(a0&b0)) ∨ (b3 & ¬b2) ∨ ¬b4
+= (q14 & q14 & ¬q17) ∨ (q14 & ¬q19) ∨ ¬in1
+= (q14 & ¬q17) ∨ (q14 & ¬q19) ∨ ¬in1.
+
+Group 1:
+gates: q4,in0 -> g0; b1 q8; b2 q3; b3 q7; b4 q3.
+So a0=q4, b0=in0, b1=q8, b2=q3, b3=q7, b4=q3.
+D1 = (b3 & b1 & ¬(a0&b0)) ∨ (b3 & ¬b2) ∨ ¬b4
+= (q7 & q8 & ¬(q4 & in0)) ∨ (q7 & ¬q3) ∨ ¬q3.
+Since b4=q3, ¬q3. Note (q7 & ¬q3) OR ¬q3 = ¬q3 (absorption). So D1 = (q7 & q8 & ¬(q4 & in0)) ∨ ¬q3.
+Thus D1 = ¬q3 ∨ (q7 & q8 & ¬(q4&in0)).
+
+Group 2:
+gates: q7,q4 -> g0; b1 q8; b2 in1; b3 q8; b4 q18.
+a0=q7,b0=q4,b1=q8,b2=in1,b3=q8,b4=q18.
+D2 = (b3 & b1 & ¬(a0&b0)) ∨ (b3 & ¬b2) ∨ ¬b4
+= (q8 & q8 & ¬(q7&q4)) ∨ (q8 & ¬in1) ∨ ¬q18
+= (q8 & ¬(q7&q4)) ∨ (q8 & ¬in1) ∨ ¬q18
+= q8 & (¬(q7&q4) ∨ ¬in1) ∨ ¬q18.
+= (q8 & ¬(q7 & q4 & in1)? Wait ¬(q7&q4) ∨ ¬in1 = ¬(q7&q4&in1). Yes.
+So D2 = (q8 & ¬(q7 & q4 & in1)) ∨ ¬q18.
+
+Group 3:
+gates: q5,q13 -> g0; b1 q4; b2 q3; b3 q0; b4 q12.
+a0=q5,b0=q13,b1=q4,b2=q3,b3=q0,b4=q12.
+D3 = (b3 & b1 & ¬(a0&b0)) ∨ (b3 & ¬b2) ∨ ¬b4
+= (q0 & q4 & ¬(q5&q13)) ∨ (q0 & ¬q3) ∨ ¬q12.
+= (q0 & q4 & ¬(q5&q13)) ∨ (q0 & ¬q3) ∨ ¬q12.
+
+Group 4:
+gates: in1,q14 -> g0; b1 q16; b2 q15; b3 q9; b4 q7.
+a0=in1,b0=q14,b1=q16,b2=q15,b3=q9,b4=q7.
+D4 = (b3 & b1 & ¬(a0&b0)) ∨ (b3 & ¬b2) ∨ ¬b4
+= (q9 & q16 & ¬(in1 & q14)) ∨ (q9 & ¬q15) ∨ ¬q7.
+
+Group 5:
+gates: q19,q7 -> g0; b1 q8; b2 q9; b3 in1; b4 q18.
+a0=q19,b0=q7,b1=q8,b2=q9,b3=in1,b4=q18.
+D5 = (b3 & b1 & ¬(a0&b0)) ∨ (b3 & ¬b2) ∨ ¬b4
+= (in1 & q8 & ¬(q19&q7)) ∨ (in1 & ¬q9) ∨ ¬q18.
+= (in1 & (q8 & ¬(q19&q7) ∨ ¬q9)) ∨ ¬q18.
+
+Group 6:
+gates: in1,q3 -> g0; b1 q15; b2 q2; b3 q6; b4 in0.
+a0=in1,b0=q3,b1=q15,b2=q2,b3=q6,b4=in0.
+D6 = (b3 & b1 & ¬(a0&b0)) ∨ (b3 & ¬b2) ∨ ¬b4
+= (q6 & q15 & ¬(in1&q3)) ∨ (q6 & ¬q2) ∨ ¬in0.
+
+Group 7:
+gates: q13,q6 -> g0; b1 q9; b2 q3; b3 q17; b4 q19.
+a0=q13,b0=q6,b1=q9,b2=q3,b3=q17,b4=q19.
+D7 = (b3 & b1 & ¬(a0&b0)) ∨ (b3 & ¬b2) ∨ ¬b4
+= (q17 & q9 & ¬(q13&q6)) ∨ (q17 & ¬q3) ∨ ¬q19.
+
+Group 8:
+gates: q10,q10 -> g0; b1 in1; b2 q18; b3 q18; b4 q17.
+a0=q10,b0=q10,b1=in1,b2=q18,b3=q18,b4=q17.
+D8 = (b3 & b1 & ¬(a0&b0)) ∨ (b3 & ¬b2) ∨ ¬b4
+= (q18 & in1 & ¬q10) ∨ (q18 & ¬q18) ∨ ¬q17
+= (q18 & in1 & ¬q10) ∨ 0 ∨ ¬q17
+= ¬q17 ∨ (q18 & in1 & ¬q10).
+
+Group 9:
+gates: q1,q1 -> g0; b1 q5; b2 in0; b3 q4; b4 q18.
+a0=q1,b0=q1,b1=q5,b2=in0,b3=q4,b4=q18.
+D9 = (b3 & b1 & ¬(a0&b0)) ∨ (b3 & ¬b2) ∨ ¬b4
+= (q4 & q5 & ¬q1) ∨ (q4 & ¬in0) ∨ ¬q18.
+
+Group 10:
+gates: q4,q4 -> g0; b1 q18; b2 q15; b3 q16; b4 q18.
+a0=q4,b0=q4,b1=q18,b2=q15,b3=q16,b4=q18.
+D10 = (b3 & b1 & ¬(a0&b0)) ∨ (b3 & ¬b2) ∨ ¬b4
+= (q16 & q18 & ¬q4) ∨ (q16 & ¬q15) ∨ ¬q18.
+= (q16 & (q18 & ¬q4 ∨ ¬q15)) ∨ ¬q18.
+
+Group 11:
+gates: q14,q2 -> g0; b1 q10; b2 q10; b3 in0; b4 q1.
+a0=q14,b0=q2,b1=q10,b2=q10,b3=in0,b4=q1.
+D11 = (b3 & b1 & ¬(a0&b0)) ∨ (b3 & ¬b2) ∨ ¬b4
+= (in0 & q10 & ¬(q14&q2)) ∨ (in0 & ¬q10) ∨ ¬q1
+= (in0 & (q10 & ¬(q14&q2) ∨ ¬q10)) ∨ ¬q1.
+Since q10 & ¬(...) ∨ ¬q10 = ¬q10 ∨ ¬(q14&q2) (because X ¬Y ∨ ¬X = ¬X ∨ ¬Y). So D11 = (in0 & (¬q10 ∨ ¬(q14&q2))) ∨ ¬q1 = (in0 & ¬(q10 & q14 & q2))? Wait ¬q10 ∨ ¬(q14&q2) = ¬(q10 & q14 & q2). Yes.
+Thus D11 = (in0 & ¬(q10 & q14 & q2)) ∨ ¬q1.
+
+Group 12:
+gates: q6,q13 -> g0; b1 q19; b2 q16; b3 q9; b4 q5.
+a0=q6,b0=q13,b1=q19,b2=q16,b3=q9,b4=q5.
+D12 = (b3 & b1 & ¬(a0&b0)) ∨ (b3 & ¬b2) ∨ ¬b4
+= (q9 & q19 & ¬(q6&q13)) ∨ (q9 & ¬q16) ∨ ¬q5.
+
+Group 13:
+gates: q16,in1 -> g0; b1 in1; b2 q19; b3 q8; b4 q19.
+a0=q16,b0=in1,b1=in1,b2=q19,b3=q8,b4=q19.
+D13 = (b3 & b1 & ¬(a0&b0)) ∨ (b3 & ¬b2) ∨ ¬b4
+= (q8 & in1 & ¬(q16 & in1)) ∨ (q8 & ¬q19) ∨ ¬q19.
+Note (q8 & in1 & ¬(q16&in1)) = q8 & in1 & (¬q16 ∨ ¬in1) = q8 & in1 & ¬q16 (since in1&¬in1=0). So term = q8 & in1 & ¬q16.
+Also (q8 & ¬q19) ∨ ¬q19 = ¬q19 (absorption). So D13 = ¬q19 ∨ (q8 & in1 & ¬q16).
+
+Group 14:
+gates: q16,q18 -> g0; b1 q10; b2 q3; b3 q4; b4 q13.
+a0=q16,b0=q18,b1=q10,b2=q3,b3=q4,b4=q13.
+D14 = (b3 & b1 & ¬(a0&b0)) ∨ (b3 & ¬b2) ∨ ¬b4
+= (q4 & q10 & ¬(q16&q18)) ∨ (q4 & ¬q3) ∨ ¬q13.
+
+Group 15:
+gates: q10,q13 -> g0; b1 q2; b2 q6; b3 q10; b4 q14.
+a0=q10,b0=q13,b1=q2,b2=q6,b3=q10,b4=q14.
+D15 = (b3 & b1 & ¬(a0&b0)) ∨ (b3 & ¬b2) ∨ ¬b4
+= (q10 & q2 & ¬(q10&q13)) ∨ (q10 & ¬q6) ∨ ¬q14.
+Simplify: q10 & q2 & ¬(q10&q13) = q10 & q2 & (¬q10 ∨ ¬q13) = q10 & q2 & ¬q13 (since q10&¬q10=0). So term = q10 & q2 & ¬q13.
+D15 = (q10 & q2 & ¬q13) ∨ (q10 & ¬q6) ∨ ¬q14.
+
+Group 16:
+gates: in1,q18 -> g0; b1 q8; b2 q12; b3 q9; b4 q10.
+a0=in1,b0=q18,b1=q8,b2=q12,b3=q9,b4=q10.
+D16 = (b3 & b1 & ¬(a0&b0)) ∨ (b3 & ¬b2) ∨ ¬b4
+= (q9 & q8 & ¬(in1 & q18)) ∨ (q9 & ¬q12) ∨ ¬q10.
+
+Group 17:
+gates: q11,q6 -> g0; b1 in0; b2 q9; b3 q0; b4 q16.
+a0=q11,b0=q6,b1=in0,b2=q9,b3=q0,b4=q16.
+D17 = (b3 & b1 & ¬(a0&b0)) ∨ (b3 & ¬b2) ∨ ¬b4
+= (q0 & in0 & ¬(q11&q6)) ∨ (q0 & ¬q9) ∨ ¬q16.
+
+Group 18:
+gates: q2,q1 -> g0; b1 q17; b2 in0; b3 q0; b4 q8.
+a0=q2,b0=q1,b1=q17,b2=in0,b3=q0,b4=q8.
+D18 = (b3 & b1 & ¬(a0&b0)) ∨ (b3 & ¬b2) ∨ ¬b4
+= (q0 & q17 & ¬(q2&q1)) ∨ (q0 & ¬in0) ∨ ¬q8.
+
+Group 19:
+gates: q19,q14 -> g0; b1 q19; b2 q2; b3 q13; b4 q11.
+a0=q19,b0=q14,b1=q19,b2=q2,b3=q13,b4=q11.
+D19 = (b3 & b1 & ¬(a0&b0)) ∨ (b3 & ¬b2) ∨ ¬b4
+= (q13 & q19 & ¬(q19&q14)) ∨ (q13 & ¬q2) ∨ ¬q11.
+Simplify: q13 & q19 & ¬(q19&q14) = q13 & q19 & (¬q19 ∨ ¬q14) = q13 & q19 & ¬q14.
+So D19 = (q13 & q19 & ¬q14) ∨ (q13 & ¬q2) ∨ ¬q11.
+= (q13 & (¬q2 ∨ (q19 & ¬q14))) ∨ ¬q11? Actually first term q13 & q19 & ¬q14, second q13 & ¬q2. So yes = q13 & (¬q2 ∨ (q19 & ¬q14)) ∨ ¬q11.
+
+Let's double-check formula derivation with De Morgan, perhaps for all.
+
+We can use these simplified equations to simulate.
+
+Need produce output q10,q11,q13,q2,q3,q5 for each cycle t = current state before clock edge. Outputs recorded at step 3 after inputs applied and gates settle, but DFFs still old q. So outputs are current q values before edge. Thus outputs for cycle t are current state q at beginning of cycle t (after applying inputs? Gate outputs may depend on inputs but outputs specified q outputs, which are DFF q outputs, unaffected by inputs except dff q not combinational). So output trace is simply q10_t, q11_t, q13_t, q2_t, q3_t, q5_t for cycle t, where q_t is state before clock edge t, i.e. initial at t=0. We also need next state for cycle t transitions to q_{t+1}. Good.
+
+So need simulate q0..q19 for 48 cycles. We'll manually compute using equations.
+
+I can set up table. Need careful with 20 bits. Maybe use binary or equations. We can do step by step. I need ensure no mistakes. Let's start.
+
+Initial state t=0:
+q0=1
+q1=0
+q2=1
+q3=0
+q4=1
+q5=1
+q6=1
+q7=1
+q8=0
+q9=1
+q10=1
+q11=0
+q12=0
+q13=1
+q14=1
+q15=1
+q16=0
+q17=0
+q18=1
+q19=0
+
+Inputs cycles:
+in0 trace:
+t: 0 0,1 1,2 1,3 1,4 1,5 1,6 0,7 0,8 1,9 0,10 0,11 0,12 0,13 0,14 0,15 1,16 0,17 1,18 1,19 1,20 0,21 1,22 0,23 0,24 1,25 1,26 1,27 1,28 1,29 1,30 0,31 1,32 0,33 0,34 0,35 0,36 0,37 0,38 0,39 0,40 1,41 1,42 0,43 1,44 1,45 1,46 0,47 1
+Need list length 48 yes.
+
+in1:
+0 1
+1 0
+2 1
+3 0
+4 0
+5 1
+6 1
+7 0
+8 0
+9 1
+10 0
+11 0
+12 0
+13 1
+14 1
+15 0
+16 1
+17 1
+18 0
+19 1
+20 1
+21 1
+22 0
+23 0
+24 0
+25 1
+26 1
+27 0
+28 1
+29 1
+30 1
+31 1
+32 1
+33 0
+34 0
+35 0
+36 0
+37 0
+38 0
+39 1
+40 1
+41 0
+42 1
+43 0
+44 0
+45 1
+46 1
+47 0
+
+Let's verify cycles 48.
+
+We need compute D for t=0 to t=47, update states to t+1. Record outputs at t=0..47.
+
+Maybe can use a manual spreadsheet style. Need be extremely accurate. Let's create state table with t, q0..q19, outputs. We'll compute D_i using equations.
+
+We can use abbreviations. For each t, compute D0..D19. Might be easier to compute using equations.
+
+Let's derive equations again cleanly:
+
+D0 = (q14 & ¬q17) OR (q14 & ¬q19) OR ¬in1
+= ¬in1 ∨ (q14 & (¬q17 ∨ ¬q19)).
+D1 = ¬q3 ∨ (q7 & q8 & ¬(q4 & in0)).
+D2 = ¬q18 ∨ (q8 & ¬(q7 & q4 & in1)).
+D3 = ¬q12 ∨ (q0 & ¬q3) ∨ (q0 & q4 & ¬(q5 & q13)).
+D4 = ¬q7 ∨ (q9 & ¬q15) ∨ (q9 & q16 & ¬(in1 & q14)).
+D5 = ¬q18 ∨ (in1 & ¬q9) ∨ (in1 & q8 & ¬(q19 & q7)). Could maybe simplify as ¬q18 ∨ [in1 & (¬q9 ∨ (q8 & ¬(q19&q7)))].
+D6 = ¬in0 ∨ (q6 & ¬q2) ∨ (q6 & q15 & ¬(in1 & q3)).
+D7 = ¬q19 ∨ (q17 & ¬q3) ∨ (q17 & q9 & ¬(q13 & q6)).
+D8 = ¬q17 ∨ (q18 & in1 & ¬q10).
+D9 = ¬q18 ∨ (q4 & ¬in0) ∨ (q4 & q5 & ¬q1).
+D10 = ¬q18 ∨ (q16 & ¬q15) ∨ (q16 & q18 & ¬q4).
+D11 = ¬q1 ∨ (in0 & ¬(q10 & q14 & q2)).
+D12 = ¬q5 ∨ (q9 & ¬q16) ∨ (q9 & q19 & ¬(q6 & q13)).
+D13 = ¬q19 ∨ (q8 & in1 & ¬q16).
+D14 = ¬q13 ∨ (q4 & ¬q3) ∨ (q4 & q10 & ¬(q16 & q18)).
+D15 = ¬q14 ∨ (q10 & ¬q6) ∨ (q10 & q2 & ¬q13).
+D16 = ¬q10 ∨ (q9 & ¬q12) ∨ (q9 & q8 & ¬(in1 & q18)).
+D17 = ¬q16 ∨ (q0 & ¬q9) ∨ (q0 & in0 & ¬(q11 & q6)).
+D18 = ¬q8 ∨ (q0 & ¬in0) ∨ (q0 & q17 & ¬(q2 & q1)).
+D19 = ¬q11 ∨ (q13 & ¬q2) ∨ (q13 & q19 & ¬q14).
+
+Check absorption for D3: from formula: (q0 & q4 & ¬(q5&q13)) ∨ (q0 & ¬q3) ∨ ¬q12. yes.
+
+D4: (q9 & q16 & ¬(in1&q14)) ∨ (q9 & ¬q15) ∨ ¬q7. yes.
+D6: (q6 & q15 & ¬(in1&q3)) ∨ (q6 & ¬q2) ∨ ¬in0. yes.
+D7: (q17 & q9 & ¬(q13&q6)) ∨ (q17 & ¬q3) ∨ ¬q19. yes.
+D12: (q9 & q19 & ¬(q6&q13)) ∨ (q9 & ¬q16) ∨ ¬q5. yes.
+D16: (q9 & q8 & ¬(in1&q18)) ∨ (q9 & ¬q12) ∨ ¬q10.
+D17: (q0 & in0 & ¬(q11&q6)) ∨ (q0 & ¬q9) ∨ ¬q16.
+D18: (q0 & q17 & ¬(q2&q1)) ∨ (q0 & ¬in0) ∨ ¬q8.
+
+Double-check D11 simplification. Original D11 = (in0 & q10 & ¬(q14&q2)) ∨ (in0 & ¬q10) ∨ ¬q1 = in0 & (q10&¬(q14&q2) ∨ ¬q10) ∨ ¬q1. The bracket = (q10 or ¬q10?) Let's simplify: X&¬Y ∨ ¬X. For any X,Y: X&¬Y ∨ ¬X = ¬X ∨ ¬Y (since X&¬Y = ¬X∨? wait prove: X&¬Y ∨ ¬X = (X∨¬X)&(¬Y∨¬X) = 1&(¬X∨¬Y)=¬X∨¬Y). Yes. Then bracket = ¬q10 ∨ ¬(q14&q2). Thus D11 = in0 & (¬q10 ∨ ¬(q14&q2)) ∨ ¬q1 = ¬q1 ∨ (in0 & ¬(q10&q14&q2)). yes.
+
+D13: Original: (q8 & in1 & ¬(q16&in1)) ∨ (q8 & ¬q19) ∨ ¬q19. First term = q8 & in1 & ¬q16. Then (q8&¬q19)∨¬q19 = ¬q19. yes.
+D19 simplified okay.
+
+We can maybe compute using equations with priority: if any ¬term true, D=1 unless maybe. Since all are OR of terms. Many D will be 1 often. We can compute by checking terms.
+
+Need simulate 48 cycles. Let's proceed.
+
+I will create table step by step. To reduce mistakes, maybe use a scratch with columns. Let's record outputs for each t.
+
+We'll compute D_t and then new state q^{t+1}=D_t.
+
+Important: Inputs at cycle t are used for D_t. Outputs at cycle t are current state q_t (not D). We'll record q10_t etc.
+
+Let's start t=0.
+
+Initial state S0 at t=0:
+q0=1
+q1=0
+q2=1
+q3=0
+q4=1
+q5=1
+q6=1
+q7=1
+q8=0
+q9=1
+q10=1
+q11=0
+q12=0
+q13=1
+q14=1
+q15=1
+q16=0
+q17=0
+q18=1
+q19=0
+
+Inputs t=0: in0=0, in1=1.
+
+Record outputs t=0: q10=1, q11=0, q13=1, q2=1, q3=0, q5=1.
+
+Compute D0..D19 for t=0.
+
+Let's compute efficiently.
+
+I'll assign terms.
+
+t=0: in0=0, in1=1.
+
+D0 = ¬in1=0 ∨ (q14 & (¬q17∨¬q19)). q14=1, ¬q17=1 (q17=0), ¬q19=1 (q19=0) => q14&...=1. So D0=1. (Even though ¬in1 0) =>1.
+D1 = ¬q3=1 (q3=0) ∨ ... =>1. D1=1.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=0 => term 0. D2=0.
+D3 = ¬q12=1 (q12=0) =>1. D3=1.
+D4 = ¬q7=0 (q7=1) ∨ (q9&¬q15=1&0=0) ∨ (q9&q16&¬(in1&q14): q16=0 =>0). D4=0.
+D5 = ¬q18=0 ∨ (in1&¬q9=1&0=0) ∨ (in1&q8&¬(q19&q7): q8=0 =>0). D5=0.
+D6 = ¬in0=1 (in0=0) =>1. D6=1.
+D7 = ¬q19=1 (q19=0) =>1. D7=1.
+D8 = ¬q17=1 (q17=0) =>1. D8=1.
+D9 = ¬q18=0 ∨ (q4&¬in0=1&1=1) =>1. D9=1. (q4=1, ¬in0=1)
+D10 = ¬q18=0 ∨ (q16&¬q15=0&0=0) ∨ (q16&q18&¬q4=0...)=0. D10=0.
+D11 = ¬q1=1 (q1=0) =>1. D11=1.
+D12 = ¬q5=0 (q5=1) ∨ (q9&¬q16=1&1=1) =>1. D12=1.
+D13 = ¬q19=1 =>1. D13=1.
+D14 = ¬q13=0 (q13=1) ∨ (q4&¬q3=1&1=1) =>1. D14=1.
+D15 = ¬q14=0 ∨ (q10&¬q6=1&0=0) ∨ (q10&q2&¬q13=1&1&0=0) =>0. D15=0.
+D16 = ¬q10=0 (q10=1) ∨ (q9&¬q12=1&1=1) =>1. D16=1.
+D17 = ¬q16=1 (q16=0) =>1. D17=1.
+D18 = ¬q8=1 (q8=0) =>1. D18=1.
+D19 = ¬q11=1 (q11=0) =>1. D19=1.
+
+So D at t=0: [1,1,0,1,0,0,1,1,1,1,0,1,1,1,1,0,1,1,1,1]
+D0=1,D1=1,D2=0,D3=1,D4=0,D5=0,D6=1,D7=1,D8=1,D9=1,D10=0,D11=1,D12=1,D13=1,D14=1,D15=0,D16=1,D17=1,D18=1,D19=1.
+
+Thus new state S1 (t=1) = these values:
+q0=1
+q1=1
+q2=0
+q3=1
+q4=0
+q5=0
+q6=1
+q7=1
+q8=1
+q9=1
+q10=0
+q11=1
+q12=1
+q13=1
+q14=1
+q15=0
+q16=1
+q17=1
+q18=1
+q19=1
+
+Check q10 changed to 0.
+
+Record outputs at t=1: q10=0, q11=1, q13=1, q2=0, q3=1, q5=0.
+
+Now t=1 inputs: in0=1, in1=0.
+
+State S1:
+q0=1,q1=1,q2=0,q3=1,q4=0,q5=0,q6=1,q7=1,q8=1,q9=1,q10=0,q11=1,q12=1,q13=1,q14=1,q15=0,q16=1,q17=1,q18=1,q19=1.
+
+Compute D for t=1.
+
+in0=1, in1=0.
+
+D0 = ¬in1=1 =>1. D0=1.
+D1 = ¬q3=0 (q3=1) ∨ (q7&q8&¬(q4&in0)). q7=1,q8=1,q4=0, in0=1. q4&in0=0 => ¬=1. term=1. So D1=1.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=1, in1=0 => q7&q4&in1=0, ¬=1, term=1. D2=1.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=1&0=0) ∨ (q0&q4&¬(q5&q13): q4=0 =>0). D3=0.
+D4 = ¬q7=0 ∨ (q9&¬q15=1&1=1) =>1. D4=1. (q15=0)
+D5 = ¬q18=0 ∨ (in1&¬q9=0) ∨ (in1&q8&...=0) =>0. D5=0.
+D6 = ¬in0=0 (in0=1) ∨ (q6&¬q2=1&1=1) =>1. D6=1. (q2=0)
+D7 = ¬q19=0 (q19=1) ∨ (q17&¬q3=1&0=0) ∨ (q17&q9&¬(q13&q6): q13=1,q6=1 => & =1, ¬=0 =>0). D7=0.
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=1&0&1=0) =>0. D8=0.
+D9 = ¬q18=0 ∨ (q4&¬in0=0) ∨ (q4&q5&¬q1=0) =>0. D9=0.
+D10 = ¬q18=0 ∨ (q16&¬q15=1&1=1) =>1. D10=1. (q16=1, q15=0)
+D11 = ¬q1=0 (q1=1) ∨ (in0 & ¬(q10&q14&q2)). q10=0, q14=1,q2=0 => product=0, ¬=1, in0=1 =>1. D11=1.
+D12 = ¬q5=1 (q5=0) =>1. D12=1.
+D13 = ¬q19=0 ∨ (q8&in1&¬q16=1&0&0=0) =>0. D13=0.
+D14 = ¬q13=0 (q13=1) ∨ (q4&¬q3=0) ∨ (q4&q10&¬(q16&q18): q4=0 =>0). D14=0.
+D15 = ¬q14=0 ∨ (q10&¬q6=0) ∨ (q10&q2&¬q13=0) =>0. D15=0.
+D16 = ¬q10=1 (q10=0) =>1. D16=1.
+D17 = ¬q16=0 (q16=1) ∨ (q0&¬q9=1&0=0) ∨ (q0&in0&¬(q11&q6): q11=1,q6=1 => & =1, ¬=0 =>0). D17=0.
+D18 = ¬q8=0 (q8=1) ∨ (q0&¬in0=0) ∨ (q0&q17&¬(q2&q1): q2=0,q1=1 => & =0, ¬=1; q0=1,q17=1 => term=1) =>1. D18=1.
+D19 = ¬q11=0 (q11=1) ∨ (q13&¬q2=1&1=1) =>1. D19=1. (q2=0)
+
+D at t=1: [1,1,1,0,1,0,1,0,0,0,1,1,1,0,0,0,1,0,1,1]
+D0=1,D1=1,D2=1,D3=0,D4=1,D5=0,D6=1,D7=0,D8=0,D9=0,D10=1,D11=1,D12=1,D13=0,D14=0,D15=0,D16=1,D17=0,D18=1,D19=1.
+
+New state S2:
+q0=1
+q1=1
+q2=1
+q3=0
+q4=1
+q5=0
+q6=1
+q7=0
+q8=0
+q9=0
+q10=1
+q11=1
+q12=1
+q13=0
+q14=0
+q15=0
+q16=1
+q17=0
+q18=1
+q19=1
+
+Outputs t=2: q10=1, q11=1, q13=0, q2=1, q3=0, q5=0.
+
+Now t=2 inputs: in0=1, in1=1.
+
+State S2:
+q0=1,q1=1,q2=1,q3=0,q4=1,q5=0,q6=1,q7=0,q8=0,q9=0,q10=1,q11=1,q12=1,q13=0,q14=0,q15=0,q16=1,q17=0,q18=1,q19=1.
+
+Compute D for t=2.
+
+in0=1, in1=1.
+
+D0 = ¬in1=0 ∨ (q14 & (¬q17∨¬q19)). q14=0 =>0. D0=0.
+D1 = ¬q3=1 (q3=0) =>1. D1=1.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=0 =>0. D2=0.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=1&1=1) =>1. D3=1.
+D4 = ¬q7=1 (q7=0) =>1. D4=1.
+D5 = ¬q18=0 ∨ (in1&¬q9=1&1=1) =>1. D5=1. (q9=0)
+D6 = ¬in0=0 ∨ (q6&¬q2=1&0=0) ∨ (q6&q15&¬(in1&q3): q15=0 =>0). D6=0.
+D7 = ¬q19=0 (q19=1) ∨ (q17&¬q3=0&1=0) ∨ (q17&q9&¬(q13&q6): q17=0,q9=0 =>0). D7=0.
+D8 = ¬q17=1 (q17=0) =>1. D8=1.
+D9 = ¬q18=0 ∨ (q4&¬in0=1&0=0) ∨ (q4&q5&¬q1=1&0&0=0) =>0. D9=0.
+D10 = ¬q18=0 ∨ (q16&¬q15=1&1=1) =>1. D10=1.
+D11 = ¬q1=0 (q1=1) ∨ (in0 & ¬(q10&q14&q2)). q10=1,q14=0,q2=1 => product=0, ¬=1, in0=1 =>1. D11=1.
+D12 = ¬q5=1 (q5=0) =>1. D12=1.
+D13 = ¬q19=0 ∨ (q8&in1&¬q16=0) =>0. D13=0.
+D14 = ¬q13=1 (q13=0) =>1. D14=1.
+D15 = ¬q14=1 (q14=0) =>1. D15=1.
+D16 = ¬q10=0 (q10=1) ∨ (q9&¬q12=0) ∨ (q9&q8&¬(in1&q18): q9=0 =>0). D16=0.
+D17 = ¬q16=0 (q16=1) ∨ (q0&¬q9=1&1=1) =>1. D17=1. (q9=0)
+D18 = ¬q8=1 (q8=0) =>1. D18=1.
+D19 = ¬q11=0 (q11=1) ∨ (q13&¬q2=0) ∨ (q13&q19&¬q14=0) =>0. D19=0.
+
+D at t=2: [0,1,0,1,1,1,0,0,1,0,1,1,1,0,1,1,0,1,1,0]
+D0=0,D1=1,D2=0,D3=1,D4=1,D5=1,D6=0,D7=0,D8=1,D9=0,D10=1,D11=1,D12=1,D13=0,D14=1,D15=1,D16=0,D17=1,D18=1,D19=0.
+
+New state S3:
+q0=0
+q1=1
+q2=0
+q3=1
+q4=1
+q5=1
+q6=0
+q7=0
+q8=1
+q9=0
+q10=1
+q11=1
+q12=1
+q13=0
+q14=1
+q15=1
+q16=0
+q17=1
+q18=1
+q19=0
+
+Outputs t=3: q10=1, q11=1, q13=0, q2=0, q3=1, q5=1.
+
+Now t=3 inputs: in0=1, in1=0.
+
+State S3:
+q0=0,q1=1,q2=0,q3=1,q4=1,q5=1,q6=0,q7=0,q8=1,q9=0,q10=1,q11=1,q12=1,q13=0,q14=1,q15=1,q16=0,q17=1,q18=1,q19=0.
+
+Compute D for t=3.
+
+in0=1, in1=0.
+
+D0 = ¬in1=1 =>1. D0=1.
+D1 = ¬q3=0 ∨ (q7&q8&¬(q4&in0)). q7=0 =>0. D1=0.
+D2 = ¬q18=0 ∨ (q8 & ¬(q7&q4&in1)). q8=1, in1=0 => product q7&q4&in1=0 => ¬=1, term=1. D2=1.
+D3 = ¬q12=0 ∨ (q0&¬q3=0&0=0) ∨ (q0&q4&¬(q5&q13): q0=0 =>0). D3=0.
+D4 = ¬q7=1 (q7=0) =>1. D4=1.
+D5 = ¬q18=0 ∨ (in1&¬q9=0) ∨ (in1&q8&...=0) =>0. D5=0.
+D6 = ¬in0=0 ∨ (q6&¬q2=0) ∨ (q6&q15&¬(in1&q3): q6=0 =>0). D6=0.
+D7 = ¬q19=1 (q19=0) =>1. D7=1.
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=1&0&0=0) =>0. D8=0.
+D9 = ¬q18=0 ∨ (q4&¬in0=1&0=0) ∨ (q4&q5&¬q1=1&1&0=0) =>0. D9=0.
+D10 = ¬q18=0 ∨ (q16&¬q15=0) ∨ (q16&q18&¬q4=0) =>0. D10=0.
+D11 = ¬q1=0 (q1=1) ∨ (in0 & ¬(q10&q14&q2)). q10=1,q14=1,q2=0 => product=0, ¬=1, in0=1 =>1. D11=1.
+D12 = ¬q5=0 (q5=1) ∨ (q9&¬q16=0) ∨ (q9&q19&¬(q6&q13): q9=0 =>0). D12=0.
+D13 = ¬q19=1 =>1. D13=1. (q19=0)
+D14 = ¬q13=1 (q13=0) =>1. D14=1.
+D15 = ¬q14=0 ∨ (q10&¬q6=1&1=1) =>1. D15=1. (q6=0)
+D16 = ¬q10=0 (q10=1) ∨ (q9&¬q12=0) ∨ (q9&q8&¬(in1&q18): q9=0=>0). D16=0.
+D17 = ¬q16=1 (q16=0) =>1. D17=1.
+D18 = ¬q8=0 (q8=1) ∨ (q0&¬in0=0) ∨ (q0&q17&¬(q2&q1): q0=0 =>0) =>0. D18=0.
+D19 = ¬q11=0 (q11=1) ∨ (q13&¬q2=0) ∨ (q13&q19&¬q14=0) =>0. D19=0.
+
+D at t=3: [1,0,1,0,1,0,0,1,0,0,0,1,0,1,1,1,0,1,0,0]
+D0=1,D1=0,D2=1,D3=0,D4=1,D5=0,D6=0,D7=1,D8=0,D9=0,D10=0,D11=1,D12=0,D13=1,D14=1,D15=1,D16=0,D17=1,D18=0,D19=0.
+
+New state S4:
+q0=1
+q1=0
+q2=1
+q3=0
+q4=1
+q5=0
+q6=0
+q7=1
+q8=0
+q9=0
+q10=0
+q11=1
+q12=0
+q13=1
+q14=1
+q15=1
+q16=0
+q17=1
+q18=0
+q19=0
+
+Outputs t=4: q10=0, q11=1, q13=1, q2=1, q3=0, q5=0.
+
+Now t=4 inputs: in0=1, in1=0.
+
+State S4:
+q0=1,q1=0,q2=1,q3=0,q4=1,q5=0,q6=0,q7=1,q8=0,q9=0,q10=0,q11=1,q12=0,q13=1,q14=1,q15=1,q16=0,q17=1,q18=0,q19=0.
+
+Compute D for t=4.
+
+in0=1, in1=0.
+
+D0 = ¬in1=1 =>1. D0=1.
+D1 = ¬q3=1 (q3=0) =>1. D1=1.
+D2 = ¬q18=1 (q18=0) =>1. D2=1.
+D3 = ¬q12=1 (q12=0) =>1. D3=1.
+D4 = ¬q7=0 (q7=1) ∨ (q9&¬q15=0) ∨ (q9&q16&¬(in1&q14)=0). D4=0.
+D5 = ¬q18=1 =>1. D5=1.
+D6 = ¬in0=0 ∨ (q6&¬q2=0) ∨ (q6&q15&¬(in1&q3): q6=0 =>0). D6=0.
+D7 = ¬q19=1 (q19=0) =>1. D7=1.
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=0) =>0. D8=0.
+D9 = ¬q18=1 =>1. D9=1.
+D10 = ¬q18=1 =>1. D10=1.
+D11 = ¬q1=1 (q1=0) =>1. D11=1.
+D12 = ¬q5=1 (q5=0) =>1. D12=1.
+D13 = ¬q19=1 =>1. D13=1.
+D14 = ¬q13=0 (q13=1) ∨ (q4&¬q3=1&1=1) =>1. D14=1. (q3=0)
+D15 = ¬q14=0 ∨ (q10&¬q6=0) ∨ (q10&q2&¬q13=0) =>0. D15=0.
+D16 = ¬q10=1 (q10=0) =>1. D16=1.
+D17 = ¬q16=1 (q16=0) =>1. D17=1.
+D18 = ¬q8=1 (q8=0) =>1. D18=1.
+D19 = ¬q11=0 (q11=1) ∨ (q13&¬q2=1&0=0) ∨ (q13&q19&¬q14=1&0&0=0) =>0. D19=0.
+
+D at t=4: [1,1,1,1,0,1,0,1,0,1,1,1,1,1,1,0,1,1,1,0]
+D0=1,D1=1,D2=1,D3=1,D4=0,D5=1,D6=0,D7=1,D8=0,D9=1,D10=1,D11=1,D12=1,D13=1,D14=1,D15=0,D16=1,D17=1,D18=1,D19=0.
+
+New state S5:
+q0=1
+q1=1
+q2=1
+q3=1
+q4=0
+q5=1
+q6=0
+q7=1
+q8=0
+q9=1
+q10=1
+q11=1
+q12=1
+q13=1
+q14=1
+q15=0
+q16=1
+q17=1
+q18=1
+q19=0
+
+Wait check q3 D3=1 -> q3=1. q4=0. q5=1. q6=0. q9=1. q10=1.
+
+Outputs t=5: q10=1, q11=1, q13=1, q2=1, q3=1, q5=1.
+
+Now t=5 inputs: in0=1, in1=1.
+
+State S5:
+q0=1,q1=1,q2=1,q3=1,q4=0,q5=1,q6=0,q7=1,q8=0,q9=1,q10=1,q11=1,q12=1,q13=1,q14=1,q15=0,q16=1,q17=1,q18=1,q19=0.
+
+Compute D for t=5.
+
+in0=1, in1=1.
+
+D0 = ¬in1=0 ∨ (q14 & (¬q17∨¬q19)). q14=1, ¬q17=0 (q17=1), ¬q19=1 (q19=0) => OR=1, term=1. D0=1.
+D1 = ¬q3=0 (q3=1) ∨ (q7&q8&¬(q4&in0)). q7=1, q8=0 => term 0. D1=0.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=0 =>0. D2=0.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=1&0=0) ∨ (q0&q4&¬(q5&q13): q4=0 =>0). D3=0.
+D4 = ¬q7=0 ∨ (q9&¬q15=1&1=1) =>1. D4=1. (q15=0)
+D5 = ¬q18=0 ∨ (in1&¬q9=1&0=0) ∨ (in1&q8&¬(q19&q7): q8=0 =>0). D5=0.
+D6 = ¬in0=0 ∨ (q6&¬q2=0) ∨ (q6&q15&¬(in1&q3): q6=0 =>0). D6=0.
+D7 = ¬q19=1 (q19=0) =>1. D7=1.
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=1&1&0=0) =>0. D8=0.
+D9 = ¬q18=0 ∨ (q4&¬in0=0) ∨ (q4&q5&¬q1=0) =>0. D9=0.
+D10 = ¬q18=0 ∨ (q16&¬q15=1&1=1) =>1. D10=1.
+D11 = ¬q1=0 (q1=1) ∨ (in0 & ¬(q10&q14&q2)). q10=1,q14=1,q2=1 => product=1, ¬=0 =>0. D11=0.
+D12 = ¬q5=0 (q5=1) ∨ (q9&¬q16=1&0=0) ∨ (q9&q19&¬(q6&q13): q19=0 =>0). D12=0.
+D13 = ¬q19=1 =>1. D13=1.
+D14 = ¬q13=0 (q13=1) ∨ (q4&¬q3=0) ∨ (q4&q10&¬(q16&q18): q4=0 =>0). D14=0.
+D15 = ¬q14=0 ∨ (q10&¬q6=1&1=1) =>1. D15=1. (q6=0)
+D16 = ¬q10=0 (q10=1) ∨ (q9&¬q12=1&0=0) ∨ (q9&q8&¬(in1&q18): q8=0 =>0). D16=0.
+D17 = ¬q16=0 (q16=1) ∨ (q0&¬q9=1&0=0) ∨ (q0&in0&¬(q11&q6): q11=1,q6=0 => & =0, ¬=1; q0=1,in0=1 => term=1) =>1. D17=1.
+D18 = ¬q8=1 (q8=0) =>1. D18=1.
+D19 = ¬q11=0 (q11=1) ∨ (q13&¬q2=1&0=0) ∨ (q13&q19&¬q14=1&0&0=0) =>0. D19=0.
+
+D at t=5: [1,0,0,0,1,0,0,1,0,0,1,0,0,1,0,1,0,1,1,0]
+D0=1,D1=0,D2=0,D3=0,D4=1,D5=0,D6=0,D7=1,D8=0,D9=0,D10=1,D11=0,D12=0,D13=1,D14=0,D15=1,D16=0,D17=1,D18=1,D19=0.
+
+New state S6:
+q0=1
+q1=0
+q2=0
+q3=0
+q4=1
+q5=0
+q6=0
+q7=1
+q8=0
+q9=0
+q10=1
+q11=0
+q12=0
+q13=1
+q14=0
+q15=1
+q16=0
+q17=1
+q18=1
+q19=0
+
+Outputs t=6: q10=1, q11=0, q13=1, q2=0, q3=0, q5=0.
+
+Now t=6 inputs: in0=0, in1=1.
+
+State S6:
+q0=1,q1=0,q2=0,q3=0,q4=1,q5=0,q6=0,q7=1,q8=0,q9=0,q10=1,q11=0,q12=0,q13=1,q14=0,q15=1,q16=0,q17=1,q18=1,q19=0.
+
+Compute D for t=6.
+
+in0=0, in1=1.
+
+D0 = ¬in1=0 ∨ (q14 & (¬q17∨¬q19)). q14=0 =>0. D0=0.
+D1 = ¬q3=1 (q3=0) =>1. D1=1.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=0 =>0. D2=0.
+D3 = ¬q12=1 (q12=0) =>1. D3=1.
+D4 = ¬q7=0 (q7=1) ∨ (q9&¬q15=0) ∨ (q9&q16&¬(in1&q14): q16=0 =>0). D4=0.
+D5 = ¬q18=0 ∨ (in1&¬q9=1&1=1) =>1. D5=1.
+D6 = ¬in0=1 (in0=0) =>1. D6=1.
+D7 = ¬q19=1 (q19=0) =>1. D7=1.
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=1&1&0=0) =>0. D8=0.
+D9 = ¬q18=0 ∨ (q4&¬in0=1&1=1) =>1. D9=1. (in0=0)
+D10 = ¬q18=0 ∨ (q16&¬q15=0) ∨ (q16&q18&¬q4=0) =>0. D10=0.
+D11 = ¬q1=1 (q1=0) =>1. D11=1.
+D12 = ¬q5=1 (q5=0) =>1. D12=1.
+D13 = ¬q19=1 =>1. D13=1.
+D14 = ¬q13=0 (q13=1) ∨ (q4&¬q3=1&1=1) =>1. D14=1. (q3=0)
+D15 = ¬q14=1 (q14=0) =>1. D15=1.
+D16 = ¬q10=0 (q10=1) ∨ (q9&¬q12=0&1=0) ∨ (q9&q8&¬(in1&q18): q9=0,q8=0 =>0). D16=0.
+D17 = ¬q16=1 (q16=0) =>1. D17=1.
+D18 = ¬q8=1 (q8=0) =>1. D18=1.
+D19 = ¬q11=1 (q11=0) =>1. D19=1.
+
+D at t=6: [0,1,0,1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,1,1]
+D0=0,D1=1,D2=0,D3=1,D4=0,D5=1,D6=1,D7=1,D8=0,D9=1,D10=0,D11=1,D12=1,D13=1,D14=1,D15=1,D16=0,D17=1,D18=1,D19=1.
+
+New state S7:
+q0=0
+q1=1
+q2=0
+q3=1
+q4=0
+q5=1
+q6=1
+q7=1
+q8=0
+q9=1
+q10=0
+q11=1
+q12=1
+q13=1
+q14=1
+q15=1
+q16=0
+q17=1
+q18=1
+q19=1
+
+Outputs t=7: q10=0, q11=1, q13=1, q2=0, q3=1, q5=1.
+
+Now t=7 inputs: in0=0, in1=0.
+
+State S7:
+q0=0,q1=1,q2=0,q3=1,q4=0,q5=1,q6=1,q7=1,q8=0,q9=1,q10=0,q11=1,q12=1,q13=1,q14=1,q15=1,q16=0,q17=1,q18=1,q19=1.
+
+Compute D for t=7.
+
+in0=0, in1=0.
+
+D0 = ¬in1=1 =>1. D0=1.
+D1 = ¬q3=0 (q3=1) ∨ (q7&q8&¬(q4&in0)). q7=1,q8=0 => term 0. D1=0.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=0 =>0. D2=0.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=0) ∨ (q0&q4&¬(q5&q13): q0=0 =>0). D3=0.
+D4 = ¬q7=0 (q7=1) ∨ (q9&¬q15=1&0=0) ∨ (q9&q16&¬(in1&q14): q16=0 =>0). D4=0.
+D5 = ¬q18=0 ∨ (in1&¬q9=0) ∨ (in1&q8&...=0) =>0. D5=0.
+D6 = ¬in0=1 (in0=0) =>1. D6=1.
+D7 = ¬q19=0 (q19=1) ∨ (q17&¬q3=1&0=0) ∨ (q17&q9&¬(q13&q6): q17=1,q9=1,q13=1,q6=1 => & =1 ¬=0 =>0). D7=0.
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=1&0&1=0) =>0. D8=0.
+D9 = ¬q18=0 ∨ (q4&¬in0=0) ∨ (q4&q5&¬q1=0) =>0. D9=0.
+D10 = ¬q18=0 ∨ (q16&¬q15=0) ∨ (q16&q18&¬q4=0) =>0. D10=0.
+D11 = ¬q1=0 (q1=1) ∨ (in0 & ¬(q10&q14&q2)). in0=0 =>0. D11=0.
+D12 = ¬q5=0 (q5=1) ∨ (q9&¬q16=1&1=1) =>1. D12=1. (q16=0)
+D13 = ¬q19=0 (q19=1) ∨ (q8&in1&¬q16=0) =>0. D13=0.
+D14 = ¬q13=0 (q13=1) ∨ (q4&¬q3=0) ∨ (q4&q10&¬(q16&q18): q4=0 =>0). D14=0.
+D15 = ¬q14=0 ∨ (q10&¬q6=0) ∨ (q10&q2&¬q13=0) =>0. D15=0.
+D16 = ¬q10=1 (q10=0) =>1. D16=1.
+D17 = ¬q16=1 (q16=0) =>1. D17=1.
+D18 = ¬q8=1 (q8=0) =>1. D18=1.
+D19 = ¬q11=0 (q11=1) ∨ (q13&¬q2=1&1=1) =>1. D19=1. (q2=0)
+
+D at t=7: [1,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,1,1,1,1]
+D0=1,D1=0,D2=0,D3=0,D4=0,D5=0,D6=1,D7=0,D8=0,D9=0,D10=0,D11=0,D12=1,D13=0,D14=0,D15=0,D16=1,D17=1,D18=1,D19=1.
+
+New state S8:
+q0=1
+q1=0
+q2=0
+q3=0
+q4=0
+q5=0
+q6=1
+q7=0
+q8=0
+q9=0
+q10=0
+q11=0
+q12=1
+q13=0
+q14=0
+q15=0
+q16=1
+q17=1
+q18=1
+q19=1
+
+Outputs t=8: q10=0, q11=0, q13=0, q2=0, q3=0, q5=0.
+
+Now t=8 inputs: in0=1, in1=0.
+
+State S8:
+q0=1,q1=0,q2=0,q3=0,q4=0,q5=0,q6=1,q7=0,q8=0,q9=0,q10=0,q11=0,q12=1,q13=0,q14=0,q15=0,q16=1,q17=1,q18=1,q19=1.
+
+Compute D for t=8.
+
+in0=1, in1=0.
+
+D0 = ¬in1=1 =>1. D0=1.
+D1 = ¬q3=1 (q3=0) =>1. D1=1.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=0 =>0. D2=0.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=1&1=1) =>1. D3=1. (q3=0)
+D4 = ¬q7=1 (q7=0) =>1. D4=1.
+D5 = ¬q18=0 ∨ (in1&¬q9=0) ∨ (in1&q8&...=0) =>0. D5=0.
+D6 = ¬in0=0 ∨ (q6&¬q2=1&1=1) =>1. D6=1. (q2=0)
+D7 = ¬q19=0 (q19=1) ∨ (q17&¬q3=1&1=1) =>1. D7=1. (q3=0)
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=1&0&1=0) =>0. D8=0.
+D9 = ¬q18=0 ∨ (q4&¬in0=0) ∨ (q4&q5&¬q1=0) =>0. D9=0.
+D10 = ¬q18=0 ∨ (q16&¬q15=1&1=1) =>1. D10=1. (q15=0)
+D11 = ¬q1=1 (q1=0) =>1. D11=1.
+D12 = ¬q5=1 (q5=0) =>1. D12=1.
+D13 = ¬q19=0 (q19=1) ∨ (q8&in1&¬q16=0) =>0. D13=0.
+D14 = ¬q13=1 (q13=0) =>1. D14=1.
+D15 = ¬q14=1 (q14=0) =>1. D15=1.
+D16 = ¬q10=1 (q10=0) =>1. D16=1.
+D17 = ¬q16=0 (q16=1) ∨ (q0&¬q9=1&1=1) =>1. D17=1. (q9=0)
+D18 = ¬q8=1 (q8=0) =>1. D18=1.
+D19 = ¬q11=1 (q11=0) =>1. D19=1.
+
+D at t=8: [1,1,0,1,1,0,1,1,0,0,1,1,1,0,1,1,1,1,1,1]
+D0=1,D1=1,D2=0,D3=1,D4=1,D5=0,D6=1,D7=1,D8=0,D9=0,D10=1,D11=1,D12=1,D13=0,D14=1,D15=1,D16=1,D17=1,D18=1,D19=1.
+
+New state S9:
+q0=1
+q1=1
+q2=0
+q3=1
+q4=1
+q5=0
+q6=1
+q7=1
+q8=0
+q9=0
+q10=1
+q11=1
+q12=1
+q13=0
+q14=1
+q15=1
+q16=1
+q17=1
+q18=1
+q19=1
+
+Outputs t=9: q10=1, q11=1, q13=0, q2=0, q3=1, q5=0.
+
+Now t=9 inputs: in0=0, in1=1.
+
+State S9:
+q0=1,q1=1,q2=0,q3=1,q4=1,q5=0,q6=1,q7=1,q8=0,q9=0,q10=1,q11=1,q12=1,q13=0,q14=1,q15=1,q16=1,q17=1,q18=1,q19=1.
+
+Compute D for t=9.
+
+in0=0, in1=1.
+
+D0 = ¬in1=0 ∨ (q14 & (¬q17∨¬q19)). q14=1, ¬q17=0 (q17=1), ¬q19=0 (q19=1) => OR=0 =>0. D0=0.
+D1 = ¬q3=0 (q3=1) ∨ (q7&q8&¬(q4&in0)). q7=1,q8=0 =>0. D1=0.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=0 =>0. D2=0.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=1&0=0) ∨ (q0&q4&¬(q5&q13): q5=0 => q5&q13=0 ¬=1; q0=1,q4=1 => term=1) =>1. D3=1.
+D4 = ¬q7=0 (q7=1) ∨ (q9&¬q15=0) ∨ (q9&q16&¬(in1&q14): q9=0 =>0). D4=0.
+D5 = ¬q18=0 ∨ (in1&¬q9=1&1=1) =>1. D5=1. (q9=0)
+D6 = ¬in0=1 (in0=0) =>1. D6=1.
+D7 = ¬q19=0 (q19=1) ∨ (q17&¬q3=1&0=0) ∨ (q17&q9&¬(q13&q6): q9=0 =>0). D7=0.
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=1&1&0=0) =>0. D8=0.
+D9 = ¬q18=0 ∨ (q4&¬in0=1&1=1) =>1. D9=1. (in0=0)
+D10 = ¬q18=0 ∨ (q16&¬q15=1&0=0) ∨ (q16&q18&¬q4=1&1&0=0) =>0. D10=0.
+D11 = ¬q1=0 (q1=1) ∨ (in0 & ¬(q10&q14&q2)). in0=0 =>0. D11=0.
+D12 = ¬q5=1 (q5=0) =>1. D12=1.
+D13 = ¬q19=0 (q19=1) ∨ (q8&in1&¬q16=0) =>0. D13=0.
+D14 = ¬q13=1 (q13=0) =>1. D14=1.
+D15 = ¬q14=0 ∨ (q10&¬q6=1&0=0) ∨ (q10&q2&¬q13=1&0&1=0) =>0. D15=0.
+D16 = ¬q10=0 (q10=1) ∨ (q9&¬q12=0) ∨ (q9&q8&¬(in1&q18): q9=0 =>0). D16=0.
+D17 = ¬q16=0 (q16=1) ∨ (q0&¬q9=1&1=1) =>1. D17=1.
+D18 = ¬q8=1 (q8=0) =>1. D18=1.
+D19 = ¬q11=0 (q11=1) ∨ (q13&¬q2=0) ∨ (q13&q19&¬q14=0) =>0. D19=0.
+
+D at t=9: [0,0,0,1,0,1,1,0,0,1,0,0,1,0,1,0,0,1,1,0]
+D0=0,D1=0,D2=0,D3=1,D4=0,D5=1,D6=1,D7=0,D8=0,D9=1,D10=0,D11=0,D12=1,D13=0,D14=1,D15=0,D16=0,D17=1,D18=1,D19=0.
+
+New state S10:
+q0=0
+q1=0
+q2=0
+q3=1
+q4=0
+q5=1
+q6=1
+q7=0
+q8=0
+q9=1
+q10=0
+q11=0
+q12=1
+q13=0
+q14=1
+q15=0
+q16=0
+q17=1
+q18=1
+q19=0
+
+Outputs t=10: q10=0, q11=0, q13=0, q2=0, q3=1, q5=1.
+
+Now t=10 inputs: in0=0, in1=0.
+
+State S10:
+q0=0,q1=0,q2=0,q3=1,q4=0,q5=1,q6=1,q7=0,q8=0,q9=1,q10=0,q11=0,q12=1,q13=0,q14=1,q15=0,q16=0,q17=1,q18=1,q19=0.
+
+Compute D for t=10.
+
+in0=0, in1=0.
+
+D0 = ¬in1=1 =>1. D0=1.
+D1 = ¬q3=0 (q3=1) ∨ (q7&q8&¬(q4&in0)). q7=0 =>0. D1=0.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=0 =>0. D2=0.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=0) ∨ (q0&q4&¬(q5&q13): q0=0 =>0). D3=0.
+D4 = ¬q7=1 (q7=0) =>1. D4=1.
+D5 = ¬q18=0 ∨ (in1&¬q9=0) ∨ (in1&q8&...=0) =>0. D5=0.
+D6 = ¬in0=1 (in0=0) =>1. D6=1.
+D7 = ¬q19=1 (q19=0) =>1. D7=1.
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=1&0&1=0) =>0. D8=0.
+D9 = ¬q18=0 ∨ (q4&¬in0=0) ∨ (q4&q5&¬q1=0) =>0. D9=0.
+D10 = ¬q18=0 ∨ (q16&¬q15=0) ∨ (q16&q18&¬q4=0) =>0. D10=0.
+D11 = ¬q1=1 (q1=0) =>1. D11=1.
+D12 = ¬q5=0 (q5=1) ∨ (q9&¬q16=1&1=1) =>1. D12=1. (q16=0)
+D13 = ¬q19=1 =>1. D13=1.
+D14 = ¬q13=1 (q13=0) =>1. D14=1.
+D15 = ¬q14=0 (q14=1) ∨ (q10&¬q6=0) ∨ (q10&q2&¬q13=0) =>0. D15=0.
+D16 = ¬q10=1 (q10=0) =>1. D16=1.
+D17 = ¬q16=1 (q16=0) =>1. D17=1.
+D18 = ¬q8=1 (q8=0) =>1. D18=1.
+D19 = ¬q11=1 (q11=0) =>1. D19=1.
+
+D at t=10: [1,0,0,0,1,0,1,1,0,0,0,1,1,1,1,0,1,1,1,1]
+D0=1,D1=0,D2=0,D3=0,D4=1,D5=0,D6=1,D7=1,D8=0,D9=0,D10=0,D11=1,D12=1,D13=1,D14=1,D15=0,D16=1,D17=1,D18=1,D19=1.
+
+New state S11:
+q0=1
+q1=0
+q2=0
+q3=0
+q4=1
+q5=0
+q6=1
+q7=1
+q8=0
+q9=0
+q10=0
+q11=1
+q12=1
+q13=1
+q14=1
+q15=0
+q16=1
+q17=1
+q18=1
+q19=1
+
+Outputs t=11: q10=0, q11=1, q13=1, q2=0, q3=0, q5=0.
+
+Now t=11 inputs: in0=0, in1=0.
+
+State S11:
+q0=1,q1=0,q2=0,q3=0,q4=1,q5=0,q6=1,q7=1,q8=0,q9=0,q10=0,q11=1,q12=1,q13=1,q14=1,q15=0,q16=1,q17=1,q18=1,q19=1.
+
+Compute D for t=11.
+
+in0=0, in1=0.
+
+D0 = ¬in1=1 =>1. D0=1.
+D1 = ¬q3=1 (q3=0) =>1. D1=1.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=0 =>0. D2=0.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=1&1=1) =>1. D3=1. (q3=0)
+D4 = ¬q7=0 (q7=1) ∨ (q9&¬q15=0) ∨ (q9&q16&¬(in1&q14): q9=0 =>0). D4=0.
+D5 = ¬q18=0 ∨ (in1&¬q9=0) ∨ (in1&q8&...=0) =>0. D5=0.
+D6 = ¬in0=1 (in0=0) =>1. D6=1.
+D7 = ¬q19=0 (q19=1) ∨ (q17&¬q3=1&1=1) =>1. D7=1. (q3=0)
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=1&0&1=0) =>0. D8=0.
+D9 = ¬q18=0 ∨ (q4&¬in0=1&1=1) =>1. D9=1. (in0=0)
+D10 = ¬q18=0 ∨ (q16&¬q15=1&1=1) =>1. D10=1. (q15=0)
+D11 = ¬q1=1 (q1=0) =>1. D11=1.
+D12 = ¬q5=1 (q5=0) =>1. D12=1.
+D13 = ¬q19=0 (q19=1) ∨ (q8&in1&¬q16=0) =>0. D13=0.
+D14 = ¬q13=0 (q13=1) ∨ (q4&¬q3=1&1=1) =>1. D14=1. (q3=0)
+D15 = ¬q14=0 (q14=1) ∨ (q10&¬q6=0) ∨ (q10&q2&¬q13=0) =>0. D15=0.
+D16 = ¬q10=1 (q10=0) =>1. D16=1.
+D17 = ¬q16=0 (q16=1) ∨ (q0&¬q9=1&1=1) =>1. D17=1. (q9=0)
+D18 = ¬q8=1 (q8=0) =>1. D18=1.
+D19 = ¬q11=0 (q11=1) ∨ (q13&¬q2=1&1=1) =>1. D19=1. (q2=0)
+
+D at t=11: [1,1,0,1,0,0,1,1,0,1,1,1,1,0,1,0,1,1,1,1]
+D0=1,D1=1,D2=0,D3=1,D4=0,D5=0,D6=1,D7=1,D8=0,D9=1,D10=1,D11=1,D12=1,D13=0,D14=1,D15=0,D16=1,D17=1,D18=1,D19=1.
+
+New state S12:
+q0=1
+q1=1
+q2=0
+q3=1
+q4=0
+q5=0
+q6=1
+q7=1
+q8=0
+q9=1
+q10=1
+q11=1
+q12=1
+q13=0
+q14=1
+q15=0
+q16=1
+q17=1
+q18=1
+q19=1
+
+Outputs t=12: q10=1, q11=1, q13=0, q2=0, q3=1, q5=0.
+
+Now t=12 inputs: in0=0, in1=0.
+
+State S12:
+q0=1,q1=1,q2=0,q3=1,q4=0,q5=0,q6=1,q7=1,q8=0,q9=1,q10=1,q11=1,q12=1,q13=0,q14=1,q15=0,q16=1,q17=1,q18=1,q19=1.
+
+Compute D for t=12.
+
+in0=0, in1=0.
+
+D0 = ¬in1=1 =>1. D0=1.
+D1 = ¬q3=0 (q3=1) ∨ (q7&q8&¬(q4&in0)). q8=0 =>0. D1=0.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=0 =>0. D2=0.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=1&0=0) ∨ (q0&q4&¬(q5&q13): q4=0 =>0). D3=0.
+D4 = ¬q7=0 (q7=1) ∨ (q9&¬q15=1&1=1) =>1. D4=1. (q15=0)
+D5 = ¬q18=0 ∨ (in1&¬q9=0) ∨ (in1&q8&...=0) =>0. D5=0.
+D6 = ¬in0=1 (in0=0) =>1. D6=1.
+D7 = ¬q19=0 (q19=1) ∨ (q17&¬q3=1&0=0) ∨ (q17&q9&¬(q13&q6): q13=0 => q13&q6=0 ¬=1; q17=1,q9=1 => term=1) =>1. D7=1.
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=1&0&0=0) =>0. D8=0.
+D9 = ¬q18=0 ∨ (q4&¬in0=0) ∨ (q4&q5&¬q1=0) =>0. D9=0.
+D10 = ¬q18=0 ∨ (q16&¬q15=1&1=1) =>1. D10=1.
+D11 = ¬q1=0 (q1=1) ∨ (in0 & ¬(q10&q14&q2)). in0=0 =>0. D11=0.
+D12 = ¬q5=1 (q5=0) =>1. D12=1.
+D13 = ¬q19=0 (q19=1) ∨ (q8&in1&¬q16=0) =>0. D13=0.
+D14 = ¬q13=1 (q13=0) =>1. D14=1.
+D15 = ¬q14=0 (q14=1) ∨ (q10&¬q6=1&0=0) ∨ (q10&q2&¬q13=1&0&1=0) =>0. D15=0.
+D16 = ¬q10=0 (q10=1) ∨ (q9&¬q12=1&0=0) ∨ (q9&q8&¬(in1&q18): q8=0 =>0). D16=0.
+D17 = ¬q16=0 (q16=1) ∨ (q0&¬q9=1&0=0) ∨ (q0&in0&¬(q11&q6): in0=0 =>0). D17=0.
+D18 = ¬q8=1 (q8=0) =>1. D18=1.
+D19 = ¬q11=0 (q11=1) ∨ (q13&¬q2=0) ∨ (q13&q19&¬q14=0) =>0. D19=0.
+
+D at t=12: [1,0,0,0,1,0,1,1,0,0,1,0,1,0,1,0,0,0,1,0]
+D0=1,D1=0,D2=0,D3=0,D4=1,D5=0,D6=1,D7=1,D8=0,D9=0,D10=1,D11=0,D12=1,D13=0,D14=1,D15=0,D16=0,D17=0,D18=1,D19=0.
+
+New state S13:
+q0=1
+q1=0
+q2=0
+q3=0
+q4=1
+q5=0
+q6=1
+q7=1
+q8=0
+q9=0
+q10=1
+q11=0
+q12=1
+q13=0
+q14=1
+q15=0
+q16=0
+q17=0
+q18=1
+q19=0
+
+Outputs t=13: q10=1, q11=0, q13=0, q2=0, q3=0, q5=0.
+
+Now t=13 inputs: in0=0, in1=1.
+
+State S13:
+q0=1,q1=0,q2=0,q3=0,q4=1,q5=0,q6=1,q7=1,q8=0,q9=0,q10=1,q11=0,q12=1,q13=0,q14=1,q15=0,q16=0,q17=0,q18=1,q19=0.
+
+Compute D for t=13.
+
+in0=0, in1=1.
+
+D0 = ¬in1=0 ∨ (q14 & (¬q17∨¬q19)). q14=1, ¬q17=1 (q17=0), ¬q19=1 (q19=0) => term=1. D0=1.
+D1 = ¬q3=1 (q3=0) =>1. D1=1.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=0 =>0. D2=0.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=1&1=1) =>1. D3=1. (q3=0)
+D4 = ¬q7=0 (q7=1) ∨ (q9&¬q15=0) ∨ (q9&q16&¬(in1&q14): q9=0 =>0). D4=0.
+D5 = ¬q18=0 ∨ (in1&¬q9=1&1=1) =>1. D5=1. (q9=0)
+D6 = ¬in0=1 (in0=0) =>1. D6=1.
+D7 = ¬q19=1 (q19=0) =>1. D7=1.
+D8 = ¬q17=1 (q17=0) =>1. D8=1.
+D9 = ¬q18=0 ∨ (q4&¬in0=1&1=1) =>1. D9=1.
+D10 = ¬q18=0 ∨ (q16&¬q15=0) ∨ (q16&q18&¬q4=0) =>0. D10=0.
+D11 = ¬q1=1 (q1=0) =>1. D11=1.
+D12 = ¬q5=1 (q5=0) =>1. D12=1.
+D13 = ¬q19=1 =>1. D13=1.
+D14 = ¬q13=1 (q13=0) =>1. D14=1.
+D15 = ¬q14=0 (q14=1) ∨ (q10&¬q6=1&0=0) ∨ (q10&q2&¬q13=1&0&1=0) =>0. D15=0.
+D16 = ¬q10=0 (q10=1) ∨ (q9&¬q12=0) ∨ (q9&q8&¬(in1&q18): q9=0 =>0). D16=0.
+D17 = ¬q16=1 (q16=0) =>1. D17=1.
+D18 = ¬q8=1 (q8=0) =>1. D18=1.
+D19 = ¬q11=1 (q11=0) =>1. D19=1.
+
+D at t=13: [1,1,0,1,0,1,1,1,1,1,0,1,1,1,1,0,0,1,1,1]
+D0=1,D1=1,D2=0,D3=1,D4=0,D5=1,D6=1,D7=1,D8=1,D9=1,D10=0,D11=1,D12=1,D13=1,D14=1,D15=0,D16=0,D17=1,D18=1,D19=1.
+
+New state S14:
+q0=1
+q1=1
+q2=0
+q3=1
+q4=0
+q5=1
+q6=1
+q7=1
+q8=1
+q9=1
+q10=0
+q11=1
+q12=1
+q13=1
+q14=1
+q15=0
+q16=0
+q17=1
+q18=1
+q19=1
+
+Outputs t=14: q10=0, q11=1, q13=1, q2=0, q3=1, q5=1.
+
+Now t=14 inputs: in0=0, in1=1.
+
+State S14:
+q0=1,q1=1,q2=0,q3=1,q4=0,q5=1,q6=1,q7=1,q8=1,q9=1,q10=0,q11=1,q12=1,q13=1,q14=1,q15=0,q16=0,q17=1,q18=1,q19=1.
+
+Compute D for t=14.
+
+in0=0, in1=1.
+
+D0 = ¬in1=0 ∨ (q14 & (¬q17∨¬q19)). q14=1, ¬q17=0 (q17=1), ¬q19=0 (q19=1) => OR=0 =>0. D0=0.
+D1 = ¬q3=0 (q3=1) ∨ (q7&q8&¬(q4&in0)). q7=1,q8=1,q4=0,in0=0 => q4&in0=0 ¬=1, term=1. D1=1.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=1, q7&q4=0 (q4=0) &in1=0 => ¬=1, term=1. D2=1.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=1&0=0) ∨ (q0&q4&¬(q5&q13): q4=0 =>0). D3=0.
+D4 = ¬q7=0 (q7=1) ∨ (q9&¬q15=1&1=1) =>1. D4=1. (q15=0)
+D5 = ¬q18=0 ∨ (in1&¬q9=1&0=0) ∨ (in1&q8&¬(q19&q7): q19=1,q7=1 => & =1, ¬=0 =>0). D5=0.
+D6 = ¬in0=1 (in0=0) =>1. D6=1.
+D7 = ¬q19=0 (q19=1) ∨ (q17&¬q3=1&0=0) ∨ (q17&q9&¬(q13&q6): q13=1,q6=1 => & =1, ¬=0 =>0). D7=0.
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=1&1&1=1) =>1. D8=1. (q10=0)
+D9 = ¬q18=0 ∨ (q4&¬in0=0) ∨ (q4&q5&¬q1=0) =>0. D9=0.
+D10 = ¬q18=0 ∨ (q16&¬q15=0) ∨ (q16&q18&¬q4=0) =>0. D10=0.
+D11 = ¬q1=0 (q1=1) ∨ (in0 & ¬(q10&q14&q2)). in0=0 =>0. D11=0.
+D12 = ¬q5=0 (q5=1) ∨ (q9&¬q16=1&1=1) =>1. D12=1. (q16=0)
+D13 = ¬q19=0 (q19=1) ∨ (q8&in1&¬q16=1&1&1=1) =>1. D13=1.
+D14 = ¬q13=0 (q13=1) ∨ (q4&¬q3=0) ∨ (q4&q10&¬(q16&q18): q4=0 =>0). D14=0.
+D15 = ¬q14=0 (q14=1) ∨ (q10&¬q6=0) ∨ (q10&q2&¬q13=0) =>0. D15=0.
+D16 = ¬q10=1 (q10=0) =>1. D16=1.
+D17 = ¬q16=1 (q16=0) =>1. D17=1.
+D18 = ¬q8=0 (q8=1) ∨ (q0&¬in0=1&1=1) =>1. D18=1. (in0=0)
+D19 = ¬q11=0 (q11=1) ∨ (q13&¬q2=1&1=1) =>1. D19=1. (q2=0)
+
+D at t=14: [0,1,1,0,1,0,1,0,1,0,0,0,1,1,0,0,1,1,1,1]
+D0=0,D1=1,D2=1,D3=0,D4=1,D5=0,D6=1,D7=0,D8=1,D9=0,D10=0,D11=0,D12=1,D13=1,D14=0,D15=0,D16=1,D17=1,D18=1,D19=1.
+
+New state S15:
+q0=0
+q1=1
+q2=1
+q3=0
+q4=1
+q5=0
+q6=1
+q7=0
+q8=1
+q9=0
+q10=0
+q11=0
+q12=1
+q13=1
+q14=0
+q15=0
+q16=1
+q17=1
+q18=1
+q19=1
+
+Outputs t=15: q10=0, q11=0, q13=1, q2=1, q3=0, q5=0.
+
+Now t=15 inputs: in0=1, in1=0.
+
+State S15:
+q0=0,q1=1,q2=1,q3=0,q4=1,q5=0,q6=1,q7=0,q8=1,q9=0,q10=0,q11=0,q12=1,q13=1,q14=0,q15=0,q16=1,q17=1,q18=1,q19=1.
+
+Compute D for t=15.
+
+in0=1, in1=0.
+
+D0 = ¬in1=1 =>1. D0=1.
+D1 = ¬q3=1 (q3=0) =>1. D1=1.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=1, in1=0 => product=0 ¬=1 => term=1. D2=1.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=0) ∨ (q0&q4&¬(q5&q13): q0=0 =>0). D3=0.
+D4 = ¬q7=1 (q7=0) =>1. D4=1.
+D5 = ¬q18=0 ∨ (in1&¬q9=0) ∨ (in1&q8&...=0) =>0. D5=0.
+D6 = ¬in0=0 ∨ (q6&¬q2=1&0=0) ∨ (q6&q15&¬(in1&q3): q15=0 =>0). D6=0.
+D7 = ¬q19=0 (q19=1) ∨ (q17&¬q3=1&1=1) =>1. D7=1. (q3=0)
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=1&0&1=0) =>0. D8=0.
+D9 = ¬q18=0 ∨ (q4&¬in0=1&0=0) ∨ (q4&q5&¬q1=1&0&0=0) =>0. D9=0.
+D10 = ¬q18=0 ∨ (q16&¬q15=1&1=1) =>1. D10=1. (q15=0)
+D11 = ¬q1=0 (q1=1) ∨ (in0 & ¬(q10&q14&q2)). q10=0,q14=0,q2=1 => product=0 ¬=1; in0=1 =>1. D11=1.
+D12 = ¬q5=1 (q5=0) =>1. D12=1.
+D13 = ¬q19=0 (q19=1) ∨ (q8&in1&¬q16=1&0&0=0) =>0. D13=0.
+D14 = ¬q13=0 (q13=1) ∨ (q4&¬q3=1&1=1) =>1. D14=1. (q3=0)
+D15 = ¬q14=1 (q14=0) =>1. D15=1.
+D16 = ¬q10=1 (q10=0) =>1. D16=1.
+D17 = ¬q16=0 (q16=1) ∨ (q0&¬q9=0) ∨ (q0&in0&¬(q11&q6): q0=0 =>0). D17=0.
+D18 = ¬q8=0 (q8=1) ∨ (q0&¬in0=0) ∨ (q0&q17&¬(q2&q1): q0=0 =>0). D18=0.
+D19 = ¬q11=1 (q11=0) =>1. D19=1.
+
+D at t=15: [1,1,1,0,1,0,0,1,0,0,1,1,1,0,1,1,1,0,0,1]
+D0=1,D1=1,D2=1,D3=0,D4=1,D5=0,D6=0,D7=1,D8=0,D9=0,D10=1,D11=1,D12=1,D13=0,D14=1,D15=1,D16=1,D17=0,D18=0,D19=1.
+
+New state S16:
+q0=1
+q1=1
+q2=1
+q3=0
+q4=1
+q5=0
+q6=0
+q7=1
+q8=0
+q9=0
+q10=1
+q11=1
+q12=1
+q13=0
+q14=1
+q15=1
+q16=1
+q17=0
+q18=0
+q19=1
+
+Outputs t=16: q10=1, q11=1, q13=0, q2=1, q3=0, q5=0.
+
+Now t=16 inputs: in0=0, in1=1.
+
+State S16:
+q0=1,q1=1,q2=1,q3=0,q4=1,q5=0,q6=0,q7=1,q8=0,q9=0,q10=1,q11=1,q12=1,q13=0,q14=1,q15=1,q16=1,q17=0,q18=0,q19=1.
+
+Compute D for t=16.
+
+in0=0, in1=1.
+
+D0 = ¬in1=0 ∨ (q14 & (¬q17∨¬q19)). q14=1, ¬q17=1 (q17=0), ¬q19=0 (q19=1) => OR=1, term=1. D0=1.
+D1 = ¬q3=1 (q3=0) =>1. D1=1.
+D2 = ¬q18=1 (q18=0) =>1. D2=1.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=1&1=1) =>1. D3=1.
+D4 = ¬q7=0 (q7=1) ∨ (q9&¬q15=0) ∨ (q9&q16&¬(in1&q14): q9=0 =>0). D4=0.
+D5 = ¬q18=1 =>1. D5=1.
+D6 = ¬in0=1 (in0=0) =>1. D6=1.
+D7 = ¬q19=0 (q19=1) ∨ (q17&¬q3=0&1=0) ∨ (q17&q9&¬(q13&q6): q17=0,q9=0 =>0). D7=0.
+D8 = ¬q17=1 (q17=0) =>1. D8=1.
+D9 = ¬q18=1 =>1. D9=1.
+D10 = ¬q18=1 =>1. D10=1.
+D11 = ¬q1=0 (q1=1) ∨ (in0 & ¬(q10&q14&q2)). in0=0 =>0. D11=0.
+D12 = ¬q5=1 (q5=0) =>1. D12=1.
+D13 = ¬q19=0 (q19=1) ∨ (q8&in1&¬q16=0) =>0. D13=0.
+D14 = ¬q13=1 (q13=0) =>1. D14=1.
+D15 = ¬q14=0 (q14=1) ∨ (q10&¬q6=1&1=1) =>1. D15=1. (q6=0)
+D16 = ¬q10=0 (q10=1) ∨ (q9&¬q12=0) ∨ (q9&q8&¬(in1&q18): q9=0 =>0). D16=0.
+D17 = ¬q16=0 (q16=1) ∨ (q0&¬q9=1&1=1) =>1. D17=1. (q9=0)
+D18 = ¬q8=1 (q8=0) =>1. D18=1.
+D19 = ¬q11=0 (q11=1) ∨ (q13&¬q2=0) ∨ (q13&q19&¬q14=0) =>0. D19=0.
+
+D at t=16: [1,1,1,1,0,1,1,0,1,1,1,0,1,0,1,1,0,1,1,0]
+D0=1,D1=1,D2=1,D3=1,D4=0,D5=1,D6=1,D7=0,D8=1,D9=1,D10=1,D11=0,D12=1,D13=0,D14=1,D15=1,D16=0,D17=1,D18=1,D19=0.
+
+New state S17:
+q0=1
+q1=1
+q2=1
+q3=1
+q4=0
+q5=1
+q6=1
+q7=0
+q8=1
+q9=1
+q10=1
+q11=0
+q12=1
+q13=0
+q14=1
+q15=1
+q16=0
+q17=1
+q18=1
+q19=0
+
+Outputs t=17: q10=1, q11=0, q13=0, q2=1, q3=1, q5=1.
+
+Now t=17 inputs: in0=1, in1=1.
+
+State S17:
+q0=1,q1=1,q2=1,q3=1,q4=0,q5=1,q6=1,q7=0,q8=1,q9=1,q10=1,q11=0,q12=1,q13=0,q14=1,q15=1,q16=0,q17=1,q18=1,q19=0.
+
+Compute D for t=17.
+
+in0=1, in1=1.
+
+D0 = ¬in1=0 ∨ (q14 & (¬q17∨¬q19)). q14=1, ¬q17=0, ¬q19=1 (q19=0) => OR=1, term=1. D0=1.
+D1 = ¬q3=0 (q3=1) ∨ (q7&q8&¬(q4&in0)). q7=0 =>0. D1=0.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=1, q7&q4=0&0? q7=0,q4=0 => product 0; ¬=1 => term=1. D2=1.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=1&0=0) ∨ (q0&q4&¬(q5&q13): q4=0 =>0). D3=0.
+D4 = ¬q7=1 (q7=0) =>1. D4=1.
+D5 = ¬q18=0 ∨ (in1&¬q9=1&0=0) ∨ (in1&q8&¬(q19&q7): q19=0 => q19&q7=0, ¬=1; in1=1,q8=1 => term=1) =>1. D5=1.
+D6 = ¬in0=0 (in0=1) ∨ (q6&¬q2=1&0=0) ∨ (q6&q15&¬(in1&q3): in1=1,q3=1 => &=1, ¬=0 =>0). D6=0.
+D7 = ¬q19=1 (q19=0) =>1. D7=1.
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=1&1&0=0) =>0. D8=0.
+D9 = ¬q18=0 ∨ (q4&¬in0=0) ∨ (q4&q5&¬q1=0) =>0. D9=0.
+D10 = ¬q18=0 ∨ (q16&¬q15=0) ∨ (q16&q18&¬q4=0) =>0. D10=0.
+D11 = ¬q1=0 (q1=1) ∨ (in0 & ¬(q10&q14&q2)). q10=1,q14=1,q2=1 => product=1, ¬=0 =>0. D11=0.
+D12 = ¬q5=0 (q5=1) ∨ (q9&¬q16=1&1=1) =>1. D12=1. (q16=0)
+D13 = ¬q19=1 =>1. D13=1.
+D14 = ¬q13=1 (q13=0) =>1. D14=1.
+D15 = ¬q14=0 (q14=1) ∨ (q10&¬q6=1&0=0) ∨ (q10&q2&¬q13=1&1&1=1) =>1. D15=1. (q13=0)
+D16 = ¬q10=0 (q10=1) ∨ (q9&¬q12=1&0=0) ∨ (q9&q8&¬(in1&q18): in1&q18=1, ¬=0 =>0). D16=0.
+D17 = ¬q16=1 (q16=0) =>1. D17=1.
+D18 = ¬q8=0 (q8=1) ∨ (q0&¬in0=1&0=0) ∨ (q0&q17&¬(q2&q1): q2=1,q1=1 => &=1, ¬=0 =>0). D18=0.
+D19 = ¬q11=1 (q11=0) =>1. D19=1.
+
+D at t=17: [1,0,1,0,1,1,0,1,0,0,0,0,1,1,1,1,0,1,0,1]
+D0=1,D1=0,D2=1,D3=0,D4=1,D5=1,D6=0,D7=1,D8=0,D9=0,D10=0,D11=0,D12=1,D13=1,D14=1,D15=1,D16=0,D17=1,D18=0,D19=1.
+
+New state S18:
+q0=1
+q1=0
+q2=1
+q3=0
+q4=1
+q5=1
+q6=0
+q7=1
+q8=0
+q9=0
+q10=0
+q11=0
+q12=1
+q13=1
+q14=1
+q15=1
+q16=0
+q17=1
+q18=0
+q19=1
+
+Outputs t=18: q10=0, q11=0, q13=1, q2=1, q3=0, q5=1.
+
+Now t=18 inputs: in0=1, in1=0.
+
+State S18:
+q0=1,q1=0,q2=1,q3=0,q4=1,q5=1,q6=0,q7=1,q8=0,q9=0,q10=0,q11=0,q12=1,q13=1,q14=1,q15=1,q16=0,q17=1,q18=0,q19=1.
+
+Compute D for t=18.
+
+in0=1, in1=0.
+
+D0 = ¬in1=1 =>1. D0=1.
+D1 = ¬q3=1 (q3=0) =>1. D1=1.
+D2 = ¬q18=1 (q18=0) =>1. D2=1.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=1&1=1) =>1. D3=1. (q3=0)
+D4 = ¬q7=0 (q7=1) ∨ (q9&¬q15=0) ∨ (q9&q16&¬(in1&q14): q9=0 =>0). D4=0.
+D5 = ¬q18=1 =>1. D5=1.
+D6 = ¬in0=0 (in0=1) ∨ (q6&¬q2=0) ∨ (q6&q15&¬(in1&q3): q6=0 =>0). D6=0.
+D7 = ¬q19=0 (q19=1) ∨ (q17&¬q3=1&1=1) =>1. D7=1. (q3=0)
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=0) =>0. D8=0.
+D9 = ¬q18=1 =>1. D9=1.
+D10 = ¬q18=1 =>1. D10=1.
+D11 = ¬q1=1 (q1=0) =>1. D11=1.
+D12 = ¬q5=0 (q5=1) ∨ (q9&¬q16=0) ∨ (q9&q19&¬(q6&q13): q9=0 =>0). D12=0.
+D13 = ¬q19=0 (q19=1) ∨ (q8&in1&¬q16=0) =>0. D13=0.
+D14 = ¬q13=0 (q13=1) ∨ (q4&¬q3=1&1=1) =>1. D14=1.
+D15 = ¬q14=0 (q14=1) ∨ (q10&¬q6=0) ∨ (q10&q2&¬q13=0) =>0. D15=0.
+D16 = ¬q10=1 (q10=0) =>1. D16=1.
+D17 = ¬q16=1 (q16=0) =>1. D17=1.
+D18 = ¬q8=1 (q8=0) =>1. D18=1.
+D19 = ¬q11=1 (q11=0) =>1. D19=1.
+
+D at t=18: [1,1,1,1,0,1,0,1,0,1,1,1,0,0,1,0,1,1,1,1]
+D0=1,D1=1,D2=1,D3=1,D4=0,D5=1,D6=0,D7=1,D8=0,D9=1,D10=1,D11=1,D12=0,D13=0,D14=1,D15=0,D16=1,D17=1,D18=1,D19=1.
+
+New state S19:
+q0=1
+q1=1
+q2=1
+q3=1
+q4=0
+q5=1
+q6=0
+q7=1
+q8=0
+q9=1
+q10=1
+q11=1
+q12=0
+q13=0
+q14=1
+q15=0
+q16=1
+q17=1
+q18=1
+q19=1
+
+Outputs t=19: q10=1, q11=1, q13=0, q2=1, q3=1, q5=1.
+
+Now t=19 inputs: in0=1, in1=1.
+
+State S19:
+q0=1,q1=1,q2=1,q3=1,q4=0,q5=1,q6=0,q7=1,q8=0,q9=1,q10=1,q11=1,q12=0,q13=0,q14=1,q15=0,q16=1,q17=1,q18=1,q19=1.
+
+Compute D for t=19.
+
+in0=1, in1=1.
+
+D0 = ¬in1=0 ∨ (q14 & (¬q17∨¬q19)). q14=1, ¬q17=0, ¬q19=0 =>0. D0=0.
+D1 = ¬q3=0 (q3=1) ∨ (q7&q8&¬(q4&in0)). q8=0 =>0. D1=0.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=0 =>0. D2=0.
+D3 = ¬q12=1 (q12=0) =>1. D3=1.
+D4 = ¬q7=0 (q7=1) ∨ (q9&¬q15=1&1=1) =>1. D4=1. (q15=0)
+D5 = ¬q18=0 ∨ (in1&¬q9=1&0=0) ∨ (in1&q8&¬(q19&q7): q8=0 =>0). D5=0.
+D6 = ¬in0=0 (in0=1) ∨ (q6&¬q2=0) ∨ (q6&q15&¬(in1&q3): q6=0 =>0). D6=0.
+D7 = ¬q19=0 (q19=1) ∨ (q17&¬q3=1&0=0) ∨ (q17&q9&¬(q13&q6): q13=0 => ¬=1; q17=1,q9=1 => term=1) =>1. D7=1.
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=1&1&0=0) =>0. D8=0.
+D9 = ¬q18=0 ∨ (q4&¬in0=0) ∨ (q4&q5&¬q1=0) =>0. D9=0.
+D10 = ¬q18=0 ∨ (q16&¬q15=1&1=1) =>1. D10=1.
+D11 = ¬q1=0 (q1=1) ∨ (in0 & ¬(q10&q14&q2)). q10=1,q14=1,q2=1 => product=1, ¬=0 =>0. D11=0.
+D12 = ¬q5=0 (q5=1) ∨ (q9&¬q16=1&0=0) ∨ (q9&q19&¬(q6&q13): q6&q13=0, ¬=1; q9=1,q19=1 => term=1) =>1. D12=1.
+D13 = ¬q19=0 (q19=1) ∨ (q8&in1&¬q16=0) =>0. D13=0.
+D14 = ¬q13=1 (q13=0) =>1. D14=1.
+D15 = ¬q14=0 (q14=1) ∨ (q10&¬q6=1&1=1) =>1. D15=1. (q6=0)
+D16 = ¬q10=0 (q10=1) ∨ (q9&¬q12=1&1=1) =>1. D16=1. (q12=0)
+D17 = ¬q16=0 (q16=1) ∨ (q0&¬q9=1&0=0) ∨ (q0&in0&¬(q11&q6): q11=1,q6=0 => & =0, ¬=1; q0=1,in0=1 => term=1) =>1. D17=1.
+D18 = ¬q8=1 (q8=0) =>1. D18=1.
+D19 = ¬q11=0 (q11=1) ∨ (q13&¬q2=0) ∨ (q13&q19&¬q14=0) =>0. D19=0.
+
+D at t=19: [0,0,0,1,1,0,0,1,0,0,1,0,1,0,1,1,1,1,1,0]
+D0=0,D1=0,D2=0,D3=1,D4=1,D5=0,D6=0,D7=1,D8=0,D9=0,D10=1,D11=0,D12=1,D13=0,D14=1,D15=1,D16=1,D17=1,D18=1,D19=0.
+
+New state S20:
+q0=0
+q1=0
+q2=0
+q3=1
+q4=1
+q5=0
+q6=0
+q7=1
+q8=0
+q9=0
+q10=1
+q11=0
+q12=1
+q13=0
+q14=1
+q15=1
+q16=1
+q17=1
+q18=1
+q19=0
+
+Outputs t=20: q10=1, q11=0, q13=0, q2=0, q3=1, q5=0.
+
+Now t=20 inputs: in0=0, in1=1.
+
+State S20:
+q0=0,q1=0,q2=0,q3=1,q4=1,q5=0,q6=0,q7=1,q8=0,q9=0,q10=1,q11=0,q12=1,q13=0,q14=1,q15=1,q16=1,q17=1,q18=1,q19=0.
+
+Compute D for t=20.
+
+in0=0, in1=1.
+
+D0 = ¬in1=0 ∨ (q14 & (¬q17∨¬q19)). q14=1, ¬q17=0, ¬q19=1 (q19=0) => OR=1, term=1. D0=1.
+D1 = ¬q3=0 (q3=1) ∨ (q7&q8&¬(q4&in0)). q8=0 =>0. D1=0.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=0 =>0. D2=0.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=0) ∨ (q0&q4&¬(q5&q13): q0=0 =>0). D3=0.
+D4 = ¬q7=0 (q7=1) ∨ (q9&¬q15=0) ∨ (q9&q16&¬(in1&q14): q9=0 =>0). D4=0.
+D5 = ¬q18=0 ∨ (in1&¬q9=1&1=1) =>1. D5=1. (q9=0)
+D6 = ¬in0=1 (in0=0) =>1. D6=1.
+D7 = ¬q19=1 (q19=0) =>1. D7=1.
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=1&1&0=0) =>0. D8=0.
+D9 = ¬q18=0 ∨ (q4&¬in0=1&1=1) =>1. D9=1. (in0=0)
+D10 = ¬q18=0 ∨ (q16&¬q15=1&0=0) ∨ (q16&q18&¬q4=1&1&0=0) =>0. D10=0.
+D11 = ¬q1=1 (q1=0) =>1. D11=1.
+D12 = ¬q5=1 (q5=0) =>1. D12=1.
+D13 = ¬q19=1 =>1. D13=1.
+D14 = ¬q13=1 (q13=0) =>1. D14=1.
+D15 = ¬q14=0 (q14=1) ∨ (q10&¬q6=1&1=1) =>1. D15=1. (q6=0)
+D16 = ¬q10=0 (q10=1) ∨ (q9&¬q12=0) ∨ (q9&q8&¬(in1&q18): q9=0 =>0). D16=0.
+D17 = ¬q16=0 (q16=1) ∨ (q0&¬q9=0) ∨ (q0&in0&¬(q11&q6): q0=0 =>0). D17=0.
+D18 = ¬q8=1 (q8=0) =>1. D18=1.
+D19 = ¬q11=1 (q11=0) =>1. D19=1.
+
+D at t=20: [1,0,0,0,0,1,1,1,0,1,0,1,1,1,1,1,0,0,1,1]
+D0=1,D1=0,D2=0,D3=0,D4=0,D5=1,D6=1,D7=1,D8=0,D9=1,D10=0,D11=1,D12=1,D13=1,D14=1,D15=1,D16=0,D17=0,D18=1,D19=1.
+
+New state S21:
+q0=1
+q1=0
+q2=0
+q3=0
+q4=0
+q5=1
+q6=1
+q7=1
+q8=0
+q9=1
+q10=0
+q11=1
+q12=1
+q13=1
+q14=1
+q15=1
+q16=0
+q17=0
+q18=1
+q19=1
+
+Outputs t=21: q10=0, q11=1, q13=1, q2=0, q3=0, q5=1.
+
+Now t=21 inputs: in0=1, in1=1.
+
+State S21:
+q0=1,q1=0,q2=0,q3=0,q4=0,q5=1,q6=1,q7=1,q8=0,q9=1,q10=0,q11=1,q12=1,q13=1,q14=1,q15=1,q16=0,q17=0,q18=1,q19=1.
+
+Compute D for t=21.
+
+in0=1, in1=1.
+
+D0 = ¬in1=0 ∨ (q14 & (¬q17∨¬q19)). q14=1, ¬q17=1 (q17=0), ¬q19=0 => OR=1 => term=1. D0=1.
+D1 = ¬q3=1 (q3=0) =>1. D1=1.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=0 =>0. D2=0.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=1&1=1) =>1. D3=1.
+D4 = ¬q7=0 (q7=1) ∨ (q9&¬q15=1&0=0) ∨ (q9&q16&¬(in1&q14): q16=0 =>0). D4=0.
+D5 = ¬q18=0 ∨ (in1&¬q9=1&0=0) ∨ (in1&q8&¬(q19&q7): q8=0 =>0). D5=0.
+D6 = ¬in0=0 (in0=1) ∨ (q6&¬q2=1&1=1) =>1. D6=1. (q2=0)
+D7 = ¬q19=0 (q19=1) ∨ (q17&¬q3=0&1=0) ∨ (q17&q9&¬(q13&q6): q17=0 =>0). D7=0.
+D8 = ¬q17=1 (q17=0) =>1. D8=1.
+D9 = ¬q18=0 ∨ (q4&¬in0=0) ∨ (q4&q5&¬q1=0) =>0. D9=0.
+D10 = ¬q18=0 ∨ (q16&¬q15=0) ∨ (q16&q18&¬q4=0) =>0. D10=0.
+D11 = ¬q1=1 (q1=0) =>1. D11=1.
+D12 = ¬q5=0 (q5=1) ∨ (q9&¬q16=1&1=1) =>1. D12=1. (q16=0)
+D13 = ¬q19=0 (q19=1) ∨ (q8&in1&¬q16=0) =>0. D13=0.
+D14 = ¬q13=0 (q13=1) ∨ (q4&¬q3=0) ∨ (q4&q10&¬(q16&q18): q4=0 =>0). D14=0.
+D15 = ¬q14=0 (q14=1) ∨ (q10&¬q6=0) ∨ (q10&q2&¬q13=0) =>0. D15=0.
+D16 = ¬q10=1 (q10=0) =>1. D16=1.
+D17 = ¬q16=1 (q16=0) =>1. D17=1.
+D18 = ¬q8=1 (q8=0) =>1. D18=1.
+D19 = ¬q11=0 (q11=1) ∨ (q13&¬q2=1&1=1) =>1. D19=1. (q2=0)
+
+D at t=21: [1,1,0,1,0,0,1,0,1,0,0,1,1,0,0,0,1,1,1,1]
+D0=1,D1=1,D2=0,D3=1,D4=0,D5=0,D6=1,D7=0,D8=1,D9=0,D10=0,D11=1,D12=1,D13=0,D14=0,D15=0,D16=1,D17=1,D18=1,D19=1.
+
+New state S22:
+q0=1
+q1=1
+q2=0
+q3=1
+q4=0
+q5=0
+q6=1
+q7=0
+q8=1
+q9=0
+q10=0
+q11=1
+q12=1
+q13=0
+q14=0
+q15=0
+q16=1
+q17=1
+q18=1
+q19=1
+
+Outputs t=22: q10=0, q11=1, q13=0, q2=0, q3=1, q5=0.
+
+Now t=22 inputs: in0=0, in1=0.
+
+State S22:
+q0=1,q1=1,q2=0,q3=1,q4=0,q5=0,q6=1,q7=0,q8=1,q9=0,q10=0,q11=1,q12=1,q13=0,q14=0,q15=0,q16=1,q17=1,q18=1,q19=1.
+
+Compute D for t=22.
+
+in0=0, in1=0.
+
+D0 = ¬in1=1 =>1. D0=1.
+D1 = ¬q3=0 (q3=1) ∨ (q7&q8&¬(q4&in0)). q7=0 =>0. D1=0.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=1, in1=0 => product=0 ¬=1 => term=1. D2=1.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=1&0=0) ∨ (q0&q4&¬(q5&q13): q4=0 =>0). D3=0.
+D4 = ¬q7=1 (q7=0) =>1. D4=1.
+D5 = ¬q18=0 ∨ (in1&¬q9=0) ∨ (in1&q8&...=0) =>0. D5=0.
+D6 = ¬in0=1 (in0=0) =>1. D6=1.
+D7 = ¬q19=0 (q19=1) ∨ (q17&¬q3=1&0=0) ∨ (q17&q9&¬(q13&q6): q9=0 =>0). D7=0.
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=1&0&1=0) =>0. D8=0.
+D9 = ¬q18=0 ∨ (q4&¬in0=0) ∨ (q4&q5&¬q1=0) =>0. D9=0.
+D10 = ¬q18=0 ∨ (q16&¬q15=1&1=1) =>1. D10=1. (q15=0)
+D11 = ¬q1=0 (q1=1) ∨ (in0 & ¬(q10&q14&q2)). in0=0 =>0. D11=0.
+D12 = ¬q5=1 (q5=0) =>1. D12=1.
+D13 = ¬q19=0 (q19=1) ∨ (q8&in1&¬q16=0) =>0. D13=0.
+D14 = ¬q13=1 (q13=0) =>1. D14=1.
+D15 = ¬q14=1 (q14=0) =>1. D15=1.
+D16 = ¬q10=1 (q10=0) =>1. D16=1.
+D17 = ¬q16=0 (q16=1) ∨ (q0&¬q9=1&1=1) =>1. D17=1. (q9=0)
+D18 = ¬q8=0 (q8=1) ∨ (q0&¬in0=1&1=1) =>1. D18=1.
+D19 = ¬q11=0 (q11=1) ∨ (q13&¬q2=0) ∨ (q13&q19&¬q14=0) =>0. D19=0.
+
+D at t=22: [1,0,1,0,1,0,1,0,0,0,1,0,1,0,1,1,1,1,1,0]
+D0=1,D1=0,D2=1,D3=0,D4=1,D5=0,D6=1,D7=0,D8=0,D9=0,D10=1,D11=0,D12=1,D13=0,D14=1,D15=1,D16=1,D17=1,D18=1,D19=0.
+
+New state S23:
+q0=1
+q1=0
+q2=1
+q3=0
+q4=1
+q5=0
+q6=1
+q7=0
+q8=0
+q9=0
+q10=1
+q11=0
+q12=1
+q13=0
+q14=1
+q15=1
+q16=1
+q17=1
+q18=1
+q19=0
+
+Outputs t=23: q10=1, q11=0, q13=0, q2=1, q3=0, q5=0.
+
+Now t=23 inputs: in0=0, in1=0.
+
+State S23:
+q0=1,q1=0,q2=1,q3=0,q4=1,q5=0,q6=1,q7=0,q8=0,q9=0,q10=1,q11=0,q12=1,q13=0,q14=1,q15=1,q16=1,q17=1,q18=1,q19=0.
+
+Compute D for t=23.
+
+in0=0, in1=0.
+
+D0 = ¬in1=1 =>1. D0=1.
+D1 = ¬q3=1 (q3=0) =>1. D1=1.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=0 =>0. D2=0.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=1&1=1) =>1. D3=1. (q3=0)
+D4 = ¬q7=1 (q7=0) =>1. D4=1.
+D5 = ¬q18=0 ∨ (in1&¬q9=0) ∨ (in1&q8&...=0) =>0. D5=0.
+D6 = ¬in0=1 (in0=0) =>1. D6=1.
+D7 = ¬q19=1 (q19=0) =>1. D7=1.
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=1&0&0=0) =>0. D8=0.
+D9 = ¬q18=0 ∨ (q4&¬in0=1&1=1) =>1. D9=1. (in0=0)
+D10 = ¬q18=0 ∨ (q16&¬q15=1&0=0) ∨ (q16&q18&¬q4=1&1&0=0) =>0. D10=0.
+D11 = ¬q1=1 (q1=0) =>1. D11=1.
+D12 = ¬q5=1 (q5=0) =>1. D12=1.
+D13 = ¬q19=1 =>1. D13=1.
+D14 = ¬q13=1 (q13=0) =>1. D14=1.
+D15 = ¬q14=0 (q14=1) ∨ (q10&¬q6=1&0=0) ∨ (q10&q2&¬q13=1&1&1=1) =>1. D15=1. (q13=0)
+D16 = ¬q10=0 (q10=1) ∨ (q9&¬q12=0) ∨ (q9&q8&¬(in1&q18): q9=0 =>0). D16=0.
+D17 = ¬q16=0 (q16=1) ∨ (q0&¬q9=1&1=1) =>1. D17=1. (q9=0)
+D18 = ¬q8=1 (q8=0) =>1. D18=1.
+D19 = ¬q11=1 (q11=0) =>1. D19=1.
+
+D at t=23: [1,1,0,1,1,0,1,1,0,1,0,1,1,1,1,1,0,1,1,1]
+D0=1,D1=1,D2=0,D3=1,D4=1,D5=0,D6=1,D7=1,D8=0,D9=1,D10=0,D11=1,D12=1,D13=1,D14=1,D15=1,D16=0,D17=1,D18=1,D19=1.
+
+New state S24:
+q0=1
+q1=1
+q2=0
+q3=1
+q4=1
+q5=0
+q6=1
+q7=1
+q8=0
+q9=1
+q10=0
+q11=1
+q12=1
+q13=1
+q14=1
+q15=1
+q16=0
+q17=1
+q18=1
+q19=1
+
+Outputs t=24: q10=0, q11=1, q13=1, q2=0, q3=1, q5=0.
+
+Now t=24 inputs: in0=1, in1=0.
+
+State S24:
+q0=1,q1=1,q2=0,q3=1,q4=1,q5=0,q6=1,q7=1,q8=0,q9=1,q10=0,q11=1,q12=1,q13=1,q14=1,q15=1,q16=0,q17=1,q18=1,q19=1.
+
+Compute D for t=24.
+
+in0=1, in1=0.
+
+D0 = ¬in1=1 =>1. D0=1.
+D1 = ¬q3=0 (q3=1) ∨ (q7&q8&¬(q4&in0)). q8=0 =>0. D1=0.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=0 =>0. D2=0.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=1&0=0) ∨ (q0&q4&¬(q5&q13): q5=0 => q5&q13=0 ¬=1; q0=1,q4=1 => term=1) =>1. D3=1.
+D4 = ¬q7=0 (q7=1) ∨ (q9&¬q15=1&0=0) ∨ (q9&q16&¬(in1&q14): q16=0 =>0). D4=0.
+D5 = ¬q18=0 ∨ (in1&¬q9=0) ∨ (in1&q8&...=0) =>0. D5=0.
+D6 = ¬in0=0 (in0=1) ∨ (q6&¬q2=1&1=1) =>1. D6=1. (q2=0)
+D7 = ¬q19=0 (q19=1) ∨ (q17&¬q3=1&0=0) ∨ (q17&q9&¬(q13&q6): q13=1,q6=1 => & =1 ¬=0 =>0). D7=0.
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=1&0&1=0) =>0. D8=0.
+D9 = ¬q18=0 ∨ (q4&¬in0=1&0=0) ∨ (q4&q5&¬q1=1&0&0=0) =>0. D9=0.
+D10 = ¬q18=0 ∨ (q16&¬q15=0) ∨ (q16&q18&¬q4=0) =>0. D10=0.
+D11 = ¬q1=0 (q1=1) ∨ (in0 & ¬(q10&q14&q2)). q10=0,q14=1,q2=0 => product=0 ¬=1; in0=1 =>1. D11=1.
+D12 = ¬q5=1 (q5=0) =>1. D12=1.
+D13 = ¬q19=0 (q19=1) ∨ (q8&in1&¬q16=0) =>0. D13=0.
+D14 = ¬q13=0 (q13=1) ∨ (q4&¬q3=1&0=0) ∨ (q4&q10&¬(q16&q18): q10=0 =>0). D14=0.
+D15 = ¬q14=0 (q14=1) ∨ (q10&¬q6=0) ∨ (q10&q2&¬q13=0) =>0. D15=0.
+D16 = ¬q10=1 (q10=0) =>1. D16=1.
+D17 = ¬q16=1 (q16=0) =>1. D17=1.
+D18 = ¬q8=1 (q8=0) =>1. D18=1.
+D19 = ¬q11=0 (q11=1) ∨ (q13&¬q2=1&1=1) =>1. D19=1. (q2=0)
+
+D at t=24: [1,0,0,1,0,0,1,0,0,0,0,1,1,0,0,0,1,1,1,1]
+D0=1,D1=0,D2=0,D3=1,D4=0,D5=0,D6=1,D7=0,D8=0,D9=0,D10=0,D11=1,D12=1,D13=0,D14=0,D15=0,D16=1,D17=1,D18=1,D19=1.
+
+New state S25:
+q0=1
+q1=0
+q2=0
+q3=1
+q4=0
+q5=0
+q6=1
+q7=0
+q8=0
+q9=0
+q10=0
+q11=1
+q12=1
+q13=0
+q14=0
+q15=0
+q16=1
+q17=1
+q18=1
+q19=1
+
+Outputs t=25: q10=0, q11=1, q13=0, q2=0, q3=1, q5=0.
+
+Now t=25 inputs: in0=1, in1=1.
+
+State S25:
+q0=1,q1=0,q2=0,q3=1,q4=0,q5=0,q6=1,q7=0,q8=0,q9=0,q10=0,q11=1,q12=1,q13=0,q14=0,q15=0,q16=1,q17=1,q18=1,q19=1.
+
+Compute D for t=25.
+
+in0=1, in1=1.
+
+D0 = ¬in1=0 ∨ (q14 & (¬q17∨¬q19)). q14=0 =>0. D0=0.
+D1 = ¬q3=0 (q3=1) ∨ (q7&q8&¬(q4&in0)). q7=0 =>0. D1=0.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=0 =>0. D2=0.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=1&0=0) ∨ (q0&q4&¬(q5&q13): q4=0 =>0). D3=0.
+D4 = ¬q7=1 (q7=0) =>1. D4=1.
+D5 = ¬q18=0 ∨ (in1&¬q9=1&1=1) =>1. D5=1. (q9=0)
+D6 = ¬in0=0 (in0=1) ∨ (q6&¬q2=1&1=1) =>1. D6=1. (q2=0)
+D7 = ¬q19=0 (q19=1) ∨ (q17&¬q3=1&0=0) ∨ (q17&q9&¬(q13&q6): q9=0 =>0). D7=0.
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=1&1&1=1) =>1. D8=1. (q10=0)
+D9 = ¬q18=0 ∨ (q4&¬in0=0) ∨ (q4&q5&¬q1=0) =>0. D9=0.
+D10 = ¬q18=0 ∨ (q16&¬q15=1&1=1) =>1. D10=1. (q15=0)
+D11 = ¬q1=1 (q1=0) =>1. D11=1.
+D12 = ¬q5=1 (q5=0) =>1. D12=1.
+D13 = ¬q19=0 (q19=1) ∨ (q8&in1&¬q16=0) =>0. D13=0.
+D14 = ¬q13=1 (q13=0) =>1. D14=1.
+D15 = ¬q14=1 (q14=0) =>1. D15=1.
+D16 = ¬q10=1 (q10=0) =>1. D16=1.
+D17 = ¬q16=0 (q16=1) ∨ (q0&¬q9=1&1=1) =>1. D17=1. (q9=0)
+D18 = ¬q8=1 (q8=0) =>1. D18=1.
+D19 = ¬q11=0 (q11=1) ∨ (q13&¬q2=0) ∨ (q13&q19&¬q14=0) =>0. D19=0.
+
+D at t=25: [0,0,0,0,1,1,1,0,1,0,1,1,1,0,1,1,1,1,1,0]
+D0=0,D1=0,D2=0,D3=0,D4=1,D5=1,D6=1,D7=0,D8=1,D9=0,D10=1,D11=1,D12=1,D13=0,D14=1,D15=1,D16=1,D17=1,D18=1,D19=0.
+
+New state S26:
+q0=0
+q1=0
+q2=0
+q3=0
+q4=1
+q5=1
+q6=1
+q7=0
+q8=1
+q9=0
+q10=1
+q11=1
+q12=1
+q13=0
+q14=1
+q15=1
+q16=1
+q17=1
+q18=1
+q19=0
+
+Outputs t=26: q10=1, q11=1, q13=0, q2=0, q3=0, q5=1.
+
+Now t=26 inputs: in0=1, in1=1.
+
+State S26:
+q0=0,q1=0,q2=0,q3=0,q4=1,q5=1,q6=1,q7=0,q8=1,q9=0,q10=1,q11=1,q12=1,q13=0,q14=1,q15=1,q16=1,q17=1,q18=1,q19=0.
+
+Compute D for t=26.
+
+in0=1, in1=1.
+
+D0 = ¬in1=0 ∨ (q14 & (¬q17∨¬q19)). q14=1, ¬q17=0, ¬q19=1 (q19=0) => OR=1 => term=1. D0=1.
+D1 = ¬q3=1 (q3=0) =>1. D1=1.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=1, q7&q4=0 (q7=0) &in1 =>0, ¬=1 => term=1. D2=1.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=0) ∨ (q0&q4&¬(q5&q13): q0=0 =>0). D3=0.
+D4 = ¬q7=1 (q7=0) =>1. D4=1.
+D5 = ¬q18=0 ∨ (in1&¬q9=1&1=1) =>1. D5=1. (q9=0)
+D6 = ¬in0=0 (in0=1) ∨ (q6&¬q2=1&1=1) =>1. D6=1. (q2=0)
+D7 = ¬q19=1 (q19=0) =>1. D7=1.
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=1&1&0=0) =>0. D8=0.
+D9 = ¬q18=0 ∨ (q4&¬in0=1&0=0) ∨ (q4&q5&¬q1=1&1&1=1) =>1. D9=1. (q1=0)
+D10 = ¬q18=0 ∨ (q16&¬q15=1&0=0) ∨ (q16&q18&¬q4=1&1&0=0) =>0. D10=0.
+D11 = ¬q1=1 (q1=0) =>1. D11=1.
+D12 = ¬q5=0 (q5=1) ∨ (q9&¬q16=0) ∨ (q9&q19&¬(q6&q13): q9=0 =>0). D12=0.
+D13 = ¬q19=1 =>1. D13=1.
+D14 = ¬q13=1 (q13=0) =>1. D14=1.
+D15 = ¬q14=0 (q14=1) ∨ (q10&¬q6=1&0=0) ∨ (q10&q2&¬q13=1&0&1=0) =>0. D15=0.
+D16 = ¬q10=0 (q10=1) ∨ (q9&¬q12=0) ∨ (q9&q8&¬(in1&q18): q9=0 =>0). D16=0.
+D17 = ¬q16=0 (q16=1) ∨ (q0&¬q9=0) ∨ (q0&in0&¬(q11&q6): q0=0 =>0). D17=0.
+D18 = ¬q8=0 (q8=1) ∨ (q0&¬in0=0) ∨ (q0&q17&¬(q2&q1): q0=0 =>0). D18=0.
+D19 = ¬q11=0 (q11=1) ∨ (q13&¬q2=0) ∨ (q13&q19&¬q14=0) =>0. D19=0.
+
+D at t=26: [1,1,1,0,1,1,1,1,0,1,0,1,0,1,1,0,0,0,0,0]
+D0=1,D1=1,D2=1,D3=0,D4=1,D5=1,D6=1,D7=1,D8=0,D9=1,D10=0,D11=1,D12=0,D13=1,D14=1,D15=0,D16=0,D17=0,D18=0,D19=0.
+
+New state S27:
+q0=1
+q1=1
+q2=1
+q3=0
+q4=1
+q5=1
+q6=1
+q7=1
+q8=0
+q9=1
+q10=0
+q11=1
+q12=0
+q13=1
+q14=1
+q15=0
+q16=0
+q17=0
+q18=0
+q19=0
+
+Outputs t=27: q10=0, q11=1, q13=1, q2=1, q3=0, q5=1.
+
+Now t=27 inputs: in0=1, in1=0.
+
+State S27:
+q0=1,q1=1,q2=1,q3=0,q4=1,q5=1,q6=1,q7=1,q8=0,q9=1,q10=0,q11=1,q12=0,q13=1,q14=1,q15=0,q16=0,q17=0,q18=0,q19=0.
+
+Compute D for t=27.
+
+in0=1, in1=0.
+
+D0 = ¬in1=1 =>1. D0=1.
+D1 = ¬q3=1 (q3=0) =>1. D1=1.
+D2 = ¬q18=1 (q18=0) =>1. D2=1.
+D3 = ¬q12=1 (q12=0) =>1. D3=1.
+D4 = ¬q7=0 (q7=1) ∨ (q9&¬q15=1&1=1) =>1. D4=1. (q15=0)
+D5 = ¬q18=1 =>1. D5=1.
+D6 = ¬in0=0 (in0=1) ∨ (q6&¬q2=1&0=0) ∨ (q6&q15&¬(in1&q3): q15=0 =>0). D6=0.
+D7 = ¬q19=1 (q19=0) =>1. D7=1.
+D8 = ¬q17=1 (q17=0) =>1. D8=1.
+D9 = ¬q18=1 =>1. D9=1.
+D10 = ¬q18=1 =>1. D10=1.
+D11 = ¬q1=0 (q1=1) ∨ (in0 & ¬(q10&q14&q2)). q10=0,q14=1,q2=1 => product=0 ¬=1; in0=1 =>1. D11=1.
+D12 = ¬q5=0 (q5=1) ∨ (q9&¬q16=1&1=1) =>1. D12=1. (q16=0)
+D13 = ¬q19=1 =>1. D13=1.
+D14 = ¬q13=0 (q13=1) ∨ (q4&¬q3=1&1=1) =>1. D14=1. (q3=0)
+D15 = ¬q14=0 (q14=1) ∨ (q10&¬q6=0) ∨ (q10&q2&¬q13=0) =>0. D15=0.
+D16 = ¬q10=1 (q10=0) =>1. D16=1.
+D17 = ¬q16=1 (q16=0) =>1. D17=1.
+D18 = ¬q8=1 (q8=0) =>1. D18=1.
+D19 = ¬q11=0 (q11=1) ∨ (q13&¬q2=1&0=0) ∨ (q13&q19&¬q14=1&0&0=0) =>0. D19=0.
+
+D at t=27: [1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,0,1,1,1,0]
+D0=1,D1=1,D2=1,D3=1,D4=1,D5=1,D6=0,D7=1,D8=1,D9=1,D10=1,D11=1,D12=1,D13=1,D14=1,D15=0,D16=1,D17=1,D18=1,D19=0.
+
+New state S28:
+q0=1
+q1=1
+q2=1
+q3=1
+q4=1
+q5=1
+q6=0
+q7=1
+q8=1
+q9=1
+q10=1
+q11=1
+q12=1
+q13=1
+q14=1
+q15=0
+q16=1
+q17=1
+q18=1
+q19=0
+
+Outputs t=28: q10=1, q11=1, q13=1, q2=1, q3=1, q5=1.
+
+Now t=28 inputs: in0=1, in1=1.
+
+State S28:
+q0=1,q1=1,q2=1,q3=1,q4=1,q5=1,q6=0,q7=1,q8=1,q9=1,q10=1,q11=1,q12=1,q13=1,q14=1,q15=0,q16=1,q17=1,q18=1,q19=0.
+
+Compute D for t=28.
+
+in0=1, in1=1.
+
+D0 = ¬in1=0 ∨ (q14 & (¬q17∨¬q19)). q14=1, ¬q17=0, ¬q19=1 (q19=0) => OR=1 => term=1. D0=1.
+D1 = ¬q3=0 (q3=1) ∨ (q7&q8&¬(q4&in0)). q7=1,q8=1,q4=1,in0=1 => q4&in0=1 ¬=0 =>0. D1=0.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=1, q7=1,q4=1,in1=1 => product=1 ¬=0 =>0. D2=0.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=1&0=0) ∨ (q0&q4&¬(q5&q13): q5=1,q13=1 => &=1 ¬=0 =>0). D3=0.
+D4 = ¬q7=0 (q7=1) ∨ (q9&¬q15=1&1=1) =>1. D4=1. (q15=0)
+D5 = ¬q18=0 ∨ (in1&¬q9=1&0=0) ∨ (in1&q8&¬(q19&q7): q19=0 => & =0, ¬=1; in1=1,q8=1 => term=1) =>1. D5=1.
+D6 = ¬in0=0 (in0=1) ∨ (q6&¬q2=0) ∨ (q6&q15&¬(in1&q3): q6=0 =>0). D6=0.
+D7 = ¬q19=1 (q19=0) =>1. D7=1.
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=1&1&0=0) =>0. D8=0.
+D9 = ¬q18=0 ∨ (q4&¬in0=1&0=0) ∨ (q4&q5&¬q1=1&1&0=0) =>0. D9=0.
+D10 = ¬q18=0 ∨ (q16&¬q15=1&1=1) =>1. D10=1.
+D11 = ¬q1=0 (q1=1) ∨ (in0 & ¬(q10&q14&q2)). q10=1,q14=1,q2=1 => product=1 ¬=0 =>0. D11=0.
+D12 = ¬q5=0 (q5=1) ∨ (q9&¬q16=1&0=0) ∨ (q9&q19&¬(q6&q13): q19=0 =>0). D12=0.
+D13 = ¬q19=1 =>1. D13=1.
+D14 = ¬q13=0 (q13=1) ∨ (q4&¬q3=1&0=0) ∨ (q4&q10&¬(q16&q18): q16=1,q18=1 => & =1 ¬=0 =>0). D14=0.
+D15 = ¬q14=0 (q14=1) ∨ (q10&¬q6=1&1=1) =>1. D15=1. (q6=0)
+D16 = ¬q10=0 (q10=1) ∨ (q9&¬q12=1&0=0) ∨ (q9&q8&¬(in1&q18): in1&q18=1 ¬=0 =>0). D16=0.
+D17 = ¬q16=0 (q16=1) ∨ (q0&¬q9=1&0=0) ∨ (q0&in0&¬(q11&q6): q11=1,q6=0 => & =0 ¬=1; q0=1,in0=1 => term=1) =>1. D17=1.
+D18 = ¬q8=0 (q8=1) ∨ (q0&¬in0=1&0=0) ∨ (q0&q17&¬(q2&q1): q2=1,q1=1 => & =1 ¬=0 =>0). D18=0.
+D19 = ¬q11=0 (q11=1) ∨ (q13&¬q2=1&0=0) ∨ (q13&q19&¬q14=1&0&0=0) =>0. D19=0.
+
+D at t=28: [1,0,0,0,1,1,0,1,0,0,1,0,0,1,0,1,0,1,0,0]
+D0=1,D1=0,D2=0,D3=0,D4=1,D5=1,D6=0,D7=1,D8=0,D9=0,D10=1,D11=0,D12=0,D13=1,D14=0,D15=1,D16=0,D17=1,D18=0,D19=0.
+
+New state S29:
+q0=1
+q1=0
+q2=0
+q3=0
+q4=1
+q5=1
+q6=0
+q7=1
+q8=0
+q9=0
+q10=1
+q11=0
+q12=0
+q13=1
+q14=0
+q15=1
+q16=0
+q17=1
+q18=0
+q19=0
+
+Outputs t=29: q10=1, q11=0, q13=1, q2=0, q3=0, q5=1.
+
+Now t=29 inputs: in0=1, in1=1.
+
+State S29:
+q0=1,q1=0,q2=0,q3=0,q4=1,q5=1,q6=0,q7=1,q8=0,q9=0,q10=1,q11=0,q12=0,q13=1,q14=0,q15=1,q16=0,q17=1,q18=0,q19=0.
+
+Compute D for t=29.
+
+in0=1, in1=1.
+
+D0 = ¬in1=0 ∨ (q14 & (¬q17∨¬q19)). q14=0 =>0. D0=0.
+D1 = ¬q3=1 (q3=0) =>1. D1=1.
+D2 = ¬q18=1 (q18=0) =>1. D2=1.
+D3 = ¬q12=1 (q12=0) =>1. D3=1.
+D4 = ¬q7=0 (q7=1) ∨ (q9&¬q15=0) ∨ (q9&q16&¬(in1&q14): q9=0 =>0). D4=0.
+D5 = ¬q18=1 =>1. D5=1.
+D6 = ¬in0=0 (in0=1) ∨ (q6&¬q2=0) ∨ (q6&q15&¬(in1&q3): q6=0 =>0). D6=0.
+D7 = ¬q19=1 (q19=0) =>1. D7=1.
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=0&1&0=0) =>0. D8=0.
+D9 = ¬q18=1 =>1. D9=1.
+D10 = ¬q18=1 =>1. D10=1.
+D11 = ¬q1=1 (q1=0) =>1. D11=1.
+D12 = ¬q5=0 (q5=1) ∨ (q9&¬q16=0) ∨ (q9&q19&¬(q6&q13): q9=0 =>0). D12=0.
+D13 = ¬q19=1 =>1. D13=1.
+D14 = ¬q13=0 (q13=1) ∨ (q4&¬q3=1&1=1) =>1. D14=1. (q3=0)
+D15 = ¬q14=1 (q14=0) =>1. D15=1.
+D16 = ¬q10=0 (q10=1) ∨ (q9&¬q12=0) ∨ (q9&q8&¬(in1&q18): q9=0 =>0). D16=0.
+D17 = ¬q16=1 (q16=0) =>1. D17=1.
+D18 = ¬q8=1 (q8=0) =>1. D18=1.
+D19 = ¬q11=1 (q11=0) =>1. D19=1.
+
+D at t=29: [0,1,1,1,0,1,0,1,0,1,1,1,0,1,1,1,0,1,1,1]
+D0=0,D1=1,D2=1,D3=1,D4=0,D5=1,D6=0,D7=1,D8=0,D9=1,D10=1,D11=1,D12=0,D13=1,D14=1,D15=1,D16=0,D17=1,D18=1,D19=1.
+
+New state S30:
+q0=0
+q1=1
+q2=1
+q3=1
+q4=0
+q5=1
+q6=0
+q7=1
+q8=0
+q9=1
+q10=1
+q11=1
+q12=0
+q13=1
+q14=1
+q15=1
+q16=0
+q17=1
+q18=1
+q19=1
+
+Outputs t=30: q10=1, q11=1, q13=1, q2=1, q3=1, q5=1.
+
+Now t=30 inputs: in0=0, in1=1.
+
+State S30:
+q0=0,q1=1,q2=1,q3=1,q4=0,q5=1,q6=0,q7=1,q8=0,q9=1,q10=1,q11=1,q12=0,q13=1,q14=1,q15=1,q16=0,q17=1,q18=1,q19=1.
+
+Compute D for t=30.
+
+in0=0, in1=1.
+
+D0 = ¬in1=0 ∨ (q14 & (¬q17∨¬q19)). q14=1, ¬q17=0, ¬q19=0 =>0. D0=0.
+D1 = ¬q3=0 (q3=1) ∨ (q7&q8&¬(q4&in0)). q8=0 =>0. D1=0.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=0 =>0. D2=0.
+D3 = ¬q12=1 (q12=0) =>1. D3=1.
+D4 = ¬q7=0 (q7=1) ∨ (q9&¬q15=1&0=0) ∨ (q9&q16&¬(in1&q14): q16=0 =>0). D4=0.
+D5 = ¬q18=0 ∨ (in1&¬q9=1&0=0) ∨ (in1&q8&¬(q19&q7): q8=0 =>0). D5=0.
+D6 = ¬in0=1 (in0=0) =>1. D6=1.
+D7 = ¬q19=0 (q19=1) ∨ (q17&¬q3=1&0=0) ∨ (q17&q9&¬(q13&q6): q13=1,q6=0 => & =0 ¬=1; q17=1,q9=1 => term=1) =>1. D7=1.
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=1&1&0=0) =>0. D8=0.
+D9 = ¬q18=0 ∨ (q4&¬in0=0) ∨ (q4&q5&¬q1=0) =>0. D9=0.
+D10 = ¬q18=0 ∨ (q16&¬q15=0) ∨ (q16&q18&¬q4=0) =>0. D10=0.
+D11 = ¬q1=0 (q1=1) ∨ (in0 & ¬(q10&q14&q2)). in0=0 =>0. D11=0.
+D12 = ¬q5=0 (q5=1) ∨ (q9&¬q16=1&1=1) =>1. D12=1. (q16=0)
+D13 = ¬q19=0 (q19=1) ∨ (q8&in1&¬q16=0) =>0. D13=0.
+D14 = ¬q13=0 (q13=1) ∨ (q4&¬q3=0) ∨ (q4&q10&¬(q16&q18): q4=0 =>0). D14=0.
+D15 = ¬q14=0 (q14=1) ∨ (q10&¬q6=1&1=1) =>1. D15=1. (q6=0)
+D16 = ¬q10=0 (q10=1) ∨ (q9&¬q12=1&1=1) =>1. D16=1. (q12=0)
+D17 = ¬q16=1 (q16=0) =>1. D17=1.
+D18 = ¬q8=1 (q8=0) =>1. D18=1.
+D19 = ¬q11=0 (q11=1) ∨ (q13&¬q2=1&0=0) ∨ (q13&q19&¬q14=1&1&0=0) =>0. D19=0.
+
+D at t=30: [0,0,0,1,0,0,1,1,0,0,0,0,1,0,0,1,1,1,1,0]
+D0=0,D1=0,D2=0,D3=1,D4=0,D5=0,D6=1,D7=1,D8=0,D9=0,D10=0,D11=0,D12=1,D13=0,D14=0,D15=1,D16=1,D17=1,D18=1,D19=0.
+
+New state S31:
+q0=0
+q1=0
+q2=0
+q3=1
+q4=0
+q5=0
+q6=1
+q7=1
+q8=0
+q9=0
+q10=0
+q11=0
+q12=1
+q13=0
+q14=0
+q15=1
+q16=1
+q17=1
+q18=1
+q19=0
+
+Outputs t=31: q10=0, q11=0, q13=0, q2=0, q3=1, q5=0.
+
+Now t=31 inputs: in0=1, in1=1.
+
+State S31:
+q0=0,q1=0,q2=0,q3=1,q4=0,q5=0,q6=1,q7=1,q8=0,q9=0,q10=0,q11=0,q12=1,q13=0,q14=0,q15=1,q16=1,q17=1,q18=1,q19=0.
+
+Compute D for t=31.
+
+in0=1, in1=1.
+
+D0 = ¬in1=0 ∨ (q14 & (¬q17∨¬q19)). q14=0 =>0. D0=0.
+D1 = ¬q3=0 (q3=1) ∨ (q7&q8&¬(q4&in0)). q8=0 =>0. D1=0.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=0 =>0. D2=0.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=0) ∨ (q0&q4&¬(q5&q13): q0=0 =>0). D3=0.
+D4 = ¬q7=0 (q7=1) ∨ (q9&¬q15=0) ∨ (q9&q16&¬(in1&q14): q9=0 =>0). D4=0.
+D5 = ¬q18=0 ∨ (in1&¬q9=1&1=1) =>1. D5=1. (q9=0)
+D6 = ¬in0=0 (in0=1) ∨ (q6&¬q2=1&1=1) =>1. D6=1. (q2=0)
+D7 = ¬q19=1 (q19=0) =>1. D7=1.
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=1&1&1=1) =>1. D8=1. (q10=0)
+D9 = ¬q18=0 ∨ (q4&¬in0=0) ∨ (q4&q5&¬q1=0) =>0. D9=0.
+D10 = ¬q18=0 ∨ (q16&¬q15=1&0=0) ∨ (q16&q18&¬q4=1&1&1=1) =>1. D10=1. (q4=0)
+D11 = ¬q1=1 (q1=0) =>1. D11=1.
+D12 = ¬q5=1 (q5=0) =>1. D12=1.
+D13 = ¬q19=1 =>1. D13=1.
+D14 = ¬q13=1 (q13=0) =>1. D14=1.
+D15 = ¬q14=1 (q14=0) =>1. D15=1.
+D16 = ¬q10=1 (q10=0) =>1. D16=1.
+D17 = ¬q16=0 (q16=1) ∨ (q0&¬q9=0) ∨ (q0&in0&¬(q11&q6): q0=0 =>0). D17=0.
+D18 = ¬q8=1 (q8=0) =>1. D18=1.
+D19 = ¬q11=1 (q11=0) =>1. D19=1.
+
+D at t=31: [0,0,0,0,0,1,1,1,1,0,1,1,1,1,1,1,1,0,1,1]
+D0=0,D1=0,D2=0,D3=0,D4=0,D5=1,D6=1,D7=1,D8=1,D9=0,D10=1,D11=1,D12=1,D13=1,D14=1,D15=1,D16=1,D17=0,D18=1,D19=1.
+
+New state S32:
+q0=0
+q1=0
+q2=0
+q3=0
+q4=0
+q5=1
+q6=1
+q7=1
+q8=1
+q9=0
+q10=1
+q11=1
+q12=1
+q13=1
+q14=1
+q15=1
+q16=1
+q17=0
+q18=1
+q19=1
+
+Outputs t=32: q10=1, q11=1, q13=1, q2=0, q3=0, q5=1.
+
+Now t=32 inputs: in0=0, in1=1.
+
+State S32:
+q0=0,q1=0,q2=0,q3=0,q4=0,q5=1,q6=1,q7=1,q8=1,q9=0,q10=1,q11=1,q12=1,q13=1,q14=1,q15=1,q16=1,q17=0,q18=1,q19=1.
+
+Compute D for t=32.
+
+in0=0, in1=1.
+
+D0 = ¬in1=0 ∨ (q14 & (¬q17∨¬q19)). q14=1, ¬q17=1 (q17=0), ¬q19=0 => OR=1 => term=1. D0=1.
+D1 = ¬q3=1 (q3=0) =>1. D1=1.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=1, q7&q4=0 (q4=0) &in1 =>0 ¬=1 => term=1. D2=1.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=0) ∨ (q0&q4&¬(q5&q13): q0=0 =>0). D3=0.
+D4 = ¬q7=0 (q7=1) ∨ (q9&¬q15=0) ∨ (q9&q16&¬(in1&q14): q9=0 =>0). D4=0.
+D5 = ¬q18=0 ∨ (in1&¬q9=1&1=1) =>1. D5=1. (q9=0)
+D6 = ¬in0=1 (in0=0) =>1. D6=1.
+D7 = ¬q19=0 (q19=1) ∨ (q17&¬q3=0&1=0) ∨ (q17&q9&¬(q13&q6): q17=0 =>0). D7=0.
+D8 = ¬q17=1 (q17=0) =>1. D8=1.
+D9 = ¬q18=0 ∨ (q4&¬in0=0) ∨ (q4&q5&¬q1=0) =>0. D9=0.
+D10 = ¬q18=0 ∨ (q16&¬q15=1&0=0) ∨ (q16&q18&¬q4=1&1&1=1) =>1. D10=1. (q4=0)
+D11 = ¬q1=1 (q1=0) =>1. D11=1.
+D12 = ¬q5=0 (q5=1) ∨ (q9&¬q16=0) ∨ (q9&q19&¬(q6&q13): q9=0 =>0). D12=0.
+D13 = ¬q19=0 (q19=1) ∨ (q8&in1&¬q16=1&1&0=0) =>0. D13=0.
+D14 = ¬q13=0 (q13=1) ∨ (q4&¬q3=0) ∨ (q4&q10&¬(q16&q18): q4=0 =>0). D14=0.
+D15 = ¬q14=0 (q14=1) ∨ (q10&¬q6=1&0=0) ∨ (q10&q2&¬q13=1&0&0=0) =>0. D15=0.
+D16 = ¬q10=0 (q10=1) ∨ (q9&¬q12=0) ∨ (q9&q8&¬(in1&q18): q9=0 =>0). D16=0.
+D17 = ¬q16=0 (q16=1) ∨ (q0&¬q9=0) ∨ (q0&in0&¬(q11&q6): q0=0 =>0). D17=0.
+D18 = ¬q8=0 (q8=1) ∨ (q0&¬in0=0) ∨ (q0&q17&¬(q2&q1): q0=0 =>0). D18=0.
+D19 = ¬q11=0 (q11=1) ∨ (q13&¬q2=1&1=1) =>1. D19=1. (q2=0)
+
+D at t=32: [1,1,1,0,0,1,1,0,1,0,1,1,0,0,0,0,0,0,0,1]
+D0=1,D1=1,D2=1,D3=0,D4=0,D5=1,D6=1,D7=0,D8=1,D9=0,D10=1,D11=1,D12=0,D13=0,D14=0,D15=0,D16=0,D17=0,D18=0,D19=1.
+
+New state S33:
+q0=1
+q1=1
+q2=1
+q3=0
+q4=0
+q5=1
+q6=1
+q7=0
+q8=1
+q9=0
+q10=1
+q11=1
+q12=0
+q13=0
+q14=0
+q15=0
+q16=0
+q17=0
+q18=0
+q19=1
+
+Outputs t=33: q10=1, q11=1, q13=0, q2=1, q3=0, q5=1.
+
+Now t=33 inputs: in0=0, in1=0.
+
+State S33:
+q0=1,q1=1,q2=1,q3=0,q4=0,q5=1,q6=1,q7=0,q8=1,q9=0,q10=1,q11=1,q12=0,q13=0,q14=0,q15=0,q16=0,q17=0,q18=0,q19=1.
+
+Compute D for t=33.
+
+in0=0, in1=0.
+
+D0 = ¬in1=1 =>1. D0=1.
+D1 = ¬q3=1 (q3=0) =>1. D1=1.
+D2 = ¬q18=1 (q18=0) =>1. D2=1.
+D3 = ¬q12=1 (q12=0) =>1. D3=1.
+D4 = ¬q7=1 (q7=0) =>1. D4=1.
+D5 = ¬q18=1 =>1. D5=1.
+D6 = ¬in0=1 (in0=0) =>1. D6=1.
+D7 = ¬q19=0 (q19=1) ∨ (q17&¬q3=0&1=0) ∨ (q17&q9&¬(q13&q6): q17=0 =>0). D7=0.
+D8 = ¬q17=1 (q17=0) =>1. D8=1.
+D9 = ¬q18=1 =>1. D9=1.
+D10 = ¬q18=1 =>1. D10=1.
+D11 = ¬q1=0 (q1=1) ∨ (in0 & ¬(q10&q14&q2)). in0=0 =>0. D11=0.
+D12 = ¬q5=0 (q5=1) ∨ (q9&¬q16=0) ∨ (q9&q19&¬(q6&q13): q9=0 =>0). D12=0.
+D13 = ¬q19=0 (q19=1) ∨ (q8&in1&¬q16=1&0&1=0) =>0. D13=0.
+D14 = ¬q13=1 (q13=0) =>1. D14=1.
+D15 = ¬q14=1 (q14=0) =>1. D15=1.
+D16 = ¬q10=0 (q10=1) ∨ (q9&¬q12=0) ∨ (q9&q8&¬(in1&q18): q9=0 =>0). D16=0.
+D17 = ¬q16=1 (q16=0) =>1. D17=1.
+D18 = ¬q8=0 (q8=1) ∨ (q0&¬in0=1&1=1) =>1. D18=1. (in0=0)
+D19 = ¬q11=0 (q11=1) ∨ (q13&¬q2=0) ∨ (q13&q19&¬q14=0) =>0. D19=0.
+
+D at t=33: [1,1,1,1,1,1,1,0,1,1,1,0,0,0,1,1,0,1,1,0]
+D0=1,D1=1,D2=1,D3=1,D4=1,D5=1,D6=1,D7=0,D8=1,D9=1,D10=1,D11=0,D12=0,D13=0,D14=1,D15=1,D16=0,D17=1,D18=1,D19=0.
+
+New state S34:
+q0=1
+q1=1
+q2=1
+q3=1
+q4=1
+q5=1
+q6=1
+q7=0
+q8=1
+q9=1
+q10=1
+q11=0
+q12=0
+q13=0
+q14=1
+q15=1
+q16=0
+q17=1
+q18=1
+q19=0
+
+Outputs t=34: q10=1, q11=0, q13=0, q2=1, q3=1, q5=1.
+
+Now t=34 inputs: in0=0, in1=0.
+
+State S34:
+q0=1,q1=1,q2=1,q3=1,q4=1,q5=1,q6=1,q7=0,q8=1,q9=1,q10=1,q11=0,q12=0,q13=0,q14=1,q15=1,q16=0,q17=1,q18=1,q19=0.
+
+Compute D for t=34.
+
+in0=0, in1=0.
+
+D0 = ¬in1=1 =>1. D0=1.
+D1 = ¬q3=0 (q3=1) ∨ (q7&q8&¬(q4&in0)). q7=0 =>0. D1=0.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=1, in1=0 => product=0 ¬=1 => term=1. D2=1.
+D3 = ¬q12=1 (q12=0) =>1. D3=1.
+D4 = ¬q7=1 (q7=0) =>1. D4=1.
+D5 = ¬q18=0 ∨ (in1&¬q9=0) ∨ (in1&q8&...=0) =>0. D5=0.
+D6 = ¬in0=1 (in0=0) =>1. D6=1.
+D7 = ¬q19=1 (q19=0) =>1. D7=1.
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=1&0&0=0) =>0. D8=0.
+D9 = ¬q18=0 ∨ (q4&¬in0=1&1=1) =>1. D9=1. (in0=0)
+D10 = ¬q18=0 ∨ (q16&¬q15=0) ∨ (q16&q18&¬q4=0) =>0. D10=0.
+D11 = ¬q1=0 (q1=1) ∨ (in0 & ¬(q10&q14&q2)). in0=0 =>0. D11=0.
+D12 = ¬q5=0 (q5=1) ∨ (q9&¬q16=1&1=1) =>1. D12=1. (q16=0)
+D13 = ¬q19=1 =>1. D13=1.
+D14 = ¬q13=1 (q13=0) =>1. D14=1.
+D15 = ¬q14=0 (q14=1) ∨ (q10&¬q6=1&0=0) ∨ (q10&q2&¬q13=1&1&1=1) =>1. D15=1. (q13=0)
+D16 = ¬q10=0 (q10=1) ∨ (q9&¬q12=1&1=1) =>1. D16=1. (q12=0)
+D17 = ¬q16=1 (q16=0) =>1. D17=1.
+D18 = ¬q8=0 (q8=1) ∨ (q0&¬in0=1&1=1) =>1. D18=1.
+D19 = ¬q11=1 (q11=0) =>1. D19=1.
+
+D at t=34: [1,0,1,1,1,0,1,1,0,1,0,0,1,1,1,1,1,1,1,1]
+D0=1,D1=0,D2=1,D3=1,D4=1,D5=0,D6=1,D7=1,D8=0,D9=1,D10=0,D11=0,D12=1,D13=1,D14=1,D15=1,D16=1,D17=1,D18=1,D19=1.
+
+New state S35:
+q0=1
+q1=0
+q2=1
+q3=1
+q4=1
+q5=0
+q6=1
+q7=1
+q8=0
+q9=1
+q10=0
+q11=0
+q12=1
+q13=1
+q14=1
+q15=1
+q16=1
+q17=1
+q18=1
+q19=1
+
+Outputs t=35: q10=0, q11=0, q13=1, q2=1, q3=1, q5=0.
+
+Now t=35 inputs: in0=0, in1=0.
+
+State S35:
+q0=1,q1=0,q2=1,q3=1,q4=1,q5=0,q6=1,q7=1,q8=0,q9=1,q10=0,q11=0,q12=1,q13=1,q14=1,q15=1,q16=1,q17=1,q18=1,q19=1.
+
+Compute D for t=35.
+
+in0=0, in1=0.
+
+D0 = ¬in1=1 =>1. D0=1.
+D1 = ¬q3=0 (q3=1) ∨ (q7&q8&¬(q4&in0)). q8=0 =>0. D1=0.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=0 =>0. D2=0.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=1&0=0) ∨ (q0&q4&¬(q5&q13): q5=0 => & =0 ¬=1; q0=1,q4=1 => term=1) =>1. D3=1.
+D4 = ¬q7=0 (q7=1) ∨ (q9&¬q15=1&0=0) ∨ (q9&q16&¬(in1&q14): in1=0 => q14&in1=0 ¬=1; q9=1,q16=1 => term=1) =>1. D4=1.
+D5 = ¬q18=0 ∨ (in1&¬q9=0) ∨ (in1&q8&...=0) =>0. D5=0.
+D6 = ¬in0=1 (in0=0) =>1. D6=1.
+D7 = ¬q19=0 (q19=1) ∨ (q17&¬q3=1&0=0) ∨ (q17&q9&¬(q13&q6): q13=1,q6=1 => & =1 ¬=0 =>0). D7=0.
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=1&0&1=0) =>0. D8=0.
+D9 = ¬q18=0 ∨ (q4&¬in0=1&1=1) =>1. D9=1. (in0=0)
+D10 = ¬q18=0 ∨ (q16&¬q15=1&0=0) ∨ (q16&q18&¬q4=1&1&0=0) =>0. D10=0.
+D11 = ¬q1=1 (q1=0) =>1. D11=1.
+D12 = ¬q5=1 (q5=0) =>1. D12=1.
+D13 = ¬q19=0 (q19=1) ∨ (q8&in1&¬q16=0) =>0. D13=0.
+D14 = ¬q13=0 (q13=1) ∨ (q4&¬q3=1&0=0) ∨ (q4&q10&¬(q16&q18): q10=0 =>0). D14=0.
+D15 = ¬q14=0 (q14=1) ∨ (q10&¬q6=0) ∨ (q10&q2&¬q13=0) =>0. D15=0.
+D16 = ¬q10=1 (q10=0) =>1. D16=1.
+D17 = ¬q16=0 (q16=1) ∨ (q0&¬q9=1&0=0) ∨ (q0&in0&¬(q11&q6): in0=0 =>0). D17=0.
+D18 = ¬q8=1 (q8=0) =>1. D18=1.
+D19 = ¬q11=1 (q11=0) =>1. D19=1.
+
+D at t=35: [1,0,0,1,1,0,1,0,0,1,0,1,1,0,0,0,1,0,1,1]
+D0=1,D1=0,D2=0,D3=1,D4=1,D5=0,D6=1,D7=0,D8=0,D9=1,D10=0,D11=1,D12=1,D13=0,D14=0,D15=0,D16=1,D17=0,D18=1,D19=1.
+
+New state S36:
+q0=1
+q1=0
+q2=0
+q3=1
+q4=1
+q5=0
+q6=1
+q7=0
+q8=0
+q9=1
+q10=0
+q11=1
+q12=1
+q13=0
+q14=0
+q15=0
+q16=1
+q17=0
+q18=1
+q19=1
+
+Outputs t=36: q10=0, q11=1, q13=0, q2=0, q3=1, q5=0.
+
+Now t=36 inputs: in0=0, in1=0.
+
+State S36:
+q0=1,q1=0,q2=0,q3=1,q4=1,q5=0,q6=1,q7=0,q8=0,q9=1,q10=0,q11=1,q12=1,q13=0,q14=0,q15=0,q16=1,q17=0,q18=1,q19=1.
+
+Compute D for t=36.
+
+in0=0, in1=0.
+
+D0 = ¬in1=1 =>1. D0=1.
+D1 = ¬q3=0 (q3=1) ∨ (q7&q8&¬(q4&in0)). q7=0 =>0. D1=0.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=0 =>0. D2=0.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=1&0=0) ∨ (q0&q4&¬(q5&q13): q5=0 => & =0 ¬=1; q0=1,q4=1 => term=1) =>1. D3=1.
+D4 = ¬q7=1 (q7=0) =>1. D4=1.
+D5 = ¬q18=0 ∨ (in1&¬q9=0) ∨ (in1&q8&...=0) =>0. D5=0.
+D6 = ¬in0=1 (in0=0) =>1. D6=1.
+D7 = ¬q19=0 (q19=1) ∨ (q17&¬q3=0&0=0) ∨ (q17&q9&¬(q13&q6): q17=0 =>0). D7=0.
+D8 = ¬q17=1 (q17=0) =>1. D8=1.
+D9 = ¬q18=0 ∨ (q4&¬in0=1&1=1) =>1. D9=1.
+D10 = ¬q18=0 ∨ (q16&¬q15=1&1=1) =>1. D10=1. (q15=0)
+D11 = ¬q1=1 (q1=0) =>1. D11=1.
+D12 = ¬q5=1 (q5=0) =>1. D12=1.
+D13 = ¬q19=0 (q19=1) ∨ (q8&in1&¬q16=0) =>0. D13=0.
+D14 = ¬q13=1 (q13=0) =>1. D14=1.
+D15 = ¬q14=1 (q14=0) =>1. D15=1.
+D16 = ¬q10=1 (q10=0) =>1. D16=1.
+D17 = ¬q16=0 (q16=1) ∨ (q0&¬q9=1&0=0) ∨ (q0&in0&¬(q11&q6): in0=0 =>0). D17=0.
+D18 = ¬q8=1 (q8=0) =>1. D18=1.
+D19 = ¬q11=0 (q11=1) ∨ (q13&¬q2=0) ∨ (q13&q19&¬q14=0) =>0. D19=0.
+
+D at t=36: [1,0,0,1,1,0,1,0,1,1,1,1,1,0,1,1,1,0,1,0]
+D0=1,D1=0,D2=0,D3=1,D4=1,D5=0,D6=1,D7=0,D8=1,D9=1,D10=1,D11=1,D12=1,D13=0,D14=1,D15=1,D16=1,D17=0,D18=1,D19=0.
+
+New state S37:
+q0=1
+q1=0
+q2=0
+q3=1
+q4=1
+q5=0
+q6=1
+q7=0
+q8=1
+q9=1
+q10=1
+q11=1
+q12=1
+q13=0
+q14=1
+q15=1
+q16=1
+q17=0
+q18=1
+q19=0
+
+Outputs t=37: q10=1, q11=1, q13=0, q2=0, q3=1, q5=0.
+
+Now t=37 inputs: in0=0, in1=0.
+
+State S37:
+q0=1,q1=0,q2=0,q3=1,q4=1,q5=0,q6=1,q7=0,q8=1,q9=1,q10=1,q11=1,q12=1,q13=0,q14=1,q15=1,q16=1,q17=0,q18=1,q19=0.
+
+Compute D for t=37.
+
+in0=0, in1=0.
+
+D0 = ¬in1=1 =>1. D0=1.
+D1 = ¬q3=0 (q3=1) ∨ (q7&q8&¬(q4&in0)). q7=0 =>0. D1=0.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=1, in1=0 => product=0 ¬=1 => term=1. D2=1.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=1&0=0) ∨ (q0&q4&¬(q5&q13): q5=0 => & =0 ¬=1; q0=1,q4=1 => term=1) =>1. D3=1.
+D4 = ¬q7=1 (q7=0) =>1. D4=1.
+D5 = ¬q18=0 ∨ (in1&¬q9=0) ∨ (in1&q8&...=0) =>0. D5=0.
+D6 = ¬in0=1 (in0=0) =>1. D6=1.
+D7 = ¬q19=1 (q19=0) =>1. D7=1.
+D8 = ¬q17=1 (q17=0) =>1. D8=1.
+D9 = ¬q18=0 ∨ (q4&¬in0=1&1=1) =>1. D9=1.
+D10 = ¬q18=0 ∨ (q16&¬q15=1&0=0) ∨ (q16&q18&¬q4=1&1&0=0) =>0. D10=0.
+D11 = ¬q1=1 (q1=0) =>1. D11=1.
+D12 = ¬q5=1 (q5=0) =>1. D12=1.
+D13 = ¬q19=1 =>1. D13=1.
+D14 = ¬q13=1 (q13=0) =>1. D14=1.
+D15 = ¬q14=0 (q14=1) ∨ (q10&¬q6=1&0=0) ∨ (q10&q2&¬q13=1&0&1=0) =>0. D15=0.
+D16 = ¬q10=0 (q10=1) ∨ (q9&¬q12=1&0=0) ∨ (q9&q8&¬(in1&q18): in1=0 => & =0 ¬=1; q9=1,q8=1 => term=1) =>1. D16=1.
+D17 = ¬q16=0 (q16=1) ∨ (q0&¬q9=1&0=0) ∨ (q0&in0&¬(q11&q6): in0=0 =>0). D17=0.
+D18 = ¬q8=0 (q8=1) ∨ (q0&¬in0=1&1=1) =>1. D18=1.
+D19 = ¬q11=0 (q11=1) ∨ (q13&¬q2=0) ∨ (q13&q19&¬q14=0) =>0. D19=0.
+
+D at t=37: [1,0,1,1,1,0,1,1,1,1,0,1,1,1,1,0,1,0,1,0]
+D0=1,D1=0,D2=1,D3=1,D4=1,D5=0,D6=1,D7=1,D8=1,D9=1,D10=0,D11=1,D12=1,D13=1,D14=1,D15=0,D16=1,D17=0,D18=1,D19=0.
+
+New state S38:
+q0=1
+q1=0
+q2=1
+q3=1
+q4=1
+q5=0
+q6=1
+q7=1
+q8=1
+q9=1
+q10=0
+q11=1
+q12=1
+q13=1
+q14=1
+q15=0
+q16=1
+q17=0
+q18=1
+q19=0
+
+Outputs t=38: q10=0, q11=1, q13=1, q2=1, q3=1, q5=0.
+
+Now t=38 inputs: in0=0, in1=0.
+
+State S38:
+q0=1,q1=0,q2=1,q3=1,q4=1,q5=0,q6=1,q7=1,q8=1,q9=1,q10=0,q11=1,q12=1,q13=1,q14=1,q15=0,q16=1,q17=0,q18=1,q19=0.
+
+Compute D for t=38.
+
+in0=0, in1=0.
+
+D0 = ¬in1=1 =>1. D0=1.
+D1 = ¬q3=0 (q3=1) ∨ (q7&q8&¬(q4&in0)). q7=1,q8=1,q4=1,in0=0 => q4&in0=0 ¬=1 => term=1. D1=1.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=1, in1=0 => product=0 ¬=1 => term=1. D2=1.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=1&0=0) ∨ (q0&q4&¬(q5&q13): q5=0 => & =0 ¬=1; q0=1,q4=1 => term=1) =>1. D3=1.
+D4 = ¬q7=0 (q7=1) ∨ (q9&¬q15=1&1=1) =>1. D4=1. (q15=0)
+D5 = ¬q18=0 ∨ (in1&¬q9=0) ∨ (in1&q8&...=0) =>0. D5=0.
+D6 = ¬in0=1 (in0=0) =>1. D6=1.
+D7 = ¬q19=1 (q19=0) =>1. D7=1.
+D8 = ¬q17=1 (q17=0) =>1. D8=1.
+D9 = ¬q18=0 ∨ (q4&¬in0=1&1=1) =>1. D9=1.
+D10 = ¬q18=0 ∨ (q16&¬q15=1&1=1) =>1. D10=1. (q15=0)
+D11 = ¬q1=1 (q1=0) =>1. D11=1.
+D12 = ¬q5=1 (q5=0) =>1. D12=1.
+D13 = ¬q19=1 =>1. D13=1.
+D14 = ¬q13=0 (q13=1) ∨ (q4&¬q3=1&0=0) ∨ (q4&q10&¬(q16&q18): q10=0 =>0). D14=0.
+D15 = ¬q14=0 (q14=1) ∨ (q10&¬q6=0) ∨ (q10&q2&¬q13=0) =>0. D15=0.
+D16 = ¬q10=1 (q10=0) =>1. D16=1.
+D17 = ¬q16=0 (q16=1) ∨ (q0&¬q9=1&0=0) ∨ (q0&in0&¬(q11&q6): in0=0 =>0). D17=0.
+D18 = ¬q8=0 (q8=1) ∨ (q0&¬in0=1&1=1) =>1. D18=1.
+D19 = ¬q11=0 (q11=1) ∨ (q13&¬q2=1&0=0) ∨ (q13&q19&¬q14=1&0&0=0) =>0. D19=0.
+
+D at t=38: [1,1,1,1,1,0,1,1,1,1,1,1,1,1,0,0,1,0,1,0]
+D0=1,D1=1,D2=1,D3=1,D4=1,D5=0,D6=1,D7=1,D8=1,D9=1,D10=1,D11=1,D12=1,D13=1,D14=0,D15=0,D16=1,D17=0,D18=1,D19=0.
+
+New state S39:
+q0=1
+q1=1
+q2=1
+q3=1
+q4=1
+q5=0
+q6=1
+q7=1
+q8=1
+q9=1
+q10=1
+q11=1
+q12=1
+q13=1
+q14=0
+q15=0
+q16=1
+q17=0
+q18=1
+q19=0
+
+Outputs t=39: q10=1, q11=1, q13=1, q2=1, q3=1, q5=0.
+
+Now t=39 inputs: in0=0, in1=1.
+
+State S39:
+q0=1,q1=1,q2=1,q3=1,q4=1,q5=0,q6=1,q7=1,q8=1,q9=1,q10=1,q11=1,q12=1,q13=1,q14=0,q15=0,q16=1,q17=0,q18=1,q19=0.
+
+Compute D for t=39.
+
+in0=0, in1=1.
+
+D0 = ¬in1=0 ∨ (q14 & (¬q17∨¬q19)). q14=0 =>0. D0=0.
+D1 = ¬q3=0 (q3=1) ∨ (q7&q8&¬(q4&in0)). q7=1,q8=1,q4=1,in0=0 => q4&in0=0 ¬=1 => term=1. D1=1.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=1, q7=1,q4=1,in1=1 => product=1 ¬=0 =>0. D2=0.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=1&0=0) ∨ (q0&q4&¬(q5&q13): q5=0 => & =0 ¬=1; q0=1,q4=1 => term=1) =>1. D3=1.
+D4 = ¬q7=0 (q7=1) ∨ (q9&¬q15=1&1=1) =>1. D4=1. (q15=0)
+D5 = ¬q18=0 ∨ (in1&¬q9=1&0=0) ∨ (in1&q8&¬(q19&q7): q19=0 => & =0 ¬=1; in1=1,q8=1 => term=1) =>1. D5=1.
+D6 = ¬in0=1 (in0=0) =>1. D6=1.
+D7 = ¬q19=1 (q19=0) =>1. D7=1.
+D8 = ¬q17=1 (q17=0) =>1. D8=1.
+D9 = ¬q18=0 ∨ (q4&¬in0=1&1=1) =>1. D9=1.
+D10 = ¬q18=0 ∨ (q16&¬q15=1&1=1) =>1. D10=1.
+D11 = ¬q1=0 (q1=1) ∨ (in0 & ¬(q10&q14&q2)). in0=0 =>0. D11=0.
+D12 = ¬q5=1 (q5=0) =>1. D12=1.
+D13 = ¬q19=1 =>1. D13=1.
+D14 = ¬q13=0 (q13=1) ∨ (q4&¬q3=1&0=0) ∨ (q4&q10&¬(q16&q18): q16=1,q18=1 => & =1 ¬=0 =>0). D14=0.
+D15 = ¬q14=1 (q14=0) =>1. D15=1.
+D16 = ¬q10=0 (q10=1) ∨ (q9&¬q12=1&0=0) ∨ (q9&q8&¬(in1&q18): in1&q18=1 ¬=0 =>0). D16=0.
+D17 = ¬q16=0 (q16=1) ∨ (q0&¬q9=1&0=0) ∨ (q0&in0&¬(q11&q6): in0=0 =>0). D17=0.
+D18 = ¬q8=0 (q8=1) ∨ (q0&¬in0=1&1=1) =>1. D18=1.
+D19 = ¬q11=0 (q11=1) ∨ (q13&¬q2=1&0=0) ∨ (q13&q19&¬q14=1&0&1=0) =>0. D19=0.
+
+D at t=39: [0,1,0,1,1,1,1,1,1,1,1,0,1,1,0,1,0,0,1,0]
+D0=0,D1=1,D2=0,D3=1,D4=1,D5=1,D6=1,D7=1,D8=1,D9=1,D10=1,D11=0,D12=1,D13=1,D14=0,D15=1,D16=0,D17=0,D18=1,D19=0.
+
+New state S40:
+q0=0
+q1=1
+q2=0
+q3=1
+q4=1
+q5=1
+q6=1
+q7=1
+q8=1
+q9=1
+q10=1
+q11=0
+q12=1
+q13=1
+q14=0
+q15=1
+q16=0
+q17=0
+q18=1
+q19=0
+
+Outputs t=40: q10=1, q11=0, q13=1, q2=0, q3=1, q5=1.
+
+Now t=40 inputs: in0=1, in1=1.
+
+State S40:
+q0=0,q1=1,q2=0,q3=1,q4=1,q5=1,q6=1,q7=1,q8=1,q9=1,q10=1,q11=0,q12=1,q13=1,q14=0,q15=1,q16=0,q17=0,q18=1,q19=0.
+
+Compute D for t=40.
+
+in0=1, in1=1.
+
+D0 = ¬in1=0 ∨ (q14 & (¬q17∨¬q19)). q14=0 =>0. D0=0.
+D1 = ¬q3=0 (q3=1) ∨ (q7&q8&¬(q4&in0)). q7=1,q8=1,q4=1,in0=1 => & =1 ¬=0 =>0. D1=0.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=1, q7=1,q4=1,in1=1 => product=1 ¬=0 =>0. D2=0.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=0) ∨ (q0&q4&¬(q5&q13): q0=0 =>0). D3=0.
+D4 = ¬q7=0 (q7=1) ∨ (q9&¬q15=1&0=0) ∨ (q9&q16&¬(in1&q14): q16=0 =>0). D4=0.
+D5 = ¬q18=0 ∨ (in1&¬q9=1&0=0) ∨ (in1&q8&¬(q19&q7): q19=0 => & =0 ¬=1; in1=1,q8=1 => term=1) =>1. D5=1.
+D6 = ¬in0=0 (in0=1) ∨ (q6&¬q2=1&1=1) =>1. D6=1. (q2=0)
+D7 = ¬q19=1 (q19=0) =>1. D7=1.
+D8 = ¬q17=1 (q17=0) =>1. D8=1.
+D9 = ¬q18=0 ∨ (q4&¬in0=1&0=0) ∨ (q4&q5&¬q1=1&1&0=0) =>0. D9=0.
+D10 = ¬q18=0 ∨ (q16&¬q15=0) ∨ (q16&q18&¬q4=0) =>0. D10=0.
+D11 = ¬q1=0 (q1=1) ∨ (in0 & ¬(q10&q14&q2)). q10=1,q14=0,q2=0 => product=0 ¬=1; in0=1 =>1. D11=1.
+D12 = ¬q5=0 (q5=1) ∨ (q9&¬q16=1&1=1) =>1. D12=1. (q16=0)
+D13 = ¬q19=1 =>1. D13=1.
+D14 = ¬q13=0 (q13=1) ∨ (q4&¬q3=1&0=0) ∨ (q4&q10&¬(q16&q18): q16=0 => & =0 ¬=1; q4=1,q10=1 => term=1) =>1. D14=1.
+D15 = ¬q14=1 (q14=0) =>1. D15=1.
+D16 = ¬q10=0 (q10=1) ∨ (q9&¬q12=1&0=0) ∨ (q9&q8&¬(in1&q18): in1&q18=1 ¬=0 =>0). D16=0.
+D17 = ¬q16=1 (q16=0) =>1. D17=1.
+D18 = ¬q8=0 (q8=1) ∨ (q0&¬in0=0) ∨ (q0&q17&¬(q2&q1): q0=0 =>0). D18=0.
+D19 = ¬q11=1 (q11=0) =>1. D19=1.
+
+D at t=40: [0,0,0,0,0,1,1,1,1,0,0,1,1,1,1,1,0,1,0,1]
+D0=0,D1=0,D2=0,D3=0,D4=0,D5=1,D6=1,D7=1,D8=1,D9=0,D10=0,D11=1,D12=1,D13=1,D14=1,D15=1,D16=0,D17=1,D18=0,D19=1.
+
+New state S41:
+q0=0
+q1=0
+q2=0
+q3=0
+q4=0
+q5=1
+q6=1
+q7=1
+q8=1
+q9=0
+q10=0
+q11=1
+q12=1
+q13=1
+q14=1
+q15=1
+q16=0
+q17=1
+q18=0
+q19=1
+
+Outputs t=41: q10=0, q11=1, q13=1, q2=0, q3=0, q5=1.
+
+Now t=41 inputs: in0=1, in1=0.
+
+State S41:
+q0=0,q1=0,q2=0,q3=0,q4=0,q5=1,q6=1,q7=1,q8=1,q9=0,q10=0,q11=1,q12=1,q13=1,q14=1,q15=1,q16=0,q17=1,q18=0,q19=1.
+
+Compute D for t=41.
+
+in0=1, in1=0.
+
+D0 = ¬in1=1 =>1. D0=1.
+D1 = ¬q3=1 (q3=0) =>1. D1=1.
+D2 = ¬q18=1 (q18=0) =>1. D2=1.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=0) ∨ (q0&q4&¬(q5&q13): q0=0 =>0). D3=0.
+D4 = ¬q7=0 (q7=1) ∨ (q9&¬q15=0) ∨ (q9&q16&¬(in1&q14): q9=0 =>0). D4=0.
+D5 = ¬q18=1 =>1. D5=1.
+D6 = ¬in0=0 (in0=1) ∨ (q6&¬q2=1&1=1) =>1. D6=1. (q2=0)
+D7 = ¬q19=0 (q19=1) ∨ (q17&¬q3=1&1=1) =>1. D7=1. (q3=0)
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=0) =>0. D8=0.
+D9 = ¬q18=1 =>1. D9=1.
+D10 = ¬q18=1 =>1. D10=1.
+D11 = ¬q1=1 (q1=0) =>1. D11=1.
+D12 = ¬q5=0 (q5=1) ∨ (q9&¬q16=0) ∨ (q9&q19&¬(q6&q13): q9=0 =>0). D12=0.
+D13 = ¬q19=0 (q19=1) ∨ (q8&in1&¬q16=1&0&1=0) =>0. D13=0.
+D14 = ¬q13=0 (q13=1) ∨ (q4&¬q3=0) ∨ (q4&q10&¬(q16&q18): q4=0 =>0). D14=0.
+D15 = ¬q14=0 (q14=1) ∨ (q10&¬q6=0) ∨ (q10&q2&¬q13=0) =>0. D15=0.
+D16 = ¬q10=1 (q10=0) =>1. D16=1.
+D17 = ¬q16=1 (q16=0) =>1. D17=1.
+D18 = ¬q8=0 (q8=1) ∨ (q0&¬in0=0) ∨ (q0&q17&¬(q2&q1): q0=0 =>0). D18=0.
+D19 = ¬q11=0 (q11=1) ∨ (q13&¬q2=1&1=1) =>1. D19=1. (q2=0)
+
+D at t=41: [1,1,1,0,0,1,1,1,0,1,1,1,0,0,0,0,1,1,0,1]
+D0=1,D1=1,D2=1,D3=0,D4=0,D5=1,D6=1,D7=1,D8=0,D9=1,D10=1,D11=1,D12=0,D13=0,D14=0,D15=0,D16=1,D17=1,D18=0,D19=1.
+
+New state S42:
+q0=1
+q1=1
+q2=1
+q3=0
+q4=0
+q5=1
+q6=1
+q7=1
+q8=0
+q9=1
+q10=1
+q11=1
+q12=0
+q13=0
+q14=0
+q15=0
+q16=1
+q17=1
+q18=0
+q19=1
+
+Outputs t=42: q10=1, q11=1, q13=0, q2=1, q3=0, q5=1.
+
+Now t=42 inputs: in0=0, in1=1.
+
+State S42:
+q0=1,q1=1,q2=1,q3=0,q4=0,q5=1,q6=1,q7=1,q8=0,q9=1,q10=1,q11=1,q12=0,q13=0,q14=0,q15=0,q16=1,q17=1,q18=0,q19=1.
+
+Compute D for t=42.
+
+in0=0, in1=1.
+
+D0 = ¬in1=0 ∨ (q14 & (¬q17∨¬q19)). q14=0 =>0. D0=0.
+D1 = ¬q3=1 (q3=0) =>1. D1=1.
+D2 = ¬q18=1 (q18=0) =>1. D2=1.
+D3 = ¬q12=1 (q12=0) =>1. D3=1.
+D4 = ¬q7=0 (q7=1) ∨ (q9&¬q15=1&1=1) =>1. D4=1. (q15=0)
+D5 = ¬q18=1 =>1. D5=1.
+D6 = ¬in0=1 (in0=0) =>1. D6=1.
+D7 = ¬q19=0 (q19=1) ∨ (q17&¬q3=1&1=1) =>1. D7=1. (q3=0)
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=0) =>0. D8=0.
+D9 = ¬q18=1 =>1. D9=1.
+D10 = ¬q18=1 =>1. D10=1.
+D11 = ¬q1=0 (q1=1) ∨ (in0 & ¬(q10&q14&q2)). in0=0 =>0. D11=0.
+D12 = ¬q5=0 (q5=1) ∨ (q9&¬q16=1&0=0) ∨ (q9&q19&¬(q6&q13): q13=0 => & =0 ¬=1; q9=1,q19=1 => term=1) =>1. D12=1.
+D13 = ¬q19=0 (q19=1) ∨ (q8&in1&¬q16=0) =>0. D13=0.
+D14 = ¬q13=1 (q13=0) =>1. D14=1.
+D15 = ¬q14=1 (q14=0) =>1. D15=1.
+D16 = ¬q10=0 (q10=1) ∨ (q9&¬q12=1&1=1) =>1. D16=1. (q12=0)
+D17 = ¬q16=0 (q16=1) ∨ (q0&¬q9=1&0=0) ∨ (q0&in0&¬(q11&q6): in0=0 =>0). D17=0.
+D18 = ¬q8=1 (q8=0) =>1. D18=1.
+D19 = ¬q11=0 (q11=1) ∨ (q13&¬q2=0) ∨ (q13&q19&¬q14=0) =>0. D19=0.
+
+D at t=42: [0,1,1,1,1,1,1,1,0,1,1,0,1,0,1,1,1,0,1,0]
+D0=0,D1=1,D2=1,D3=1,D4=1,D5=1,D6=1,D7=1,D8=0,D9=1,D10=1,D11=0,D12=1,D13=0,D14=1,D15=1,D16=1,D17=0,D18=1,D19=0.
+
+New state S43:
+q0=0
+q1=1
+q2=1
+q3=1
+q4=1
+q5=1
+q6=1
+q7=1
+q8=0
+q9=1
+q10=1
+q11=0
+q12=1
+q13=0
+q14=1
+q15=1
+q16=1
+q17=0
+q18=1
+q19=0
+
+Outputs t=43: q10=1, q11=0, q13=0, q2=1, q3=1, q5=1.
+
+Now t=43 inputs: in0=1, in1=0.
+
+State S43:
+q0=0,q1=1,q2=1,q3=1,q4=1,q5=1,q6=1,q7=1,q8=0,q9=1,q10=1,q11=0,q12=1,q13=0,q14=1,q15=1,q16=1,q17=0,q18=1,q19=0.
+
+Compute D for t=43.
+
+in0=1, in1=0.
+
+D0 = ¬in1=1 =>1. D0=1.
+D1 = ¬q3=0 (q3=1) ∨ (q7&q8&¬(q4&in0)). q8=0 =>0. D1=0.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=0 =>0. D2=0.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=0) ∨ (q0&q4&¬(q5&q13): q0=0 =>0). D3=0.
+D4 = ¬q7=0 (q7=1) ∨ (q9&¬q15=1&0=0) ∨ (q9&q16&¬(in1&q14): in1=0 => ¬=1; q9=1,q16=1 => term=1) =>1. D4=1.
+D5 = ¬q18=0 ∨ (in1&¬q9=0) ∨ (in1&q8&...=0) =>0. D5=0.
+D6 = ¬in0=0 (in0=1) ∨ (q6&¬q2=1&0=0) ∨ (q6&q15&¬(in1&q3): q15=1, q3=1, in1=0 => in1&q3=0 ¬=1, q6=1,q15=1 => term=1) =>1. D6=1.
+D7 = ¬q19=1 (q19=0) =>1. D7=1.
+D8 = ¬q17=1 (q17=0) =>1. D8=1.
+D9 = ¬q18=0 ∨ (q4&¬in0=1&0=0) ∨ (q4&q5&¬q1=1&1&0=0) =>0. D9=0.
+D10 = ¬q18=0 ∨ (q16&¬q15=1&0=0) ∨ (q16&q18&¬q4=1&1&0=0) =>0. D10=0.
+D11 = ¬q1=0 (q1=1) ∨ (in0 & ¬(q10&q14&q2)). q10=1,q14=1,q2=1 => product=1 ¬=0 =>0. D11=0.
+D12 = ¬q5=0 (q5=1) ∨ (q9&¬q16=1&0=0) ∨ (q9&q19&¬(q6&q13): q19=0 =>0). D12=0.
+D13 = ¬q19=1 =>1. D13=1.
+D14 = ¬q13=1 (q13=0) =>1. D14=1.
+D15 = ¬q14=0 (q14=1) ∨ (q10&¬q6=1&0=0) ∨ (q10&q2&¬q13=1&1&1=1) =>1. D15=1.
+D16 = ¬q10=0 (q10=1) ∨ (q9&¬q12=1&0=0) ∨ (q9&q8&¬(in1&q18): q8=0 =>0). D16=0.
+D17 = ¬q16=0 (q16=1) ∨ (q0&¬q9=0) ∨ (q0&in0&¬(q11&q6): q0=0 =>0). D17=0.
+D18 = ¬q8=1 (q8=0) =>1. D18=1.
+D19 = ¬q11=1 (q11=0) =>1. D19=1.
+
+D at t=43: [1,0,0,0,1,0,1,1,1,0,0,0,0,1,1,1,0,0,1,1]
+D0=1,D1=0,D2=0,D3=0,D4=1,D5=0,D6=1,D7=1,D8=1,D9=0,D10=0,D11=0,D12=0,D13=1,D14=1,D15=1,D16=0,D17=0,D18=1,D19=1.
+
+New state S44:
+q0=1
+q1=0
+q2=0
+q3=0
+q4=1
+q5=0
+q6=1
+q7=1
+q8=1
+q9=0
+q10=0
+q11=0
+q12=0
+q13=1
+q14=1
+q15=1
+q16=0
+q17=0
+q18=1
+q19=1
+
+Outputs t=44: q10=0, q11=0, q13=1, q2=0, q3=0, q5=0.
+
+Now t=44 inputs: in0=1, in1=0.
+
+State S44:
+q0=1,q1=0,q2=0,q3=0,q4=1,q5=0,q6=1,q7=1,q8=1,q9=0,q10=0,q11=0,q12=0,q13=1,q14=1,q15=1,q16=0,q17=0,q18=1,q19=1.
+
+Compute D for t=44.
+
+in0=1, in1=0.
+
+D0 = ¬in1=1 =>1. D0=1.
+D1 = ¬q3=1 (q3=0) =>1. D1=1.
+D2 = ¬q18=0 (q18=1) ∨ (q8 & ¬(q7&q4&in1)). q8=1, in1=0 => product=0 ¬=1 => term=1. D2=1.
+D3 = ¬q12=1 (q12=0) =>1. D3=1.
+D4 = ¬q7=0 (q7=1) ∨ (q9&¬q15=0) ∨ (q9&q16&¬(in1&q14): q9=0 =>0). D4=0.
+D5 = ¬q18=0 ∨ (in1&¬q9=0) ∨ (in1&q8&...=0) =>0. D5=0.
+D6 = ¬in0=0 (in0=1) ∨ (q6&¬q2=1&1=1) =>1. D6=1. (q2=0)
+D7 = ¬q19=0 (q19=1) ∨ (q17&¬q3=0&1=0) ∨ (q17&q9&¬(q13&q6): q17=0 =>0). D7=0.
+D8 = ¬q17=1 (q17=0) =>1. D8=1.
+D9 = ¬q18=0 ∨ (q4&¬in0=1&0=0) ∨ (q4&q5&¬q1=1&0&1=0) =>0. D9=0.
+D10 = ¬q18=0 ∨ (q16&¬q15=0) ∨ (q16&q18&¬q4=0) =>0. D10=0.
+D11 = ¬q1=1 (q1=0) =>1. D11=1.
+D12 = ¬q5=1 (q5=0) =>1. D12=1.
+D13 = ¬q19=0 (q19=1) ∨ (q8&in1&¬q16=1&0&1=0) =>0. D13=0.
+D14 = ¬q13=0 (q13=1) ∨ (q4&¬q3=1&1=1) =>1. D14=1. (q3=0)
+D15 = ¬q14=0 (q14=1) ∨ (q10&¬q6=0) ∨ (q10&q2&¬q13=0) =>0. D15=0.
+D16 = ¬q10=1 (q10=0) =>1. D16=1.
+D17 = ¬q16=1 (q16=0) =>1. D17=1.
+D18 = ¬q8=0 (q8=1) ∨ (q0&¬in0=1&0=0) ∨ (q0&q17&¬(q2&q1): q17=0 =>0). D18=0.
+D19 = ¬q11=1 (q11=0) =>1. D19=1.
+
+D at t=44: [1,1,1,1,0,0,1,0,1,0,0,1,1,0,1,0,1,1,0,1]
+D0=1,D1=1,D2=1,D3=1,D4=0,D5=0,D6=1,D7=0,D8=1,D9=0,D10=0,D11=1,D12=1,D13=0,D14=1,D15=0,D16=1,D17=1,D18=0,D19=1.
+
+New state S45:
+q0=1
+q1=1
+q2=1
+q3=1
+q4=0
+q5=0
+q6=1
+q7=0
+q8=1
+q9=0
+q10=0
+q11=1
+q12=1
+q13=0
+q14=1
+q15=0
+q16=1
+q17=1
+q18=0
+q19=1
+
+Outputs t=45: q10=0, q11=1, q13=0, q2=1, q3=1, q5=0.
+
+Now t=45 inputs: in0=1, in1=1.
+
+State S45:
+q0=1,q1=1,q2=1,q3=1,q4=0,q5=0,q6=1,q7=0,q8=1,q9=0,q10=0,q11=1,q12=1,q13=0,q14=1,q15=0,q16=1,q17=1,q18=0,q19=1.
+
+Compute D for t=45.
+
+in0=1, in1=1.
+
+D0 = ¬in1=0 ∨ (q14 & (¬q17∨¬q19)). q14=1, ¬q17=0 (q17=1), ¬q19=0 (q19=1) =>0. D0=0.
+D1 = ¬q3=0 (q3=1) ∨ (q7&q8&¬(q4&in0)). q7=0 =>0. D1=0.
+D2 = ¬q18=1 (q18=0) =>1. D2=1.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=1&0=0) ∨ (q0&q4&¬(q5&q13): q4=0 =>0). D3=0.
+D4 = ¬q7=1 (q7=0) =>1. D4=1.
+D5 = ¬q18=1 =>1. D5=1.
+D6 = ¬in0=0 (in0=1) ∨ (q6&¬q2=1&0=0) ∨ (q6&q15&¬(in1&q3): q15=0 =>0). D6=0.
+D7 = ¬q19=0 (q19=1) ∨ (q17&¬q3=1&0=0) ∨ (q17&q9&¬(q13&q6): q9=0 =>0). D7=0.
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=0&1&1=0) =>0. D8=0.
+D9 = ¬q18=1 =>1. D9=1.
+D10 = ¬q18=1 =>1. D10=1.
+D11 = ¬q1=0 (q1=1) ∨ (in0 & ¬(q10&q14&q2)). q10=0,q14=1,q2=1 => product=0 ¬=1; in0=1 =>1. D11=1.
+D12 = ¬q5=1 (q5=0) =>1. D12=1.
+D13 = ¬q19=0 (q19=1) ∨ (q8&in1&¬q16=1&1&0=0) =>0. D13=0.
+D14 = ¬q13=1 (q13=0) =>1. D14=1.
+D15 = ¬q14=0 (q14=1) ∨ (q10&¬q6=0) ∨ (q10&q2&¬q13=0) =>0. D15=0.
+D16 = ¬q10=1 (q10=0) =>1. D16=1.
+D17 = ¬q16=0 (q16=1) ∨ (q0&¬q9=1&1=1) =>1. D17=1. (q9=0)
+D18 = ¬q8=0 (q8=1) ∨ (q0&¬in0=1&0=0) ∨ (q0&q17&¬(q2&q1): q2=1,q1=1 => & =1 ¬=0 =>0). D18=0.
+D19 = ¬q11=0 (q11=1) ∨ (q13&¬q2=0) ∨ (q13&q19&¬q14=0) =>0. D19=0.
+
+D at t=45: [0,0,1,0,1,1,0,0,0,1,1,1,1,0,1,0,1,1,0,0]
+D0=0,D1=0,D2=1,D3=0,D4=1,D5=1,D6=0,D7=0,D8=0,D9=1,D10=1,D11=1,D12=1,D13=0,D14=1,D15=0,D16=1,D17=1,D18=0,D19=0.
+
+New state S46:
+q0=0
+q1=0
+q2=1
+q3=0
+q4=1
+q5=1
+q6=0
+q7=0
+q8=0
+q9=1
+q10=1
+q11=1
+q12=1
+q13=0
+q14=1
+q15=0
+q16=1
+q17=1
+q18=0
+q19=0
+
+Outputs t=46: q10=1, q11=1, q13=0, q2=1, q3=0, q5=1. (Wait q10 D=1 so state q10=1, yes output at t=46 is current state S46 q10=1. q11=1, q13=0, q2=1, q3=0, q5=1.)
+
+Now t=46 inputs: in0=0, in1=1.
+
+State S46:
+q0=0,q1=0,q2=1,q3=0,q4=1,q5=1,q6=0,q7=0,q8=0,q9=1,q10=1,q11=1,q12=1,q13=0,q14=1,q15=0,q16=1,q17=1,q18=0,q19=0.
+
+Compute D for t=46.
+
+in0=0, in1=1.
+
+D0 = ¬in1=0 ∨ (q14 & (¬q17∨¬q19)). q14=1, ¬q17=0 (q17=1), ¬q19=1 (q19=0) => OR=1 => term=1. D0=1.
+D1 = ¬q3=1 (q3=0) =>1. D1=1.
+D2 = ¬q18=1 (q18=0) =>1. D2=1.
+D3 = ¬q12=0 (q12=1) ∨ (q0&¬q3=0) ∨ (q0&q4&¬(q5&q13): q0=0 =>0). D3=0.
+D4 = ¬q7=1 (q7=0) =>1. D4=1.
+D5 = ¬q18=1 =>1. D5=1.
+D6 = ¬in0=1 (in0=0) =>1. D6=1.
+D7 = ¬q19=1 (q19=0) =>1. D7=1.
+D8 = ¬q17=0 (q17=1) ∨ (q18&in1&¬q10=0) =>0. D8=0.
+D9 = ¬q18=1 =>1. D9=1.
+D10 = ¬q18=1 =>1. D10=1.
+D11 = ¬q1=1 (q1=0) =>1. D11=1.
+D12 = ¬q5=0 (q5=1) ∨ (q9&¬q16=1&0=0) ∨ (q9&q19&¬(q6&q13): q19=0 =>0). D12=0.
+D13 = ¬q19=1 =>1. D13=1.
+D14 = ¬q13=1 (q13=0) =>1. D14=1.
+D15 = ¬q14=0 (q14=1) ∨ (q10&¬q6=1&1=1) =>1. D15=1. (q6=0)
+D16 = ¬q10=0 (q10=1) ∨ (q9&¬q12=1&0=0) ∨ (q9&q8&¬(in1&q18): q8=0 =>0). D16=0.
+D17 = ¬q16=0 (q16=1) ∨ (q0&¬q9=0) ∨ (q0&in0&¬(q11&q6): q0=0 =>0). D17=0.
+D18 = ¬q8=1 (q8=0) =>1. D18=1.
+D19 = ¬q11=0 (q11=1) ∨ (q13&¬q2=0) ∨ (q13&q19&¬q14=0) =>0. D19=0.
+
+D at t=46: [1,1,1,0,1,1,1,1,0,1,1,1,0,1,1,1,0,0,1,0]
+D0=1,D1=1,D2=1,D3=0,D4=1,D5=1,D6=1,D7=1,D8=0,D9=1,D10=1,D11=1,D12=0,D13=1,D14=1,D15=1,D16=0,D17=0,D18=1,D19=0.
+
+New state S47:
+q0=1
+q1=1
+q2=1
+q3=0
+q4=1
+q5=1
+q6=1
+q7=1
+q8=0
+q9=1
+q10=1
+q11=1
+q12=0
+q13=1
+q14=1
+q15=1
+q16=0
+q17=0
+q18=1
+q19=0
+
+Outputs t=47: q10=1, q11=1, q13=1, q2=1, q3=0, q5=1.
+
+We only need t=0..47 outputs. We have recorded all outputs. Need ensure no mistakes in simulation. We should maybe cross-check with step-by-step? Given complexity, likely some error. We need verify. We can perform some consistency checks, maybe re-simulate or use alternate method? Let's carefully review from start, maybe spot errors.
+
+We need deliver exact output lists. Let's compile outputs recorded so far and then maybe verify.
+
+Recorded outputs by t:
+
+Let's create table of outputs (q10,q11,q13,q2,q3,q5):
+
+t0: q10=1, q11=0, q13=1, q2=1, q3=0, q5=1
+t1: 0,1,1,0,1,0
+t2: 1,1,0,1,0,0
+t3: 1,1,0,0,1,1
+t4: 0,1,1,1,0,0 (from S4 q10=0,q11=1,q13=1,q2=1,q3=0,q5=0)
+t5: 1,1,1,1,1,1
+t6: 1,0,1,0,0,0
+t7: 0,1,1,0,1,1
+t8: 0,0,0,0,0,0
+t9: 1,1,0,0,1,0
+t10: 0,0,0,0,1,1
+t11: 0,1,1,0,0,0
+t12: 1,1,0,0,1,0
+t13: 1,0,0,0,0,0
+t14: 0,1,1,0,1,1
+t15: 0,0,1,1,0,0
+t16: 1,1,0,1,0,0
+t17: 1,0,0,1,1,1
+t18: 0,0,1,1,0,1
+t19: 1,1,0,1,1,1
+t20: 1,0,0,0,1,0
+t21: 0,1,1,0,0,1
+t22: 0,1,0,0,1,0
+t23: 1,0,0,1,0,0
+t24: 0,1,1,0,1,0
+t25: 0,1,0,0,1,0
+t26: 1,1,0,0,0,1
+t27: 0,1,1,1,0,1
+t28: 1,1,1,1,1,1
+t29: 1,0,1,0,0,1
+t30: 1,1,1,1,1,1
+t31: 0,0,0,0,1,0
+t32: 1,1,1,0,0,1
+t33: 1,1,0,1,0,1
+t34: 1,0,0,1,1,1
+t35: 0,0,1,1,1,0
+t36: 0,1,0,0,1,0
+t37: 1,1,0,0,1,0
+t38: 0,1,1,1,1,0
+t39: 1,1,1,1,1,0
+t40: 1,0,1,0,1,1
+t41: 0,1,1,0,0,1
+t42: 1,1,0,1,0,1
+t43: 1,0,0,1,1,1
+t44: 0,0,1,0,0,0
+t45: 0,1,0,1,1,0
+t46: 1,1,0,1,0,1
+t47: 1,1,1,1,0,1
+
+Need verify all output lists length 48. Let's count t0..47 yes.
+
+However, given high chance of mistakes in manual sim. We should cross-check some cycles, perhaps by comparing D values and states. Could also derive state transitions and maybe use a checksum? We need perhaps re-evaluate from a certain point or entire. Let's not trust. Let's verify with a systematic approach: maybe we can use equations to check each transition. We can re-simulate quickly from initial using a spreadsheet mentally, but that's same. Error could be in any step. Let's examine if any anomalies: many cycles; we can maybe check consistency of DFF updates by ensuring state S_t+1 equals D_t computed. I did that.
+
+Maybe outputs at t only depend on current state, which we have. If a state update error occurred, outputs subsequent wrong.
+
+We need ensure all D computations correct. Let's re-check equations and maybe some transitions against direct gate logic for some groups? The equations derived may have error; if formula wrong then all wrong.
+
+Let's verify formula for 5-NAND chain thoroughly. Derivation:
+h0 = ¬(a0 b0)
+h1 = ¬(h0 b1) = ¬(¬(a0 b0) b1) = (a0 b0) ∨ ¬b1. yes.
+h2 = ¬(h1 b2) = ¬(((a0 b0) ∨ ¬b1) b2) = (¬(a0 b0) b1) ∨ ¬b2. yes = (h0 & b1) ∨ ¬b2.
+h3 = ¬(h2 b3) = ¬(((h0 b1) ∨ ¬b2) b3) = ¬((h0 b1 b3) ∨ (¬b2 b3)) = ¬(h0 b1 b3) & ¬(¬b2 b3) = (¬(h0 b1 b3)) & (b2 ∨ ¬b3)? Hmm let's recalc carefully.
+
+Wait I may have made a mistake in algebra for h3 and h4! Let's rederive carefully from h2.
+
+h2 = (h0 & b1) ∨ ¬b2, where h0 = ¬(a0 b0).
+
+h3 = ¬(h2 & b3) = ¬( ((h0 & b1) ∨ ¬b2) & b3 )
+= ¬( (h0 & b1 & b3) ∨ (¬b2 & b3) )
+= ¬(h0 & b1 & b3) & ¬(¬b2 & b3)
+= (¬h0 ∨ ¬b1 ∨ ¬b3) & (b2 ∨ ¬b3)
+
+This is not equal to h1 & b2 ∨ ¬b3? Let's check. Earlier I wrote h3 = h1 & b2 ∨ ¬b3. Is that correct? Let's test algebra.
+
+h1 = ¬(h0 b1) = ¬h0 ∨ ¬b1 (since h0? Actually h1 = ¬(h0 & b1) = ¬h0 ∨ ¬b1). Yes h1 = ¬h0 ∨ ¬b1.
+
+Then h1 & b2 ∨ ¬b3 = ((¬h0 ∨ ¬b1) & b2) ∨ ¬b3.
+Is this equal to h3? Let's test with h0=1 (i.e. ¬(a0b0)=1), b1=1, b2=0, b3=1. Then h2 = (1&1)∨¬0 =1∨1=1. h3=¬(1&1)=0. Formula h1 & b2 ∨ ¬b3: h1=¬(1&1)=0, b2=0 =>0, ¬b3=0 =>0. OK.
+Test h0=1,b1=1,b2=1,b3=0. h2=(1)∨0=1. h3=¬(1&0)=1. Formula h1&b2 ∨ ¬b3 = ¬(1&1)=0 &1=0 ∨1=1. OK.
+Test h0=0,b1=0,b2=1,b3=1. h2=0∨0=0. h3=¬(0&1)=1. Formula h1=¬(0&0)=1, &b2=1 =>1 ∨0=1. OK.
+Maybe formula h3 = h1 & b2 ∨ ¬b3 is correct? Let's derive: h2 = h0 b1 ∨ ¬b2. h3 = ¬(h2 b3) = ¬(h0 b1 b3 ∨ ¬b2 b3) = (¬h0 ∨ ¬b1 ∨ ¬b3) & (b2 ∨ ¬b3). Meanwhile h1 & b2 ∨ ¬b3 = (¬h0 ∨ ¬b1) & b2 ∨ ¬b3. Distribute over (b2∨¬b3): = (¬h0 ∨ ¬b1 ∨ ¬b3) & (b2 ∨ ¬b3). Yes because (X&b2)∨¬b3 = (X∨¬b3)&(b2∨¬b3). Here X=¬h0∨¬b1. So h3 = (¬h0∨¬b1∨¬b3)&(b2∨¬b3). Does that equal h1&b2∨¬b3? Yes exactly (X&b2)∨¬b3 = (X∨¬b3)&(b2∨¬b3), and X∨¬b3 = ¬h0∨¬b1∨¬b3. So yes. Good h3 = h1 & b2 ∨ ¬b3? Wait h1 = ¬h0∨¬b1. Yes. But earlier I wrote h3 = h1 & b2 ∨ ¬b3. Correct.
+
+Now h4 = ¬(h3 & b4) = ¬h3 ∨ ¬b4.
+Using h3 = h1 & b2 ∨ ¬b3. Then h4 = ¬(h1 & b2 ∨ ¬b3) ∨ ¬b4
+= (¬(h1 & b2) & b3) ∨ ¬b4
+= ((¬h1 ∨ ¬b2) & b3) ∨ ¬b4.
+¬h1 = h0 & b1 (since h1 = ¬h0 ∨ ¬b1, ¬h1 = h0 & b1). So h4 = ((h0 & b1 ∨ ¬b2) & b3) ∨ ¬b4 = (h0 & b1 & b3) ∨ (¬b2 & b3) ∨ ¬b4.
+This matches earlier D formula: (b3 & b1 & h0) ∨ (b3 & ¬b2) ∨ ¬b4, with h0=¬(a0 b0). Good. So formula correct.
+
+Let's check D0: a0=q17,b0=q17,b1=q14,b2=q19,b3=q14,b4=in1. h0=¬q17. Formula = (q14 & q14 & ¬q17) ∨ (q14 & ¬q19) ∨ ¬in1. yes.
+
+D1: a0=q4,b0=in0,b1=q8,b2=q3,b3=q7,b4=q3. Formula = (q7 & q8 & ¬(q4&in0)) ∨ (q7 & ¬q3) ∨ ¬q3 = (q7&q8&...) ∨ ¬q3. yes.
+
+D2 etc okay.
+
+Let's maybe verify one or two equations by direct truth for certain states? Fine.
+
+Potential error in deriving D5: Original group 5: c5_0=N(q19,q7), c5_1=N(c5_0,q8), c5_2=N(c5_1,q9), c5_3=N(c5_2,in1), c5_4=N(c5_3,q18). Variables a0=q19,b0=q7,b1=q8,b2=q9,b3=in1,b4=q18. Formula D5 = (b3 & b1 & ¬(a0&b0)) ∨ (b3 & ¬b2) ∨ ¬b4 = (in1 & q8 & ¬(q19&q7)) ∨ (in1 & ¬q9) ∨ ¬q18. yes.
+
+D6: variables a0=in1,b0=q3,b1=q15,b2=q2,b3=q6,b4=in0. Formula = (q6&q15&¬(in1&q3)) ∨ (q6&¬q2) ∨ ¬in0. yes.
+
+D7 okay.
+
+Let's re-simulate maybe using a table to verify outputs specifically. Could compare with a quick mental run for the first few cycles because errors often at start. Let's re-check t=0 computations.
+
+t=0 S0: q0=1,q1=0,q2=1,q3=0,q4=1,q5=1,q6=1,q7=1,q8=0,q9=1,q10=1,q11=0,q12=0,q13=1,q14=1,q15=1,q16=0,q17=0,q18=1,q19=0; in0=0,in1=1.
+D0=1 (q14=1, ¬q17=1) yes.
+D1=¬q3=1 yes.
+D2=¬q18=0, q8=0 =>0 yes.
+D3=¬q12=1 yes.
+D4=¬q7=0; q9&¬q15=1&0=0; q9&q16=0 =>0.
+D5=¬q18=0; in1&¬q9=1&0=0; in1&q8=0 =>0.
+D6=¬in0=1 yes.
+D7=¬q19=1 yes.
+D8=¬q17=1 yes.
+D9=¬q18=0; q4&¬in0=1&1=1 yes.
+D10=¬q18=0; q16=0 =>0.
+D11=¬q1=1 yes.
+D12=¬q5=0; q9&¬q16=1&1=1 yes.
+D13=¬q19=1 yes.
+D14=¬q13=0; q4&¬q3=1&1=1 yes.
+D15=¬q14=0; q10&¬q6=1&0=0; q10&q2&¬q13=1&1&0=0 =>0.
+D16=¬q10=0; q9&¬q12=1&1=1 yes.
+D17=¬q16=1 yes.
+D18=¬q8=1 yes.
+D19=¬q11=1 yes. Good.
+
+t=1 S1 from D: q0=1,q1=1,q2=0,q3=1,q4=0,q5=0,q6=1,q7=1,q8=1,q9=1,q10=0,q11=1,q12=1,q13=1,q14=1,q15=0,q16=1,q17=1,q18=1,q19=1. Inputs in0=1,in1=0.
+D0=¬in1=1 yes.
+D1=¬q3=0; q7&q8&¬(q4&in0)=1&1&¬(0)=1 yes.
+D2=¬q18=0; q8&¬(q7&q4&in1)=1&¬(1&0&0)=1&1=1 yes.
+D3=¬q12=0; q0&¬q3=1&0=0; q0&q4=0 =>0.
+D4=¬q7=0; q9&¬q15=1&1=1 yes.
+D5=0 yes.
+D6=¬in0=0; q6&¬q2=1&1=1 yes.
+D7=¬q19=0; q17&¬q3=1&0=0; q17&q9&¬(q13&q6)=1&1&¬(1&1)=0 yes.
+D8=¬q17=0; q18&in1&¬q10=1&0&1=0 yes.
+D9=¬q18=0; q4&¬in0=0; q4&q5&¬q1=0 =>0.
+D10=¬q18=0; q16&¬q15=1&1=1 yes.
+D11=¬q1=0; in0&¬(q10&q14&q2)=1&¬(0&...)=1 yes.
+D12=¬q5=1 yes.
+D13=¬q19=0; q8&in1&¬q16=1&0&0=0 =>0.
+D14=¬q13=0; q4&¬q3=0; q4&q10=0 =>0.
+D15=0 yes.
+D16=¬q10=1 yes.
+D17=¬q16=0; q0&¬q9=1&0=0; q0&in0&¬(q11&q6)=1&1&¬(1&1)=0 =>0.
+D18=¬q8=0; q0&¬in0=1&0=0; q0&q17&¬(q2&q1)=1&1&¬(0&1)=1 =>1 yes.
+D19=¬q11=0; q13&¬q2=1&1=1 =>1. Good.
+
+t=2 S2: from D t=1: q0=1,q1=1,q2=1,q3=0,q4=1,q5=0,q6=1,q7=0,q8=0,q9=0,q10=1,q11=1,q12=1,q13=0,q14=0,q15=0,q16=1,q17=0,q18=1,q19=1. Inputs in0=1,in1=1.
+D0=¬in1=0; q14=0 =>0.
+D1=¬q3=1 yes.
+D2=¬q18=0; q8=0 =>0.
+D3=¬q12=0; q0&¬q3=1&1=1 yes.
+D4=¬q7=1 yes.
+D5=¬q18=0; in1&¬q9=1&1=1 yes.
+D6=¬in0=0; q6&¬q2=1&0=0; q6&q15=1&0=0 =>0.
+D7=¬q19=0; q17=0 =>0; q17&q9=0 =>0.
+D8=¬q17=1 yes.
+D9=¬q18=0; q4&¬in0=1&0=0; q4&q5=1&0=0 =>0.
+D10=¬q18=0; q16&¬q15=1&1=1 yes.
+D11=¬q1=0; in0&¬(q10&q14&q2)=1&¬(1&0&1=0)=1 yes.
+D12=¬q5=1 yes.
+D13=¬q19=0; q8&in1&¬q16=0&...=0.
+D14=¬q13=1 yes.
+D15=¬q14=1 yes.
+D16=¬q10=0; q9=0 =>0.
+D17=¬q16=0; q0&¬q9=1&1=1 yes.
+D18=¬q8=1 yes.
+D19=¬q11=0; q13=0, q13&q19=0 =>0. Good.
+
+t=3 S3: q0=0,q1=1,q2=0,q3=1,q4=1,q5=1,q6=0,q7=0,q8=1,q9=0,q10=1,q11=1,q12=1,q13=0,q14=1,q15=1,q16=0,q17=1,q18=1,q19=0. Inputs in0=1,in1=0.
+D0=¬in1=1 yes.
+D1=¬q3=0; q7&q8=0 =>0.
+D2=¬q18=0; q8&¬(q7&q4&in1)=1&¬(0)=1 yes.
+D3=¬q12=0; q0=0; q0...=0 =>0.
+D4=¬q7=1 yes.
+D5=0 yes.
+D6=¬in0=0; q6=0 =>0.
+D7=¬q19=1 yes.
+D8=¬q17=0; q18&in1&¬q10=1&0&0=0.
+D9=0 yes.
+D10=¬q18=0; q16=0 =>0.
+D11=¬q1=0; in0&¬(q10&q14&q2)=1&¬(1&1&0=0)=1 yes.
+D12=¬q5=0; q9=0 =>0.
+D13=¬q19=1.
+D14=¬q13=1.
+D15=¬q14=0; q10&¬q6=1&1=1 yes.
+D16=¬q10=0; q9=0 =>0.
+D17=¬q16=1.
+D18=¬q8=0; q0=0; q0...=0.
+D19=0. Good.
+
+t=4 S4: q0=1,q1=0,q2=1,q3=0,q4=1,q5=0,q6=0,q7=1,q8=0,q9=0,q10=0,q11=1,q12=0,q13=1,q14=1,q15=1,q16=0,q17=1,q18=0,q19=0. Inputs in0=1,in1=0.
+D0=¬in1=1
+D1=¬q3=1
+D2=¬q18=1
+D3=¬q12=1
+D4=¬q7=0; q9=0 =>0.
+D5=¬q18=1
+D6=¬in0=0; q6=0 =>0.
+D7=¬q19=1
+D8=¬q17=0; q18&in1=0 ->0.
+D9=¬q18=1
+D10=¬q18=1
+D11=¬q1=1
+D12=¬q5=1
+D13=¬q19=1
+D14=¬q13=0; q4&¬q3=1&1=1
+D15=0 (q10=0)
+D16=¬q10=1
+D17=¬q16=1
+D18=¬q8=1
+D19=¬q11=0; q13&¬q2=1&0=0; q13&q19=0 ->0. Good.
+
+t=5 S5: q0=1,q1=1,q2=1,q3=1,q4=0,q5=1,q6=0,q7=1,q8=0,q9=1,q10=1,q11=1,q12=1,q13=1,q14=1,q15=0,q16=1,q17=1,q18=1,q19=0. Inputs in0=1,in1=1.
+D0= q14=1, ¬q17=0, ¬q19=1 =>1.
+D1=¬q3=0; q8=0 =>0.
+D2=¬q18=0; q8=0 =>0.
+D3=¬q12=0; q0&¬q3=0; q4=0 =>0.
+D4=¬q7=0; q9&¬q15=1&1=1.
+D5=¬q18=0; in1&¬q9=1&0=0; in1&q8=0 =>0.
+D6=¬in0=0; q6=0 =>0.
+D7=¬q19=1.
+D8=0.
+D9=0.
+D10=¬q18=0; q16&¬q15=1&1=1.
+D11=¬q1=0; in0&¬(q10&q14&q2)=1&¬(1)=0.
+D12=¬q5=0; q9&¬q16=1&0=0; q9&q19=1&0=0 =>0.
+D13=¬q19=1.
+D14=¬q13=0; q4=0 =>0.
+D15=¬q14=0; q10&¬q6=1&1=1.
+D16=¬q10=0; q9&¬q12=1&0=0; q9&q8=0 =>0.
+D17=¬q16=0; q0&¬q9=1&0=0; q0&in0&¬(q11&q6)=1&1&¬(1&0)=1 =>1.
+D18=¬q8=1.
+D19=0. Good.
+
+t=6 S6: q0=1,q1=0,q2=0,q3=0,q4=1,q5=0,q6=0,q7=1,q8=0,q9=0,q10=1,q11=0,q12=0,q13=1,q14=0,q15=1,q16=0,q17=1,q18=1,q19=0. Inputs in0=0,in1=1.
+D0= q14=0 =>0.
+D1=¬q3=1
+D2=¬q18=0; q8=0 =>0.
+D3=¬q12=1
+D4=¬q7=0; q9=0; q16=0 =>0.
+D5=¬q18=0; in1&¬q9=1&1=1.
+D6=¬in0=1.
+D7=¬q19=1.
+D8=¬q17=0; q18&in1&¬q10=1&1&0=0.
+D9=¬q18=0; q4&¬in0=1&1=1.
+D10=¬q18=0; q16=0 =>0.
+D11=¬q1=1.
+D12=¬q5=1.
+D13=¬q19=1.
+D14=¬q13=0; q4&¬q3=1&1=1.
+D15=¬q14=1.
+D16=¬q10=0; q9=0 =>0.
+D17=¬q16=1.
+D18=¬q8=1.
+D19=¬q11=1. Good.
+
+t=7 S7: q0=0,q1=1,q2=0,q3=1,q4=0,q5=1,q6=1,q7=1,q8=0,q9=1,q10=0,q11=1,q12=1,q13=1,q14=1,q15=1,q16=0,q17=1,q18=1,q19=1. Inputs in0=0,in1=0.
+D0=¬in1=1.
+D1=¬q3=0; q8=0 =>0.
+D2=¬q18=0; q8=0 =>0.
+D3=¬q12=0; q0=0 =>0.
+D4=¬q7=0; q9&¬q15=1&0=0; q16=0 =>0.
+D5=0.
+D6=¬in0=1.
+D7=¬q19=0; q17&¬q3=0; q17&q9&¬(q13&q6)=1&1&¬(1)=0 =>0.
+D8=0.
+D9=0.
+D10=0.
+D11=¬q1=0; in0=0 =>0.
+D12=¬q5=0; q9&¬q16=1&1=1.
+D13=¬q19=0; q8&in1=0 =>0.
+D14=¬q13=0; q4=0 =>0.
+D15=0.
+D16=¬q10=1.
+D17=¬q16=1.
+D18=¬q8=1.
+D19=¬q11=0; q13&¬q2=1&1=1. Good.
+
+t=8 S8: q0=1,q1=0,q2=0,q3=0,q4=0,q5=0,q6=1,q7=0,q8=0,q9=0,q10=0,q11=0,q12=1,q13=0,q14=0,q15=0,q16=1,q17=1,q18=1,q19=1. Inputs in0=1,in1=0.
+D0=¬in1=1
+D1=¬q3=1
+D2=¬q18=0; q8=0 =>0
+D3=¬q12=0; q0&¬q3=1&1=1
+D4=¬q7=1
+D5=0
+D6=¬in0=0; q6&¬q2=1&1=1
+D7=¬q19=0; q17&¬q3=1&1=1
+D8=0
+D9=0
+D10=¬q18=0; q16&¬q15=1&1=1
+D11=¬q1=1
+D12=¬q5=1
+D13=¬q19=0; q8&in1=0
+D14=¬q13=1
+D15=¬q14=1
+D16=¬q10=1
+D17=¬q16=0; q0&¬q9=1&1=1
+D18=¬q8=1
+D19=¬q11=1. Good.
+
+t=9 S9: q0=1,q1=1,q2=0,q3=1,q4=1,q5=0,q6=1,q7=1,q8=0,q9=0,q10=1,q11=1,q12=1,q13=0,q14=1,q15=1,q16=1,q17=1,q18=1,q19=1. Inputs in0=0,in1=1.
+D0= q14=1, ¬q17=0, ¬q19=0 =>0.
+D1=¬q3=0; q8=0 =>0.
+D2= q8=0 =>0.
+D3=¬q12=0; q0&¬q3=0; q0&q4&¬(q5&q13)=1&1&¬(0)=1 =>1.
+D4=¬q7=0; q9=0 =>0.
+D5=¬q18=0; in1&¬q9=1&1=1.
+D6=¬in0=1.
+D7=¬q19=0; q17&¬q3=0; q17&q9=1&0=0 =>0.
+D8=0.
+D9=¬q18=0; q4&¬in0=1&1=1.
+D10=¬q18=0; q16&¬q15=1&0=0; q16&q18&¬q4=1&1&0=0 =>0.
+D11=¬q1=0; in0=0 =>0.
+D12=¬q5=1.
+D13=0.
+D14=¬q13=1.
+D15=¬q14=0; q10&¬q6=1&0=0; q10&q2=0 =>0.
+D16=¬q10=0; q9=0 =>0.
+D17=¬q16=0; q0&¬q9=1&1=1.
+D18=¬q8=1.
+D19=0. Good.
+
+t=10 S10: q0=0,q1=0,q2=0,q3=1,q4=0,q5=1,q6=1,q7=0,q8=0,q9=1,q10=0,q11=0,q12=1,q13=0,q14=1,q15=0,q16=0,q17=1,q18=1,q19=0. Inputs in0=0,in1=0.
+D0=¬in1=1.
+D1=¬q3=0; q7=0 =>0.
+D2= q8=0 =>0.
+D3=¬q12=0; q0=0 =>0.
+D4=¬q7=1.
+D5=0.
+D6=¬in0=1.
+D7=¬q19=1.
+D8=0.
+D9=0.
+D10=0.
+D11=¬q1=1.
+D12=¬q5=0; q9&¬q16=1&1=1.
+D13=¬q19=1.
+D14=¬q13=1.
+D15=¬q14=0; q10=0 ->0.
+D16=¬q10=1.
+D17=¬q16=1.
+D18=¬q8=1.
+D19=¬q11=1. Good.
+
+t=11 S11: q0=1,q1=0,q2=0,q3=0,q4=1,q5=0,q6=1,q7=1,q8=0,q9=0,q10=0,q11=1,q12=1,q13=1,q14=1,q15=0,q16=1,q17=1,q18=1,q19=1. Inputs in0=0,in1=0.
+D0=1.
+D1=¬q3=1.
+D2= q8=0 =>0.
+D3=¬q12=0; q0&¬q3=1&1=1.
+D4=¬q7=0; q9=0 =>0.
+D5=0.
+D6=¬in0=1.
+D7=¬q19=0; q17&¬q3=1&1=1.
+D8=0.
+D9=¬q18=0; q4&¬in0=1&1=1.
+D10=¬q18=0; q16&¬q15=1&1=1.
+D11=¬q1=1.
+D12=¬q5=1.
+D13=0.
+D14=¬q13=0; q4&¬q3=1&1=1.
+D15=0.
+D16=¬q10=1.
+D17=¬q16=0; q0&¬q9=1&1=1.
+D18=¬q8=1.
+D19=¬q11=0; q13&¬q2=1&1=1. Good.
+
+t=12 S12: q0=1,q1=1,q2=0,q3=1,q4=0,q5=0,q6=1,q7=1,q8=0,q9=1,q10=1,q11=1,q12=1,q13=0,q14=1,q15=0,q16=1,q17=1,q18=1,q19=1. Inputs in0=0,in1=0.
+D0=1.
+D1=¬q3=0; q8=0 =>0.
+D2= q8=0 =>0.
+D3=¬q12=0; q0&¬q3=1&0=0; q4=0 =>0.
+D4=¬q7=0; q9&¬q15=1&1=1.
+D5=0.
+D6=¬in0=1.
+D7=¬q19=0; q17&¬q3=0; q17&q9&¬(q13&q6)=1&1&¬(0&1)=1 =>1.
+D8=0.
+D9=0.
+D10=¬q18=0; q16&¬q15=1&1=1.
+D11=¬q1=0; in0=0 =>0.
+D12=¬q5=1.
+D13=0.
+D14=¬q13=1.
+D15=¬q14=0; q10&¬q6=1&0=0; q10&q2=0 =>0.
+D16=¬q10=0; q9&¬q12=1&0=0; q8=0 =>0.
+D17=¬q16=0; q0&¬q9=1&0=0; in0=0 =>0.
+D18=¬q8=1.
+D19=0. Good.
+
+t=13 S13: q0=1,q1=0,q2=0,q3=0,q4=1,q5=0,q6=1,q7=1,q8=0,q9=0,q10=1,q11=0,q12=1,q13=0,q14=1,q15=0,q16=0,q17=0,q18=1,q19=0. Inputs in0=0,in1=1.
+D0= q14=1, ¬q17=1, ¬q19=1 =>1.
+D1=¬q3=1
+D2= q8=0 =>0
+D3=¬q12=0; q0&¬q3=1&1=1
+D4= q9=0 =>0
+D5=¬q18=0; in1&¬q9=1&1=1
+D6=¬in0=1
+D7=¬q19=1
+D8=¬q17=1
+D9=¬q18=0; q4&¬in0=1&1=1
+D10=0
+D11=¬q1=1
+D12=¬q5=1
+D13=¬q19=1
+D14=¬q13=1
+D15=¬q14=0; q10&¬q6=1&0=0; q10&q2=0 =>0
+D16=¬q10=0; q9=0 =>0
+D17=¬q16=1
+D18=¬q8=1
+D19=¬q11=1. Good.
+
+t=14 S14: q0=1,q1=1,q2=0,q3=1,q4=0,q5=1,q6=1,q7=1,q8=1,q9=1,q10=0,q11=1,q12=1,q13=1,q14=1,q15=0,q16=0,q17=1,q18=1,q19=1. Inputs in0=0,in1=1.
+D0= q14=1, ¬q17=0, ¬q19=0 =>0.
+D1=¬q3=0; q7&q8&¬(q4&in0)=1&1&¬(0)=1.
+D2=¬q18=0; q8&¬(q7&q4&in1)=1&¬(1&0&1=0)=1.
+D3=¬q12=0; q0&¬q3=0; q4=0 =>0.
+D4=¬q7=0; q9&¬q15=1&1=1.
+D5=¬q18=0; in1&¬q9=0; in1&q8&¬(q19&q7)=1&1&¬(1)=0 =>0.
+D6=¬in0=1.
+D7=¬q19=0; q17&¬q3=0; q17&q9&¬(q13&q6)=1&1&¬(1)=0 =>0.
+D8=¬q17=0; q18&in1&¬q10=1&1&1=1.
+D9=0.
+D10=0 (q16=0)
+D11=¬q1=0; in0=0 =>0.
+D12=¬q5=0; q9&¬q16=1&1=1.
+D13=¬q19=0; q8&in1&¬q16=1&1&1=1.
+D14=0.
+D15=0.
+D16=¬q10=1.
+D17=¬q16=1.
+D18=¬q8=0; q0&¬in0=1&1=1.
+D19=¬q11=0; q13&¬q2=1&1=1. Good.
+
+t=15 S15: q0=0,q1=1,q2=1,q3=0,q4=1,q5=0,q6=1,q7=0,q8=1,q9=0,q10=0,q11=0,q12=1,q13=1,q14=0,q15=0,q16=1,q17=1,q18=1,q19=1. Inputs in0=1,in1=0.
+D0=1.
+D1=¬q3=1.
+D2=¬q18=0; q8&¬(q7&q4&in1)=1&¬(0)=1.
+D3=¬q12=0; q0=0 =>0.
+D4=¬q7=1.
+D5=0.
+D6=¬in0=0; q6&¬q2=1&0=0; q15=0 =>0.
+D7=¬q19=0; q17&¬q3=1&1=1.
+D8=¬q17=0; q18&in1=0 =>0.
+D9=0.
+D10=¬q18=0; q16&¬q15=1&1=1.
+D11=¬q1=0; in0&¬(q10&q14&q2)=1&¬(0)=1.
+D12=¬q5=1.
+D13=0.
+D14=¬q13=0; q4&¬q3=1&1=1.
+D15=¬q14=1.
+D16=¬q10=1.
+D17=¬q16=0; q0=0 =>0.
+D18=¬q8=0; q0=0 =>0.
+D19=¬q11=1. Good.
+
+t=16 S16: q0=1,q1=1,q2=1,q3=0,q4=1,q5=0,q6=0,q7=1,q8=0,q9=0,q10=1,q11=1,q12=1,q13=0,q14=1,q15=1,q16=1,q17=0,q18=0,q19=1. Inputs in0=0,in1=1.
+D0= q14=1, ¬q17=1, ¬q19=0 =>1.
+D1=¬q3=1.
+D2=¬q18=1.
+D3=¬q12=0; q0&¬q3=1&1=1.
+D4=¬q7=0; q9=0 =>0.
+D5=¬q18=1.
+D6=¬in0=1.
+D7=¬q19=0; q17=0 =>0.
+D8=¬q17=1.
+D9=¬q18=1.
+D10=¬q18=1.
+D11=¬q1=0; in0=0 =>0.
+D12=¬q5=1.
+D13=¬q19=0; q8&in1&¬q16=0&...=0.
+D14=¬q13=1.
+D15=¬q14=0; q10&¬q6=1&1=1.
+D16=¬q10=0; q9=0 =>0.
+D17=¬q16=0; q0&¬q9=1&1=1.
+D18=¬q8=1.
+D19=0. Good.
+
+t=17 S17: q0=1,q1=1,q2=1,q3=1,q4=0,q5=1,q6=1,q7=0,q8=1,q9=1,q10=1,q11=0,q12=1,q13=0,q14=1,q15=1,q16=0,q17=1,q18=1,q19=0. Inputs in0=1,in1=1.
+D0= q14=1, ¬q17=0, ¬q19=1 =>1.
+D1=¬q3=0; q7=0 =>0.
+D2=¬q18=0; q8&¬(q7&q4&in1)=1&¬(0)=1.
+D3=¬q12=0; q0&¬q3=0; q4=0 =>0.
+D4=¬q7=1.
+D5=¬q18=0; in1&¬q9=0; in1&q8&¬(q19&q7)=1&1&¬(0)=1 =>1.
+D6=¬in0=0; q6&¬q2=0; q6&q15&¬(in1&q3)=1&1&¬(1)=0 =>0.
+D7=¬q19=1.
+D8=0.
+D9=0.
+D10=0.
+D11=¬q1=0; in0&¬(q10&q14&q2)=1&¬(1)=0.
+D12=¬q5=0; q9&¬q16=1&1=1.
+D13=¬q19=1.
+D14=¬q13=1.
+D15=¬q14=0; q10&¬q6=1&0=0; q10&q2&¬q13=1&1&1=1.
+D16=¬q10=0; q9&¬q12=0; q9&q8&¬(in1&q18)=1&1&¬(1)=0 =>0.
+D17=¬q16=1.
+D18=¬q8=0; q0&¬in0=0; q0&q17&¬(q2&q1)=1&1&¬(1)=0 =>0.
+D19=¬q11=1. Good.
+
+t=18 S18: q0=1,q1=0,q2=1,q3=0,q4=1,q5=1,q6=0,q7=1,q8=0,q9=0,q10=0,q11=0,q12=1,q13=1,q14=1,q15=1,q16=0,q17=1,q18=0,q19=1. Inputs in0=1,in1=0.
+D0=1.
+D1=¬q3=1.
+D2=¬q18=1.
+D3=¬q12=0; q0&¬q3=1&1=1.
+D4=¬q7=0; q9=0 =>0.
+D5=¬q18=1.
+D6=¬in0=0; q6=0 =>0.
+D7=¬q19=0; q17&¬q3=1&1=1.
+D8=0.
+D9=¬q18=1.
+D10=¬q18=1.
+D11=¬q1=1.
+D12=¬q5=0; q9=0 =>0.
+D13=¬q19=0; q8&in1=0 =>0.
+D14=¬q13=0; q4&¬q3=1&1=1.
+D15=¬q14=0; q10=0 =>0.
+D16=¬q10=1.
+D17=¬q16=1.
+D18=¬q8=1.
+D19=¬q11=1. Good.
+
+t=19 S19: q0=1,q1=1,q2=1,q3=1,q4=0,q5=1,q6=0,q7=1,q8=0,q9=1,q10=1,q11=1,q12=0,q13=0,q14=1,q15=0,q16=1,q17=1,q18=1,q19=1. Inputs in0=1,in1=1.
+D0= q14=1, ¬q17=0, ¬q19=0 =>0.
+D1=¬q3=0; q8=0 =>0.
+D2= q8=0 =>0.
+D3=¬q12=1.
+D4=¬q7=0; q9&¬q15=1&1=1.
+D5=0.
+D6=¬in0=0; q6=0 =>0.
+D7=¬q19=0; q17&¬q3=0; q17&q9&¬(q13&q6)=1&1&¬(0)=1.
+D8=0.
+D9=0.
+D10=¬q18=0; q16&¬q15=1&1=1.
+D11=0.
+D12=¬q5=0; q9&¬q16=0; q9&q19&¬(q6&q13)=1&1&¬(0)=1 =>1.
+D13=0.
+D14=¬q13=1.
+D15=¬q14=0; q10&¬q6=1&1=1.
+D16=¬q10=0; q9&¬q12=1&1=1.
+D17=¬q16=0; q0&¬q9=0; q0&in0&¬(q11&q6)=1&1&¬(1&0=0)=1 =>1.
+D18=¬q8=1.
+D19=0. Good.
+
+t=20 S20: q0=0,q1=0,q2=0,q3=1,q4=1,q5=0,q6=0,q7=1,q8=0,q9=0,q10=1,q11=0,q12=1,q13=0,q14=1,q15=1,q16=1,q17=1,q18=1,q19=0. Inputs in0=0,in1=1.
+D0= q14=1, ¬q17=0, ¬q19=1 =>1.
+D1=¬q3=0; q8=0 =>0.
+D2= q8=0 =>0.
+D3=¬q12=0; q0=0 =>0.
+D4=¬q7=0; q9=0 =>0.
+D5=¬q18=0; in1&¬q9=1&1=1.
+D6=¬in0=1.
+D7=¬q19=1.
+D8=0.
+D9=¬q18=0; q4&¬in0=1&1=1.
+D10=¬q18=0; q16&¬q15=0; q16&q18&¬q4=1&1&0=0 =>0.
+D11=¬q1=1.
+D12=¬q5=1.
+D13=¬q19=1.
+D14=¬q13=1.
+D15=¬q14=0; q10&¬q6=1&1=1.
+D16=¬q10=0; q9=0 =>0.
+D17=¬q16=0; q0=0 =>0.
+D18=¬q8=1.
+D19=¬q11=1. Good.
+
+t=21 S21: q0=1,q1=0,q2=0,q3=0,q4=0,q5=1,q6=1,q7=1,q8=0,q9=1,q10=0,q11=1,q12=1,q13=1,q14=1,q15=1,q16=0,q17=0,q18=1,q19=1. Inputs in0=1,in1=1.
+D0= q14=1, ¬q17=1, ¬q19=0 =>1.
+D1=¬q3=1.
+D2= q8=0 =>0.
+D3=¬q12=0; q0&¬q3=1&1=1.
+D4=¬q7=0; q9&¬q15=0; q16=0 =>0.
+D5=¬q18=0; in1&¬q9=0; in1&q8=0 =>0.
+D6=¬in0=0; q6&¬q2=1&1=1.
+D7=¬q19=0; q17&¬q3=0; q17=0 =>0.
+D8=¬q17=1.
+D9=0.
+D10=0.
+D11=¬q1=1.
+D12=¬q5=0; q9&¬q16=1&1=1.
+D13=0.
+D14=¬q13=0; q4=0 =>0.
+D15=0.
+D16=¬q10=1.
+D17=¬q16=1.
+D18=¬q8=1.
+D19=¬q11=0; q13&¬q2=1&1=1. Good.
+
+t=22 S22: q0=1,q1=1,q2=0,q3=1,q4=0,q5=0,q6=1,q7=0,q8=1,q9=0,q10=0,q11=1,q12=1,q13=0,q14=0,q15=0,q16=1,q17=1,q18=1,q19=1. Inputs in0=0,in1=0.
+D0=1.
+D1=¬q3=0; q7=0 =>0.
+D2=¬q18=0; q8&¬(q7&q4&in1)=1&¬(0)=1.
+D3=¬q12=0; q0&¬q3=0; q4=0 =>0.
+D4=¬q7=1.
+D5=0.
+D6=¬in0=1.
+D7=¬q19=0; q17&¬q3=0; q17&q9=0 =>0.
+D8=0.
+D9=0.
+D10=¬q18=0; q16&¬q15=1&1=1.
+D11=¬q1=0; in0=0 =>0.
+D12=¬q5=1.
+D13=0.
+D14=¬q13=1.
+D15=¬q14=1.
+D16=¬q10=1.
+D17=¬q16=0; q0&¬q9=1&1=1.
+D18=¬q8=0; q0&¬in0=1&1=1.
+D19=0. Good.
+
+t=23 S23: q0=1,q1=0,q2=1,q3=0,q4=1,q5=0,q6=1,q7=0,q8=0,q9=0,q10=1,q11=0,q12=1,q13=0,q14=1,q15=1,q16=1,q17=1,q18=1,q19=0. Inputs in0=0,in1=0.
+D0=1
+D1=¬q3=1
+D2= q8=0 =>0
+D3=¬q12=0; q0&¬q3=1&1=1
+D4=¬q7=1
+D5=0
+D6=¬in0=1
+D7=¬q19=1
+D8=0
+D9=¬q18=0; q4&¬in0=1&1=1
+D10=¬q18=0; q16&¬q15=0; q16&q18&¬q4=1&1&0=0 =>0
+D11=¬q1=1
+D12=¬q5=1
+D13=¬q19=1
+D14=¬q13=1
+D15=¬q14=0; q10&¬q6=1&0=0; q10&q2&¬q13=1&1&1=1
+D16=¬q10=0; q9=0 =>0
+D17=¬q16=0; q0&¬q9=1&1=1
+D18=¬q8=1
+D19=¬q11=1. Good.
+
+t=24 S24: q0=1,q1=1,q2=0,q3=1,q4=1,q5=0,q6=1,q7=1,q8=0,q9=1,q10=0,q11=1,q12=1,q13=1,q14=1,q15=1,q16=0,q17=1,q18=1,q19=1. Inputs in0=1,in1=0.
+D0=1
+D1=¬q3=0; q8=0 =>0
+D2= q8=0 =>0
+D3=¬q12=0; q0&¬q3=0; q0&q4&¬(q5&q13)=1&1&¬(0)=1 =>1
+D4=¬q7=0; q9&¬q15=0; q16=0 =>0
+D5=0
+D6=¬in0=0; q6&¬q2=1&1=1
+D7=¬q19=0; q17&¬q3=0; q17&q9&¬(q13&q6)=1&1&¬(1)=0 =>0
+D8=0
+D9=0
+D10=0
+D11=¬q1=0; in0&¬(q10&q14&q2)=1&¬(0)=1
+D12=¬q5=1
+D13=0
+D14=¬q13=0; q4&¬q3=0; q4&q10=0 =>0
+D15=0
+D16=¬q10=1
+D17=¬q16=1
+D18=¬q8=1
+D19=¬q11=0; q13&¬q2=1&1=1. Good.
+
+t=25 S25: q0=1,q1=0,q2=0,q3=1,q4=0,q5=0,q6=1,q7=0,q8=0,q9=0,q10=0,q11=1,q12=1,q13=0,q14=0,q15=0,q16=1,q17=1,q18=1,q19=1. Inputs in0=1,in1=1.
+D0= q14=0 =>0.
+D1=¬q3=0; q7=0 =>0.
+D2= q8=0 =>0.
+D3=¬q12=0; q0&¬q3=0; q4=0 =>0.
+D4=¬q7=1.
+D5=¬q18=0; in1&¬q9=1&1=1.
+D6=¬in0=0; q6&¬q2=1&1=1.
+D7=¬q19=0; q17&¬q3=0; q9=0 =>0.
+D8=¬q17=0; q18&in1&¬q10=1&1&1=1.
+D9=0.
+D10=¬q18=0; q16&¬q15=1&1=1.
+D11=¬q1=1.
+D12=¬q5=1.
+D13=0.
+D14=¬q13=1.
+D15=¬q14=1.
+D16=¬q10=1.
+D17=¬q16=0; q0&¬q9=1&1=1.
+D18=¬q8=1.
+D19=0. Good.
+
+t=26 S26: q0=0,q1=0,q2=0,q3=0,q4=1,q5=1,q6=1,q7=0,q8=1,q9=0,q10=1,q11=1,q12=1,q13=0,q14=1,q15=1,q16=1,q17=1,q18=1,q19=0. Inputs in0=1,in1=1.
+D0= q14=1, ¬q17=0, ¬q19=1 =>1.
+D1=¬q3=1.
+D2=¬q18=0; q8&¬(q7&q4&in1)=1&¬(0)=1.
+D3=¬q12=0; q0=0 =>0.
+D4=¬q7=1.
+D5=¬q18=0; in1&¬q9=1&1=1.
+D6=¬in0=0; q6&¬q2=1&1=1.
+D7=¬q19=1.
+D8=0.
+D9=¬q18=0; q4&¬in0=0; q4&q5&¬q1=1&1&1=1.
+D10=¬q18=0; q16&¬q15=0; q16&q18&¬q4=1&1&0=0 =>0.
+D11=¬q1=1.
+D12=¬q5=0; q9=0 =>0.
+D13=¬q19=1.
+D14=¬q13=1.
+D15=¬q14=0; q10&¬q6=1&0=0; q10&q2=1&0=0 =>0.
+D16=¬q10=0; q9=0 =>0.
+D17=¬q16=0; q0=0 =>0.
+D18=¬q8=0; q0=0 =>0.
+D19=0. Good.
+
+t=27 S27: q0=1,q1=1,q2=1,q3=0,q4=1,q5=1,q6=1,q7=1,q8=0,q9=1,q10=0,q11=1,q12=0,q13=1,q14=1,q15=0,q16=0,q17=0,q18=0,q19=0. Inputs in0=1,in1=0.
+D0=1
+D1=¬q3=1
+D2=¬q18=1
+D3=¬q12=1
+D4=¬q7=0; q9&¬q15=1&1=1
+D5=¬q18=1
+D6=¬in0=0; q6&¬q2=1&0=0; q15=0 =>0
+D7=¬q19=1
+D8=¬q17=1
+D9=¬q18=1
+D10=¬q18=1
+D11=¬q1=0; in0&¬(q10&q14&q2)=1&¬(0)=1
+D12=¬q5=0; q9&¬q16=1&1=1
+D13=¬q19=1
+D14=¬q13=0; q4&¬q3=1&1=1
+D15=¬q14=0; q10=0 =>0
+D16=¬q10=1
+D17=¬q16=1
+D18=¬q8=1
+D19=0. Good.
+
+t=28 S28: q0=1,q1=1,q2=1,q3=1,q4=1,q5=1,q6=0,q7=1,q8=1,q9=1,q10=1,q11=1,q12=1,q13=1,q14=1,q15=0,q16=1,q17=1,q18=1,q19=0. Inputs in0=1,in1=1.
+D0= q14=1, ¬q17=0, ¬q19=1 =>1.
+D1=¬q3=0; q7&q8&¬(q4&in0)=1&1&¬(1)=0.
+D2=¬q18=0; q8&¬(q7&q4&in1)=1&¬(1)=0.
+D3=¬q12=0; q0&¬q3=0; q0&q4&¬(q5&q13)=1&1&¬(1)=0.
+D4=¬q7=0; q9&¬q15=1&1=1.
+D5=¬q18=0; in1&¬q9=0; in1&q8&¬(q19&q7)=1&1&¬(0)=1.
+D6=¬in0=0; q6=0 =>0.
+D7=¬q19=1.
+D8=0.
+D9=0.
+D10=¬q18=0; q16&¬q15=1&1=1.
+D11=0.
+D12=¬q5=0; q9&¬q16=0; q19=0 =>0.
+D13=¬q19=1.
+D14=¬q13=0; q4&¬q3=0; q4&q10&¬(q16&q18)=1&1&¬(1)=0.
+D15=¬q14=0; q10&¬q6=1&1=1.
+D16=¬q10=0; q9&¬q12=0; q9&q8&¬(in1&q18)=1&1&¬(1)=0.
+D17=¬q16=0; q0&¬q9=0; q0&in0&¬(q11&q6)=1&1&¬(1&0=0)=1.
+D18=¬q8=0; q0&¬in0=0; q0&q17&¬(q2&q1)=1&1&¬(1)=0.
+D19=0. Good.
+
+t=29 S29: q0=1,q1=0,q2=0,q3=0,q4=1,q5=1,q6=0,q7=1,q8=0,q9=0,q10=1,q11=0,q12=0,q13=1,q14=0,q15=1,q16=0,q17=1,q18=0,q19=0. Inputs in0=1,in1=1.
+D0= q14=0 =>0.
+D1=¬q3=1.
+D2=¬q18=1.
+D3=¬q12=1.
+D4=¬q7=0; q9=0 =>0.
+D5=¬q18=1.
+D6=¬in0=0; q6=0 =>0.
+D7=¬q19=1.
+D8=0.
+D9=¬q18=1.
+D10=¬q18=1.
+D11=¬q1=1.
+D12=¬q5=0; q9=0 =>0.
+D13=¬q19=1.
+D14=¬q13=0; q4&¬q3=1&1=1.
+D15=¬q14=1.
+D16=¬q10=0; q9=0 =>0.
+D17=¬q16=1.
+D18=¬q8=1.
+D19=¬q11=1. Good.
+
+t=30 S30: q0=0,q1=1,q2=1,q3=1,q4=0,q5=1,q6=0,q7=1,q8=0,q9=1,q10=1,q11=1,q12=0,q13=1,q14=1,q15=1,q16=0,q17=1,q18=1,q19=1. Inputs in0=0,in1=1.
+D0= q14=1, ¬q17=0, ¬q19=0 =>0.
+D1=¬q3=0; q8=0 =>0.
+D2= q8=0 =>0.
+D3=¬q12=1.
+D4=¬q7=0; q9&¬q15=0; q16=0 =>0.
+D5=¬q18=0; in1&¬q9=0; in1&q8=0 =>0.
+D6=¬in0=1.
+D7=¬q19=0; q17&¬q3=0; q17&q9&¬(q13&q6)=1&1&¬(0)=1.
+D8=0.
+D9=0.
+D10=0.
+D11=¬q1=0; in0=0 =>0.
+D12=¬q5=0; q9&¬q16=1&1=1.
+D13=0.
+D14=¬q13=0; q4=0 =>0.
+D15=¬q14=0; q10&¬q6=1&1=1.
+D16=¬q10=0; q9&¬q12=1&1=1.
+D17=¬q16=1.
+D18=¬q8=1.
+D19=0. Good.
+
+t=31 S31: q0=0,q1=0,q2=0,q3=1,q4=0,q5=0,q6=1,q7=1,q8=0,q9=0,q10=0,q11=0,q12=1,q13=0,q14=0,q15=1,q16=1,q17=1,q18=1,q19=0. Inputs in0=1,in1=1.
+D0= q14=0 =>0.
+D1=¬q3=0; q8=0 =>0.
+D2= q8=0 =>0.
+D3=¬q12=0; q0=0 =>0.
+D4=¬q7=0; q9=0 =>0.
+D5=¬q18=0; in1&¬q9=1&1=1.
+D6=¬in0=0; q6&¬q2=1&1=1.
+D7=¬q19=1.
+D8=¬q17=0; q18&in1&¬q10=1&1&1=1.
+D9=0.
+D10=¬q18=0; q16&¬q15=0; q16&q18&¬q4=1&1&1=1.
+D11=¬q1=1.
+D12=¬q5=1.
+D13=¬q19=1.
+D14=¬q13=1.
+D15=¬q14=1.
+D16=¬q10=1.
+D17=¬q16=0; q0=0 =>0.
+D18=¬q8=1.
+D19=¬q11=1. Good.
+
+t=32 S32: q0=0,q1=0,q2=0,q3=0,q4=0,q5=1,q6=1,q7=1,q8=1,q9=0,q10=1,q11=1,q12=1,q13=1,q14=1,q15=1,q16=1,q17=0,q18=1,q19=1. Inputs in0=0,in1=1.
+D0= q14=1, ¬q17=1, ¬q19=0 =>1.
+D1=¬q3=1.
+D2=¬q18=0; q8&¬(q7&q4&in1)=1&¬(0)=1.
+D3=¬q12=0; q0=0 =>0.
+D4=¬q7=0; q9=0 =>0.
+D5=¬q18=0; in1&¬q9=1&1=1.
+D6=¬in0=1.
+D7=¬q19=0; q17=0 =>0.
+D8=¬q17=1.
+D9=0.
+D10=¬q18=0; q16&¬q15=1&0=0; q16&q18&¬q4=1&1&1=1.
+D11=¬q1=1.
+D12=¬q5=0; q9=0 =>0.
+D13=0.
+D14=¬q13=0; q4=0 =>0.
+D15=¬q14=0; q10&¬q6=0; q10&q2=0 =>0.
+D16=¬q10=0; q9=0 =>0.
+D17=¬q16=0; q0=0 =>0.
+D18=¬q8=0; q0=0 =>0.
+D19=¬q11=0; q13&¬q2=1&1=1. Good.
+
+t=33 S33: q0=1,q1=1,q2=1,q3=0,q4=0,q5=1,q6=1,q7=0,q8=1,q9=0,q10=1,q11=1,q12=0,q13=0,q14=0,q15=0,q16=0,q17=0,q18=0,q19=1. Inputs in0=0,in1=0.
+D0=1
+D1=¬q3=1
+D2=¬q18=1
+D3=¬q12=1
+D4=¬q7=1
+D5=¬q18=1
+D6=¬in0=1
+D7=¬q19=0; q17=0 =>0
+D8=¬q17=1
+D9=¬q18=1
+D10=¬q18=1
+D11=¬q1=0; in0=0 =>0
+D12=¬q5=0; q9=0 =>0
+D13=¬q19=0; q8&in1=0 =>0
+D14=¬q13=1
+D15=¬q14=1
+D16=¬q10=0; q9=0 =>0
+D17=¬q16=1
+D18=¬q8=0; q0&¬in0=1&1=1
+D19=0. Good.
+
+t=34 S34: q0=1,q1=1,q2=1,q3=1,q4=1,q5=1,q6=1,q7=0,q8=1,q9=1,q10=1,q11=0,q12=0,q13=0,q14=1,q15=1,q16=0,q17=1,q18=1,q19=0. Inputs in0=0,in1=0.
+D0=1
+D1=¬q3=0; q7=0 =>0
+D2=¬q18=0; q8&¬(q7&q4&in1)=1&¬(0)=1
+D3=¬q12=1
+D4=¬q7=1
+D5=0
+D6=¬in0=1
+D7=¬q19=1
+D8=0
+D9=¬q18=0; q4&¬in0=1&1=1
+D10=¬q18=0; q16=0 =>0
+D11=¬q1=0; in0=0 =>0
+D12=¬q5=0; q9&¬q16=1&1=1
+D13=¬q19=1
+D14=¬q13=1
+D15=¬q14=0; q10&¬q6=0; q10&q2&¬q13=1&1&1=1
+D16=¬q10=0; q9&¬q12=1&1=1
+D17=¬q16=1
+D18=¬q8=0; q0&¬in0=1&1=1
+D19=¬q11=1. Good.
+
+t=35 S35: q0=1,q1=0,q2=1,q3=1,q4=1,q5=0,q6=1,q7=1,q8=0,q9=1,q10=0,q11=0,q12=1,q13=1,q14=1,q15=1,q16=1,q17=1,q18=1,q19=1. Inputs in0=0,in1=0.
+D0=1
+D1=¬q3=0; q8=0 =>0
+D2= q8=0 =>0
+D3=¬q12=0; q0&¬q3=0; q0&q4&¬(q5&q13)=1&1&¬(0)=1
+D4=¬q7=0; q9&¬q15=1&0=0; q9&q16&¬(in1&q14)=1&1&¬(0)=1 =>1
+D5=0
+D6=¬in0=1
+D7=¬q19=0; q17&¬q3=0; q17&q9&¬(q13&q6)=1&1&¬(1)=0 =>0
+D8=0
+D9=¬q18=0; q4&¬in0=1&1=1
+D10=¬q18=0; q16&¬q15=0; q16&q18&¬q4=1&1&0=0 =>0
+D11=¬q1=1
+D12=¬q5=1
+D13=0
+D14=¬q13=0; q4&¬q3=0; q4&q10=0 =>0
+D15=0
+D16=¬q10=1
+D17=¬q16=0; q0&¬q9=0; in0=0 =>0
+D18=¬q8=1
+D19=¬q11=1. Good.
+
+t=36 S36: q0=1,q1=0,q2=0,q3=1,q4=1,q5=0,q6=1,q7=0,q8=0,q9=1,q10=0,q11=1,q12=1,q13=0,q14=0,q15=0,q16=1,q17=0,q18=1,q19=1. Inputs in0=0,in1=0.
+D0=1
+D1=¬q3=0; q7=0 =>0
+D2= q8=0 =>0
+D3=¬q12=0; q0&¬q3=0; q0&q4&¬(q5&q13)=1&1&¬(0)=1
+D4=¬q7=1
+D5=0
+D6=¬in0=1
+D7=¬q19=0; q17=0 =>0
+D8=¬q17=1
+D9=¬q18=0; q4&¬in0=1&1=1
+D10=¬q18=0; q16&¬q15=1&1=1
+D11=¬q1=1
+D12=¬q5=1
+D13=0
+D14=¬q13=1
+D15=¬q14=1
+D16=¬q10=1
+D17=¬q16=0; q0&¬q9=0; in0=0 =>0
+D18=¬q8=1
+D19=0. Good.
+
+t=37 S37: q0=1,q1=0,q2=0,q3=1,q4=1,q5=0,q6=1,q7=0,q8=1,q9=1,q10=1,q11=1,q12=1,q13=0,q14=1,q15=1,q16=1,q17=0,q18=1,q19=0. Inputs in0=0,in1=0.
+D0=1
+D1=¬q3=0; q7=0 =>0
+D2=¬q18=0; q8&¬(q7&q4&in1)=1&¬(0)=1
+D3=¬q12=0; q0&¬q3=0; q0&q4&¬(q5&q13)=1&1&¬(0)=1
+D4=¬q7=1
+D5=0
+D6=¬in0=1
+D7=¬q19=1
+D8=¬q17=1
+D9=¬q18=0; q4&¬in0=1&1=1
+D10=¬q18=0; q16&¬q15=0; q16&q18&¬q4=1&1&0=0
+D11=¬q1=1
+D12=¬q5=1
+D13=¬q19=1
+D14=¬q13=1
+D15=¬q14=0; q10&¬q6=0; q10&q2=0 =>0
+D16=¬q10=0; q9&¬q12=0; q9&q8&¬(in1&q18)=1&1&¬(0)=1
+D17=¬q16=0; q0&¬q9=0; in0=0 =>0
+D18=¬q8=0; q0&¬in0=1&1=1
+D19=0. Good.
+
+t=38 S38: q0=1,q1=0,q2=1,q3=1,q4=1,q5=0,q6=1,q7=1,q8=1,q9=1,q10=0,q11=1,q12=1,q13=1,q14=1,q15=0,q16=1,q17=0,q18=1,q19=0. Inputs in0=0,in1=0.
+D0=1
+D1=¬q3=0; q7&q8&¬(q4&in0)=1&1&¬(0)=1
+D2=¬q18=0; q8&¬(q7&q4&in1)=1&¬(0)=1
+D3=¬q12=0; q0&¬q3=0; q0&q4&¬(q5&q13)=1&1&¬(0)=1
+D4=¬q7=0; q9&¬q15=1&1=1
+D5=0
+D6=¬in0=1
+D7=¬q19=1
+D8=¬q17=1
+D9=¬q18=0; q4&¬in0=1&1=1
+D10=¬q18=0; q16&¬q15=1&1=1
+D11=¬q1=1
+D12=¬q5=1
+D13=¬q19=1
+D14=¬q13=0; q4&¬q3=0; q4&q10=0 =>0
+D15=0
+D16=¬q10=1
+D17=¬q16=0; q0&¬q9=0; in0=0 =>0
+D18=¬q8=0; q0&¬in0=1&1=1
+D19=0. Good.
+
+t=39 S39: q0=1,q1=1,q2=1,q3=1,q4=1,q5=0,q6=1,q7=1,q8=1,q9=1,q10=1,q11=1,q12=1,q13=1,q14=0,q15=0,q16=1,q17=0,q18=1,q19=0. Inputs in0=0,in1=1.
+D0= q14=0 =>0
+D1=¬q3=0; q7&q8&¬(q4&in0)=1&1&¬(0)=1
+D2=¬q18=0; q8&¬(q7&q4&in1)=1&¬(1)=0
+D3=¬q12=0; q0&¬q3=0; q0&q4&¬(q5&q13)=1&1&¬(0)=1
+D4=¬q7=0; q9&¬q15=1&1=1
+D5=¬q18=0; in1&¬q9=0; in1&q8&¬(q19&q7)=1&1&¬(0)=1
+D6=¬in0=1
+D7=¬q19=1
+D8=¬q17=1
+D9=¬q18=0; q4&¬in0=1&1=1
+D10=¬q18=0; q16&¬q15=1&1=1
+D11=¬q1=0; in0=0 =>0
+D12=¬q5=1
+D13=¬q19=1
+D14=¬q13=0; q4&¬q3=0; q4&q10&¬(q16&q18)=1&1&¬(1)=0
+D15=¬q14=1
+D16=¬q10=0; q9&¬q12=0; q9&q8&¬(in1&q18)=1&1&¬(1)=0
+D17=¬q16=0; q0&¬q9=0; in0=0 =>0
+D18=¬q8=0; q0&¬in0=1&1=1
+D19=0. Good.
+
+t=40 S40: q0=0,q1=1,q2=0,q3=1,q4=1,q5=1,q6=1,q7=1,q8=1,q9=1,q10=1,q11=0,q12=1,q13=1,q14=0,q15=1,q16=0,q17=0,q18=1,q19=0. Inputs in0=1,in1=1.
+D0= q14=0 =>0
+D1=¬q3=0; q7&q8&¬(q4&in0)=1&1&¬(1)=0
+D2=¬q18=0; q8&¬(q7&q4&in1)=1&¬(1)=0
+D3=¬q12=0; q0=0 =>0
+D4=¬q7=0; q9&¬q15=0; q16=0 =>0
+D5=¬q18=0; in1&¬q9=0; in1&q8&¬(q19&q7)=1&1&¬(0)=1
+D6=¬in0=0; q6&¬q2=1&1=1
+D7=¬q19=1
+D8=¬q17=1
+D9=0
+D10=0
+D11=¬q1=0; in0&¬(q10&q14&q2)=1&¬(0)=1
+D12=¬q5=0; q9&¬q16=1&1=1
+D13=¬q19=1
+D14=¬q13=0; q4&¬q3=0; q4&q10&¬(q16&q18)=1&1&¬(0)=1
+D15=¬q14=1
+D16=¬q10=0; q9&¬q12=0; q9&q8&¬(in1&q18)=1&1&¬(1)=0
+D17=¬q16=1
+D18=¬q8=0; q0=0 =>0
+D19=¬q11=1. Good.
+
+t=41 S41: q0=0,q1=0,q2=0,q3=0,q4=0,q5=1,q6=1,q7=1,q8=1,q9=0,q10=0,q11=1,q12=1,q13=1,q14=1,q15=1,q16=0,q17=1,q18=0,q19=1. Inputs in0=1,in1=0.
+D0=1
+D1=¬q3=1
+D2=¬q18=1
+D3=¬q12=0; q0=0 =>0
+D4=¬q7=0; q9=0 =>0
+D5=¬q18=1
+D6=¬in0=0; q6&¬q2=1&1=1
+D7=¬q19=0; q17&¬q3=1&1=1
+D8=0
+D9=¬q18=1
+D10=¬q18=1
+D11=¬q1=1
+D12=¬q5=0; q9=0 =>0
+D13=0
+D14=¬q13=0; q4=0 =>0
+D15=0
+D16=¬q10=1
+D17=¬q16=1
+D18=¬q8=0; q0=0 =>0
+D19=¬q11=0; q13&¬q2=1&1=1. Good.
+
+t=42 S42: q0=1,q1=1,q2=1,q3=0,q4=0,q5=1,q6=1,q7=1,q8=0,q9=1,q10=1,q11=1,q12=0,q13=0,q14=0,q15=0,q16=1,q17=1,q18=0,q19=1. Inputs in0=0,in1=1.
+D0= q14=0 =>0
+D1=¬q3=1
+D2=¬q18=1
+D3=¬q12=1
+D4=¬q7=0; q9&¬q15=1&1=1
+D5=¬q18=1
+D6=¬in0=1
+D7=¬q19=0; q17&¬q3=1&1=1
+D8=0
+D9=¬q18=1
+D10=¬q18=1
+D11=¬q1=0; in0=0 =>0
+D12=¬q5=0; q9&¬q16=0; q9&q19&¬(q6&q13)=1&1&¬(0)=1
+D13=0
+D14=¬q13=1
+D15=¬q14=1
+D16=¬q10=0; q9&¬q12=1&1=1
+D17=¬q16=0; q0&¬q9=0; in0=0 =>0
+D18=¬q8=1
+D19=0. Good.
+
+t=43 S43: q0=0,q1=1,q2=1,q3=1,q4=1,q5=1,q6=1,q7=1,q8=0,q9=1,q10=1,q11=0,q12=1,q13=0,q14=1,q15=1,q16=1,q17=0,q18=1,q19=0. Inputs in0=1,in1=0.
+D0=1
+D1=¬q3=0; q8=0 =>0
+D2= q8=0 =>0
+D3=¬q12=0; q0=0 =>0
+D4=¬q7=0; q9&¬q15=0; q9&q16&¬(in1&q14)=1&1&¬(0)=1
+D5=0
+D6=¬in0=0; q6&¬q2=0; q6&q15&¬(in1&q3)=1&1&¬(0)=1
+D7=¬q19=1
+D8=¬q17=1
+D9=0
+D10=0
+D11=¬q1=0; in0&¬(q10&q14&q2)=1&¬(1)=0
+D12=¬q5=0; q9&¬q16=0; q19=0 =>0
+D13=¬q19=1
+D14=¬q13=1
+D15=¬q14=0; q10&¬q6=0; q10&q2&¬q13=1&1&1=1
+D16=¬q10=0; q9&¬q12=0; q8=0 =>0
+D17=¬q16=0; q0=0 =>0
+D18=¬q8=1
+D19=¬q11=1. Good.
+
+t=44 S44: q0=1,q1=0,q2=0,q3=0,q4=1,q5=0,q6=1,q7=1,q8=1,q9=0,q10=0,q11=0,q12=0,q13=1,q14=1,q15=1,q16=0,q17=0,q18=1,q19=1. Inputs in0=1,in1=0.
+D0=1
+D1=¬q3=1
+D2=¬q18=0; q8&¬(q7&q4&in1)=1&¬(0)=1
+D3=¬q12=1
+D4=¬q7=0; q9=0 =>0
+D5=0
+D6=¬in0=0; q6&¬q2=1&1=1
+D7=¬q19=0; q17=0 =>0
+D8=¬q17=1
+D9=0
+D10=0
+D11=¬q1=1
+D12=¬q5=1
+D13=0
+D14=¬q13=0; q4&¬q3=1&1=1
+D15=0
+D16=¬q10=1
+D17=¬q16=1
+D18=¬q8=0; q0&¬in0=0; q17=0 =>0
+D19=¬q11=1. Good.
+
+t=45 S45: q0=1,q1=1,q2=1,q3=1,q4=0,q5=0,q6=1,q7=0,q8=1,q9=0,q10=0,q11=1,q12=1,q13=0,q14=1,q15=0,q16=1,q17=1,q18=0,q19=1. Inputs in0=1,in1=1.
+D0= q14=1, ¬q17=0, ¬q19=0 =>0
+D1=¬q3=0; q7=0 =>0
+D2=¬q18=1
+D3=¬q12=0; q0&¬q3=0; q4=0 =>0
+D4=¬q7=1
+D5=¬q18=1
+D6=¬in0=0; q6&¬q2=0; q15=0 =>0
+D7=¬q19=0; q17&¬q3=0; q9=0 =>0
+D8=0
+D9=¬q18=1
+D10=¬q18=1
+D11=¬q1=0; in0&¬(q10&q14&q2)=1&¬(0)=1
+D12=¬q5=1
+D13=0
+D14=¬q13=1
+D15=0
+D16=¬q10=1
+D17=¬q16=0; q0&¬q9=1&1=1
+D18=¬q8=0; q0&¬in0=0; q0&q17&¬(q2&q1)=1&1&¬(1)=0
+D19=0. Good.
+
+t=46 S46: q0=0,q1=0,q2=1,q3=0,q4=1,q5=1,q6=0,q7=0,q8=0,q9=1,q10=1,q11=1,q12=1,q13=0,q14=1,q15=0,q16=1,q17=1,q18=0,q19=0. Inputs in0=0,in1=1.
+D0= q14=1, ¬q17=0, ¬q19=1 =>1
+D1=¬q3=1
+D2=¬q18=1
+D3=¬q12=0; q0=0 =>0
+D4=¬q7=1
+D5=¬q18=1
+D6=¬in0=1
+D7=¬q19=1
+D8=0
+D9=¬q18=1
+D10=¬q18=1
+D11=¬q1=1
+D12=¬q5=0; q9&¬q16=0; q19=0 =>0
+D13=¬q19=1
+D14=¬q13=1
+D15=¬q14=0; q10&¬q6=1&1=1
+D16=¬q10=0; q9&¬q12=0; q8=0 =>0
+D17=¬q16=0; q0=0 =>0
+D18=¬q8=1
+D19=0. Good.
+
+t=47 not needed for outputs but maybe if state update? We don't need. Good.
+
+So simulation likely consistent.
+
+Now we need produce final JSON with lists for outputs q10, q11, q13, q2, q3, q5 in order. Each list length 48.
+
+Let's compile lists carefully.
+
+From recorded outputs:
+
+Let's make list for each output:
+
+q10:
+t0 1
+t1 0
+t2 1
+t3 1
+t4 0
+t5 1
+t6 1
+t7 0
+t8 0
+t9 1
+t10 0
+t11 0
+t12 1
+t13 1
+t14 0
+t15 0
+t16 1
+t17 1
+t18 0
+t19 1
+t20 1
+t21 0
+t22 0
+t23 1
+t24 0
+t25 0
+t26 1
+t27 0
+t28 1
+t29 1
+t30 1
+t31 0
+t32 1
+t33 1
+t34 1
+t35 0
+t36 0
+t37 1
+t38 0
+t39 1
+t40 1
+t41 0
+t42 1
+t43 1
+t44 0
+t45 0
+t46 1
+t47 1
+
+Let's count: 
+0:1
+1:0
+2:1
+3:1
+4:0
+5:1
+6:1
+7:0
+8:0
+9:1
+10:0
+11:0
+12:1
+13:1
+14:0
+15:0
+16:1
+17:1
+18:0
+19:1
+20:1
+21:0
+22:0
+23:1
+24:0
+25:0
+26:1
+27:0
+28:1
+29:1
+30:1
+31:0
+32:1
+33:1
+34:1
+35:0
+36:0
+37:1
+38:0
+39:1
+40:1
+41:0
+42:1
+43:1
+44:0
+45:0
+46:1
+47:1
+Yes 48.
+
+q11:
+t0 0
+t1 1
+t2 1
+t3 1
+t4 1
+t5 1
+t6 0
+t7 1
+t8 0
+t9 1
+t10 0
+t11 1
+t12 1
+t13 0
+t14 1
+t15 0
+t16 1
+t17 0
+t18 0
+t19 1
+t20 0
+t21 1
+t22 1
+t23 0
+t24 1
+t25 1
+t26 1
+t27 1
+t28 1
+t29 0
+t30 1
+t31 0
+t32 1
+t33 1
+t34 0
+t35 0
+t36 1
+t37 1
+t38 1
+t39 1
+t40 0
+t41 1
+t42 1
+t43 0
+t44 0
+t45 1
+t46 1
+t47 1
+
+Let's count 48. Check t4 = q11 S4 = 1 yes. t5 S5 q11=1, t6 S6 q11=0, t7 q11=1, t8 q11=0, t9 q11=1.
+
+q13:
+t0 1
+t1 1
+t2 0
+t3 0
+t4 1
+t5 1
+t6 1
+t7 1
+t8 0
+t9 0
+t10 0
+t11 1
+t12 0
+t13 0
+t14 1
+t15 1
+t16 0
+t17 0
+t18 1
+t19 0
+t20 0
+t21 1
+t22 0
+t23 0
+t24 1
+t25 0
+t26 0
+t27 1
+t28 1
+t29 1
+t30 1
+t31 0
+t32 1
+t33 0
+t34 0
+t35 1
+t36 0
+t37 0
+t38 1
+t39 1
+t40 1
+t41 1
+t42 0
+t43 0
+t44 1
+t45 0
+t46 0
+t47 1
+
+Let's verify t4 q13 from S4 = 1 yes output t4 q13=1? We recorded t4 outputs: q10=0,q11=1,q13=1,q2=1,q3=0,q5=0 yes. Good.
+t12 S12 q13=0 yes.
+t18 S18 q13=1 yes.
+t19 S19 q13=0 yes.
+t20 S20 q13=0.
+t21 S21 q13=1.
+t22 S22 q13=0.
+t23 S23 q13=0.
+t24 S24 q13=1.
+t25 S25 q13=0.
+t26 S26 q13=0.
+t27 S27 q13=1.
+t28 q13=1.
+t29 q13=1.
+t30 q13=1.
+t31 q13=0.
+t32 q13=1.
+t33 q13=0.
+t34 q13=0.
+t35 q13=1.
+t36 q13=0.
+t37 q13=0.
+t38 q13=1.
+t39 q13=1.
+t40 q13=1.
+t41 q13=1.
+t42 q13=0.
+t43 q13=0.
+t44 q13=1.
+t45 q13=0.
+t46 q13=0.
+t47 q13=1.
+Count 48 yes.
+
+q2:
+t0 1
+t1 0
+t2 1
+t3 0
+t4 1
+t5 1
+t6 0
+t7 0
+t8 0
+t9 0
+t10 0
+t11 0
+t12 0
+t13 0
+t14 0
+t15 1
+t16 1
+t17 1
+t18 1
+t19 1
+t20 0
+t21 0
+t22 0
+t23 1
+t24 0
+t25 0
+t26 0
+t27 1
+t28 1
+t29 0
+t30 1
+t31 0
+t32 0
+t33 1
+t34 1
+t35 1
+t36 0
+t37 0
+t38 1
+t39 1
+t40 0
+t41 0
+t42 1
+t43 1
+t44 0
+t45 1
+t46 1
+t47 1
+
+Let's verify q2 from states:
+S0 1
+S1 0
+S2 1
+S3 0
+S4 1
+S5 1
+S6 0
+S7 0
+S8 0
+S9 0
+S10 0
+S11 0
+S12 0
+S13 0
+S14 0
+S15 1
+S16 1
+S17 1
+S18 1
+S19 1
+S20 0
+S21 0
+S22 0
+S23 1
+S24 0
+S25 0
+S26 0
+S27 1
+S28 1
+S29 0
+S30 1
+S31 0
+S32 0
+S33 1
+S34 1
+S35 1
+S36 0
+S37 0
+S38 1
+S39 1
+S40 0
+S41 0
+S42 1
+S43 1
+S44 0
+S45 1
+S46 1
+S47 1
+Yes. t15 q2=1 (S15 q2=1) recorded. Good.
+
+q3:
+t0 0
+t1 1
+t2 0
+t3 1
+t4 0
+t5 1
+t6 0
+t7 1
+t8 0
+t9 1
+t10 1
+t11 0
+t12 1
+t13 0
+t14 1
+t15 0
+t16 0
+t17 1
+t18 0
+t19 1
+t20 1
+t21 0
+t22 1
+t23 0
+t24 1
+t25 1
+t26 0
+t27 0
+t28 1
+t29 0
+t30 1
+t31 1
+t32 0
+t33 0
+t34 1
+t35 1
+t36 1
+t37 1
+t38 1
+t39 1
+t40 1
+t41 0
+t42 0
+t43 1
+t44 0
+t45 1
+t46 0
+t47 0
+
+Let's verify q3 from states:
+S0 0
+S1 1
+S2 0
+S3 1
+S4 0
+S5 1
+S6 0
+S7 1
+S8 0
+S9 1
+S10 1
+S11 0
+S12 1
+S13 0
+S14 1
+S15 0
+S16 0
+S17 1
+S18 0
+S19 1
+S20 1
+S21 0
+S22 1
+S23 0
+S24 1
+S25 1
+S26 0
+S27 0
+S28 1
+S29 0
+S30 1
+S31 1
+S32 0
+S33 0
+S34 1
+S35 1
+S36 1
+S37 1
+S38 1
+S39 1
+S40 1
+S41 0
+S42 0
+S43 1
+S44 0
+S45 1
+S46 0
+S47 0
+Wait at t35 q3=1 yes S35 q3=1. t36 q3=1, t37 q3=1, t38 q3=1, t39 q3=1. t40 q3=1. t41 q3=0. t42 q3=0. t43 q3=1. t44 q3=0. t45 q3=1. t46 q3=0. t47 q3=0. Good.
+
+But check t27 q3 from S27 = 0? We recorded t27 q3=0. S27 q3=0 yes.
+t28 q3=1. Good.
+
+q5:
+t0 1
+t1 0
+t2 0
+t3 1
+t4 0
+t5 1
+t6 0
+t7 1
+t8 0
+t9 0
+t10 1
+t11 0
+t12 0
+t13 0
+t14 1
+t15 0
+t16 0
+t17 1
+t18 1
+t19 1
+t20 0
+t21 1
+t22 0
+t23 0
+t24 0
+t25 0
+t26 1
+t27 1
+t28 1
+t29 1
+t30 1
+t31 0
+t32 1
+t33 1
+t34 1
+t35 0
+t36 0
+t37 0
+t38 0
+t39 0
+t40 1
+t41 1
+t42 1
+t43 1
+t44 0
+t45 0
+t46 1
+t47 1
+
+Verify q5 from states:
+S0 1
+S1 0
+S2 0
+S3 1
+S4 0
+S5 1
+S6 0
+S7 1
+S8 0
+S9 0
+S10 1
+S11 0
+S12 0
+S13 0
+S14 1
+S15 0
+S16 0
+S17 1
+S18 1
+S19 1
+S20 0
+S21 1
+S22 0
+S23 0
+S24 0
+S25 0
+S26 1
+S27 1
+S28 1
+S29 1
+S30 1
+S31 0
+S32 1
+S33 1
+S34 1
+S35 0
+S36 0
+S37 0
+S38 0
+S39 0
+S40 1
+S41 1
+S42 1
+S43 1
+S44 0
+S45 0
+S46 1
+S47 1
+Let's check t15 S15 q5=0 yes output t15 q5=0.
+t18 S18 q5=1 yes.
+t19 S19 q5=1.
+t20 S20 q5=0.
+t21 S21 q5=1.
+t22 S22 q5=0.
+t23 S23 q5=0.
+t24 S24 q5=0.
+t25 S25 q5=0.
+t26 S26 q5=1.
+t27 S27 q5=1.
+t28 S28 q5=1.
+t29 S29 q5=1.
+t30 S30 q5=1.
+t31 S31 q5=0.
+t32 S32 q5=1.
+t33 S33 q5=1.
+t34 S34 q5=1.
+t35 S35 q5=0.
+t36 S36 q5=0.
+t37 S37 q5=0.
+t38 S38 q5=0.
+t39 S39 q5=0.
+t40 S40 q5=1.
+t41 S41 q5=1.
+t42 S42 q5=1.
+t43 S43 q5=1.
+t44 S44 q5=0.
+t45 S45 q5=0.
+t46 S46 q5=1.
+t47 S47 q5=1. Good.
+
+Now final output JSON should map each output net name to list. Need ensure no trailing comments. We can output one fenced json code block exactly.
+
+Before final, perhaps check if outputs order in object maybe any order. We'll include q10, q11, q13, q2, q3, q5.
+
+Need ensure lists have 48 integers, each 0/1. Let's count final lists again maybe with grouping.
+
+Let's write each list with line breaks? JSON allows arrays. We'll produce compact but readable.
+
+q10 list:
+[1, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 1, 1]
+
+Let's count bracket indices maybe:
+1:1, 2:0, 3:1, 4:1, 5:0, 6:1, 7:1, 8:0, 9:0, 10:1, 11:0, 12:0, 13:1, 14:1, 15:0, 16:0, 17:1, 18:1, 19:0, 20:1, 21:1, 22:0, 23:0, 24:1, 25:0, 26:0, 27:1, 28:0, 29:1, 30:1, 31:1, 32:0, 33:1, 34:1, 35:1, 36:0, 37:0, 38:1, 39:0, 40:1, 41:1, 42:0, 43:1, 44:1, 45:0, 46:0, 47:1, 48:1. yes.
+
+q11:
+[0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 0, 0, 1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 1, 1]
+
+Count: 
+1:0,2:1,3:1,4:1,5:1,6:1,7:0,8:1,9:0,10:1,11:0,12:1,13:1,14:0,15:1,16:0,17:1,18:0,19:0,20:1,21:0,22:1,23:1,24:0,25:1,26:1,27:1,28:1,29:1,30:0,31:1,32:0,33:1,34:1,35:0,36:0,37:1,38:1,39:1,40:1,41:0,42:1,43:1,44:0,45:0,46:1,47:1,48:1. yes.
+
+q13:
+[1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 0, 0, 1]
+
+Count:
+1:1
+2:1
+3:0
+4:0
+5:1
+6:1
+7:1
+8:1
+9:0
+10:0
+11:0
+12:1
+13:0
+14:0
+15:1
+16:1
+17:0
+18:0
+19:1
+20:0
+21:0
+22:1
+23:0
+24:0
+25:1
+26:0
+27:0
+28:1
+29:1
+30:1
+31:1
+32:0
+33:1
+34:0
+35:0
+36:1
+37:0
+38:0
+39:1
+40:1
+41:1
+42:1
+43:0
+44:0
+45:1
+46:0
+47:0
+48:1. yes.
+
+q2:
+[1, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1, 1, 1]
+
+Count:
+1:1
+2:0
+3:1
+4:0
+5:1
+6:1
+7:0
+8:0
+9:0
+10:0
+11:0
+12:0
+13:0
+14:0
+15:0
+16:1
+17:1
+18:1
+19:1
+20:1
+21:0
+22:0
+23:0
+24:1
+25:0
+26:0
+27:0
+28:1
+29:1
+30:0
+31:1
+32:0
+33:0
+34:1
+35:1
+36:1
+37:0
+38:0
+39:1
+40:1
+41:0
+42:0
+43:1
+44:1
+45:0
+46:1
+47:1
+48:1. yes.
+
+q3:
+[0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 1, 0, 0]
+
+Count yes:
+1 0
+2 1
+3 0
+4 1
+5 0
+6 1
+7 0
+8 1
+9 0
+10 1
+11 1
+12 0
+13 1
+14 0
+15 1
+16 0
+17 0
+18 1
+19 0
+20 1
+21 1
+22 0
+23 1
+24 0
+25 1
+26 1
+27 0
+28 0
+29 1
+30 0
+31 1
+32 1
+33 0
+34 0
+35 1
+36 1
+37 1
+38 1
+39 1
+40 1
+41 1
+42 0
+43 0
+44 1
+45 0
+46 1
+47 0
+48 0. yes.
+
+q5:
+[1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1]
+
+Count:
+1:1
+2:0
+3:0
+4:1
+5:0
+6:1
+7:0
+8:1
+9:0
+10:0
+11:1
+12:0
+13:0
+14:0
+15:1
+16:0
+17:0
+18:1
+19:1
+20:1
+21:0
+22:1
+23:0
+24:0
+25:0
+26:0
+27:1
+28:1
+29:1
+30:1
+31:1
+32:0
+33:1
+34:1
+35:1
+36:0
+37:0
+38:0
+39:0
+40:0
+41:1
+42:1
+43:1
+44:1
+45:0
+46:0
+47:1
+48:1. yes.
+
+Need final answer with fenced json code block only? User said "End your reply with a single fenced json code block containing exactly one object..." We can include maybe no extra text? It says end your reply. To be safe, final response only the code block. Use no extra text.
+
+But before final, consider if there is any issue: The simulated outputs are current q values before edge, which we used. Step 3 records outputs after inputs and gates settle. Since output nets are DFF q outputs, they equal current state, unaffected by combinational gates? Wait DFF q outputs are driven by DFF, not by combinational. So yes current state.
+
+Need ensure "outputs" list includes q10, q11, q13, q2, q3, q5. They are DFF q outputs. Good.
+
+Let's maybe double-check some mid simulations where q13 output t=13 maybe we recorded q13=0 from S13; S13 q13=0 yes. Good.
+
+Potential issue: At cycle t, DFF q holds current state before edge. We recorded outputs at t=0 initial. Yes.
+
+Potential issue: The trace lists input values one per cycle length 48. We used correct mapping in0/in1. Let's verify input traces around t=15,16 etc maybe no off-by-one. We did.
+
+Let's re-check input list quickly:
+in0 t0 0
+1 1
+2 1
+3 1
+4 1
+5 1
+6 0
+7 0
+8 1
+9 0
+10 0
+11 0
+12 0
+13 0
+14 0
+15 1
+16 0
+17 1
+18 1
+19 1
+20 0
+21 1
+22 0
+23 0
+24 1
+25 1
+26 1
+27 1
+28 1
+29 1
+30 0
+31 1
+32 0
+33 0
+34 0
+35 0
+36 0
+37 0
+38 0
+39 0
+40 1
+41 1
+42 0
+43 1
+44 1
+45 1
+46 0
+47 1
+
+in1 t0 1
+1 0
+2 1
+3 0
+4 0
+5 1
+6 1
+7 0
+8 0
+9 1
+10 0
+11 0
+12 0
+13 1
+14 1
+15 0
+16 1
+17 1
+18 0
+19 1
+20 1
+21 1
+22 0
+23 0
+24 0
+25 1
+26 1
+27 0
+28 1
+29 1
+30 1
+31 1
+32 1
+33 0
+34 0
+35 0
+36 0
+37 0
+38 0
+39 1
+40 1
+41 0
+42 1
+43 0
+44 0
+45 1
+46 1
+47 0
+Looks right. We used in1 t41=0, t42=1, t43=0, t44=0, t45=1, t46=1, t47=0. Good.
+
+Let's maybe cross-check state t=47 S47 from D t=46. We computed but not needed. But output t=47 uses S47? Wait output at cycle t=47 is recorded before edge of cycle 47, i.e. state S47 (current state at beginning of cycle 47). Yes. We have S47 from D t=46. We recorded outputs at t=47 from S47. Good.
+
+Need ensure we didn't use D t=46 to compute S47? Yes. We computed S47. Outputs t=47: q10=1,q11=1,q13=1,q2=1,q3=0,q5=1. Check S47: q0=1,q1=1,q2=1,q3=0,q4=1,q5=1,q6=1,q7=1,q8=0,q9=1,q10=1,q11=1,q12=0,q13=1,q14=1,q15=1,q16=0,q17=0,q18=1,q19=0. So q10=1, q11=1, q13=1, q2=1, q3=0, q5=1. Good.
+
+Now final code block. Make sure valid JSON arrays with spaces okay.
+
+Let's produce final.
+
+=== response ===
+```json
+{
+  "q10": [1, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 1, 1],
+  "q11": [0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 0, 0, 1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 1, 1],
+  "q13": [1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 0, 0, 1],
+  "q2": [1, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1, 1, 1],
+  "q3": [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 1, 0, 0],
+  "q5": [1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1]
+}
+```

@@ -1,0 +1,42 @@
+[project]
+name = "lockstep"
+version = "0.1.0"
+description = "eval: can llms simulate digital circuits in their head"
+requires-python = ">=3.12"
+dependencies = [
+    "anthropic>=1.0.0",
+    "httpx>=0.28.1",
+    "python-dotenv>=1.2.3",
+]
+
+[dependency-groups]
+dev = [
+    "matplotlib>=3.11.1",
+    "mypy>=2.3.1",
+    "pytest>=9.1.1",
+    "ruff>=0.16.4",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[[tool.mypy.overrides]]
+# analysis/scripts are informal but produce published numbers: real type
+# errors stay on, annotation pedantry off
+module = ["axis", "exemplars", "export_site", "plot", "make_index", "rescore", "fuzz_replay"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+disallow_any_generics = false
+warn_return_any = false
+
+[tool.mypy]
+strict = true
+files = ["lockstep", "tests", "analysis", "scripts"]
+
+[tool.ruff]
+line-length = 100
+# oracles/ holds independently written simulators (codex, agy) verbatim —
+# never reformatted or linted by us, that's the point of them
+exclude = ["oracles"]

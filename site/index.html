@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lockstep</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <meta property="og:title" content="Lockstep" />
+  <meta property="og:description" content="Can a language model run a logic circuit in its head?" />
+  <meta property="og:image" content="https://lockstep.greg.technology/figs/og.png" />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://lockstep.greg.technology/" />
+  <meta name="description" content="Can a language model run a logic circuit in its head?" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Lockstep</h1>
+      <p class="byline tight">Can a language model run a logic circuit in its head?</p>
+      <p class="byline">by <span class="author">Greg Sadetsky</span></p>
+      <p class="byline"><a href="c/" target="_blank" rel="noopener">Circuits and Results Explorer</a> · <a href="r/" target="_blank" rel="noopener">Reasoning Gallery</a> · <a href="https://github.com/gregsadetsky/lockstep" target="_blank" rel="noopener">GitHub</a> · <a href="mailto:hi@greg.technology">Contact</a></p>
+    </header>
+    <section id="abstract">
+      <h2>Introduction</h2>
+      <script type="text/markdown">
+As I was working on my [Minivac Simulator](https://minivac.greg.technology/) in 2025, I noticed that debugging logic circuits with LLMs would lead most of them to go astray somewhat consistently. I would tell them "here's a flip flop, just follow the gates as they switch from 0 to 1" and it would get into loops it couldn't get out of. And give me the wrong answer, confidently.
+
+I've been thinking about this for ~a year, and as models kept getting smarter, and as I reworked the Minivac to use [a real circuit simulator](https://spinningnumbers.org/a/circuit-sandbox.html) (rather than one written by an LLM), I was curious to see where things stood as of August 2026.
+
+Hence, *Lockstep*, an LLM benchmark. It attempts to answer the question: *Can a language model run a logic circuit in its head?*
+
+A "logic circuit" here is a circuit (i.e., a graph) made of only two kinds of components whose inputs and outputs interconnect: a NAND gate, and a D flip-flop (which is a small circuit in itself that can store one bit).
+
+I ended up scoring 10 leading LLMs across 63 circuits. A figure summarizing the results is here:
+</script>
+
+      <figure>
+        <img src="/figs/matrix.png" alt="matrix: percent of cycles each model got right (before its first wrong bit) on each circuit" />
+      </figure>
+
+      <script type="text/markdown">
+Each model received as its prompt ([example](example-prompt.txt)) the circuit, and a series of inputs; its task was to compute outputs cycle by cycle for a fixed number of cycles (each circuit specifies its own, 8 to 56). Most complex circuits have outputs looping back into earlier gates through flip-flops, so the circuit's state evolves from one clock tick to the next - a 'cycle' is one tick of that clock, and the model has to carry the whole state across every tick. By asking models to provide outputs at each cycle, it became possible to rank the models: getting all outputs right for all cycles scores 100 - a lesser score is the share of cycles the model completed correctly before its first wrong bit. If a circuit runs for 24 cycles and the model's first wrong bit is at cycle 2, it scores 2/24 ≈ 8 even if every later cycle happened to come out right.
+
+An important point (and invitation to argue with the whole premise): LLMs were being run "as is" - no tools, no code execution - they were called at the bare API level, and any reasoning the models did happened in writing i.e. "in their heads". Each model got its own provider's maximum output-token budget (128k tokens for Opus 5, for example); the "lim" cells in the figure are runs that were still going when they hit that ceiling.
+
+Asking most models to write code that would solve these logical gates would have been a lot less interesting - it's [~30 lines of Python](https://github.com/gregsadetsky/lockstep/blob/main/lockstep/sim.py) and it's safe to assume they can all do it quite easily.
+
+</script>
+
+      <h2>Results, roughly speaking</h2>
+
+      <script type="text/markdown">
+Opus 5 topped the table, with GPT 5.5 second. The cheapest models sat at the bottom (GPT 5 Mini, Haiku 4.5), but price is not that great of a predictor either: Kimi K3 and DeepSeek V4 Pro took third and fourth - DeepSeek at some 20x cheaper than Opus. Gemini 3.7 Flash roughly matched its flagship sibling.
+
+As problems got harder, results got less and less predictable - DeepSeek V4 Pro would score a 100 (perfect success) and a 2 (fast failure) on two problems that GPT 5.5 failed at with scores 21 and 32 respectively.
+
+Low/high scores on the right section of the figure above are not so much scores as an indication that we are in coin flipping territory (there are no error bars as each cell is a sample of 1!). *Adjacent rows in the figure are not statistically distinguishable!* Also, I wouldn't trust DeepSeek more for this kind of task because of that specific 100 - not to diminish its success on a problem only it and Kimi K3 solved. Nor would I necessarily mistrust a model that one-shot failed a hard problem.
+
+Perhaps obvious, but the advantage of generating and using synthetic circuits is the ability to tune a circuit into one that will almost certainly fail an LLM i.e., once we find the limit of an LLM, we can go further and "beat" it (which in itself is a satisfying outcome for humanity). Generating arbitrarily harder circuits is a matter of turning a few knobs (circuit depth, gate count, cycles).
+
+It must be said that the circuits used here, consisting of NAND gates and D Flip Flops exclusively, are unambiguously simulatable. The answer to them is known in advance, and cross-validated (see below) in multiple ways.
+</script>
+
+    </section>
+
+
+    <!-- 3. explanation paragraph + one-gate simulator -->
+    <section id="one-gate">
+      <h2>A gate and a flip-flop (<a href="https://www.youtube.com/watch?v=4W3cPSntmBk" target="_blank" rel="noopener">two bits!</a>)</h2>
+      <div id="nand-sim" class="sim">
+        <div class="nand-holder"></div>
+        <details class="netlist">
+          <summary>the netlist the model sees (with its fixed input sequence)</summary>
+          <pre>{
+  "name": "nand_gate",
+  "inputs": ["a", "b"],
+  "outputs": ["y"],
+  "gates": [{"type": "NAND", "a": "a", "b": "b", "y": "y"}],
+  "dffs": [],
+  "trace": {"a": [0, 1, 0, 1], "b": [0, 0, 1, 1]},
+  "cycles": 4
+}</pre>
+        </details>
+      </div>
+    </section>
+
+    <!-- 4. another paragraph -->
+    <section id="between">
+      <script type="text/markdown">
+A NAND's output just follows its inputs.
+
+By contrast, a D flip-flop holds one bit `q` and on every clock tick, it swaps it for whatever `d` was just before the tick.
+</script>
+      <div id="dff-sim" class="sim"></div>
+    </section>
+
+    <!-- 5. large circuit simulator -->
+    <section id="big-circuit">
+      <h2>A real task from the eval</h2>
+      <script type="text/markdown">
+This is [`counter_3bit`](c/?id=counter_3bit), one of the scored circuits, consisting of 11 NANDs and 3 D flip-flops whose outputs loop back through the gates, counting clock ticks in binary.
+</script>
+
+      <div id="circuit-sim" class="sim"></div>
+
+      <h2>Opus, Fable, golden results, and where to go from here</h2>
+
+      <script type="text/markdown">
+Fable 5 is unscored, but I don't doubt that it would have fared well. Unfortunately, its safety filter refused every circuit, including the smallest ones, as "violative cyber content". My own account has a Cyber exception, but it did not help when I attempted to drive the model via API. I was able to get Fable 5 to solve small circuits in Claude's web ui, but that was not a tenable way to score the model across all circuits. I'd still like to score it.
+
+The same kind of block also hit Opus 5 on 13 of the 63 circuits. Those cells show as gray `✕` and are excluded from its mean, so Opus is scored on the 50 circuits it was allowed to attempt - and the blocked circuits were, if anything, easier than average, so the exclusion more plausibly hurt its number than helped it.
+
+As for golden results, an insight into my own paranoia - I ended up using a reference [circuit simulator](https://github.com/gregsadetsky/lockstep/blob/main/lockstep/sim.py) and two additional circuit simulators ([1](https://github.com/gregsadetsky/lockstep/blob/main/oracles/agy/sim_agy.py), [2](https://github.com/gregsadetsky/lockstep/blob/main/oracles/codex/sim_codex.py)) written by two different LLMs, *and* two independent Verilog circuit simulators - [Icarus Verilog](https://steveicarus.github.io/iverilog/) and [Verilator](https://www.veripool.org/verilator/) - driven by three independent netlist-to-Verilog converters ([1](https://github.com/gregsadetsky/lockstep/blob/main/lockstep/verilog.py), [2](https://github.com/gregsadetsky/lockstep/blob/main/oracles/agy-translator/translate_agy.py), [3](https://github.com/gregsadetsky/lockstep/blob/main/oracles/codex-translator/translate_codex.py)). In total, 9 different ways of validating golden results for all circuits, and no disagreement between them.
+
+As for the future, there might be some interesting directions to pursue: circuits growing in a single dimension only (depth, number of gates, etc.) to trace failure curves across them; running all models x circuits at n=3 or more; offering a [Harbor](https://github.com/harbor-framework/harbor) "package" to simplify running this eval.
+
+More detail, data, METHODS.md, and every transcript are in the [repo](https://github.com/gregsadetsky/lockstep). And do peruse the transcripts found in the [Circuits and Results Explorer](c/) - LLMs are in a wildly better place than a year ago.
+</script>
+    </section>
+
+    <footer>
+      <p>Thanks to <a href="https://www.linkedin.com/in/ann-julie-rheaume/" target="_blank" rel="noopener">Ann-Julie Rhéaume</a>, <a href="https://www.seaandsailor.com/" target="_blank" rel="noopener">João Felipe Santos</a>, <a href="https://iafisher.com/" target="_blank" rel="noopener">Ian Fisher</a> and <a href="https://gurevich.ca/" target="_blank" rel="noopener">David Gurevich</a> for comments and suggestions. Any error/omission/stupidity is on me, not on them!</p>
+      <p><a href="mailto:hi@greg.technology">Contact</a></p>
+    </footer>
+  </main>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

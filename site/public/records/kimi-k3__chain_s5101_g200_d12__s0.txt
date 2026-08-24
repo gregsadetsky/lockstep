@@ -1,0 +1,3492 @@
+model: moonshotai/kimi-k3
+circuit: chain_s5101_g200_d12
+score: {'status': 'ok', 'prefix_cycles': 24, 'pointwise': 1.0, 'exact': True}
+
+=== reasoning ===
+We need solve circuit simulation accurately. We need produce final with only fenced JSON block? User asks work through carefully but end reply with single fenced json code block containing exactly one object. Likely final should just be code block (maybe no extra explanation) to satisfy. Need compute output trace for n199, q5, q6, q8 over 24 cycles.
+
+We need simulate. This is large: 200 NAND gates, 12 DFFs. Need careful cycle-by-cycle. We cannot run code. But as AI can reason and maybe derive systematically. Need avoid mistakes. We can perform manual symbolic evaluation. 24 cycles, 200 gates each -> 4800 evaluations, too much if naive. But circuit is a chain with repeated structure; maybe outputs depend on DFF states and inputs. Need compute efficiently and accurately.
+
+We need produce exact lists. We can simulate by reasoning using boolean algebra and maybe exploit that all gates are NAND in a single ordered chain from n0 to n199 with DFFs feedback. The gate list is topologically ordered (n_i uses earlier n_j and q's/in's). Good: within a cycle, evaluate n0..n199 in order using current q and inputs. DFFs update after outputs: q0<=n153, q1<=n167, q2<=n177, q3<=n151, q4<=n188, q5<=n199, q6<=n152, q7<=n155, q8<=n167, q9<=n197, q10<=n195, q11<=n197.
+
+Interesting q1 and q8 both d=n167, q9 and q11 both d=n197. Initials: q0=0,q1=0,q2=0,q3=1,q4=0,q5=0,q6=0,q7=1,q8=1,q9=0,q10=0,q11=1.
+
+Outputs: n199 (also q5 next state), q5, q6, q8. Note q8 = q1 after first? Since same d n167, but initial q1=0 q8=1 differ at cycle0; after edge cycle0 both load n167(cycle0), so from cycle1 onward q1=q8. q5 is output and also feedback. q6 d=n152. Need record q5,q6,q8 current state each cycle (before update) and n199 settled.
+
+We need evaluate n199 each cycle. n199 = NAND(n198,n14). It depends on huge chain. We need compute per cycle. Since only 3 inputs and 12 state bits = 32768 possible states; but we just need 24 steps along trajectory. Still many gate evals. But maybe we can derive recurrence for relevant signals and use structure. Need carefully simulate maybe with tabular method. We can compute all n values per cycle? 200*24 = 4800 operations. Possible but error-prone. We need a strategy to reduce and verify.
+
+The gates form a linear chain with inputs at each stage: n_i = NAND(n_{i-1}, s_i) for i>=1? Let's inspect: n0=NAND(q5,q8). For n1..n199, indeed every gate y=n_i has a = n_{i-1}, b = some source (q or n earlier or input). Check all gates: n1 a=n0 b=q7; n2 a=n1 b=q8; ... n61 a=n60 b=n26; n62 a=n61 b=n61 (NOT n61); n63 a=n62 b=n7; etc. Yes every gate is n_i = NAND(n_{i-1}, b_i), where b_i is either q/in or some n_j with j<i (could be n_{i-1} for n62, n121 uses n120? n121 a=n120 b=n111 yes; n122 a=n121 b=n120; n170 a=n169 b=n169; n171 a=n170 b=n95; n194 a=n193 b=n49; n195 a=n194 b=n192; all b earlier). So it's a serial NAND chain with taps. We can model recurrence: n0 = ~(q5 & q8). For i>=1, n_i = ~(n_{i-1} & b_i) = 1 if n_{i-1}=0 or b_i=0; else 0. In terms of boolean: if b_i=0 then n_i=1 regardless; if b_i=1 then n_i = NOT n_{i-1}. Thus along chain, when the side input b_i is 0, output forced to 1; when b_i=1, it toggles the chain value. This is huge simplification!
+
+Define x_i = n_i. x_0 = ~(q5 q8). For i>=1, if b_i=0 -> x_i=1; if b_i=1 -> x_i = ~x_{i-1}. Equivalently x_i = ~x_{i-1} OR ~b_i? NAND.
+
+Because b_i can be earlier x_j (which is 0/1), q's, inputs. If b_i=1 toggles; if 0 sets to 1. This makes computation easier: scan i=0..199, maintain x. For each side input b_i, if 0 set x=1, if 1 flip x. Starting x0 known from q5,q8. At end n199 = x199. We don't actually need all n_i values except when used as side inputs later. But to know b_i that are n_j, we need their values. However since x_j are generated sequentially, we can record needed ones. We can process per cycle maintaining an array n[0..199] maybe but with simplified update. Need side input list b_i for i=1..199. Then for each cycle, given state q and inputs, compute n sequentially with rule. This is feasible: 200 steps per cycle *24 = 4800 but each simple. Need reduce further perhaps using segments between side inputs that are state variables/inputs; many side inputs are n_j with known values computed earlier in same cycle. We cannot skip because n_j values needed. But we can create a transition function for the scalar x as a sequence of operations: op_i = SET1 if b_i=0 else FLIP if b_i=1. b_i may itself be x_j; but x_j determined by prior ops and initial x0. This is like a one-dimensional cellular process; maybe many b_i are constants for a cycle (q/in) and some are x_j. We can derive for each cycle by evaluating needed x_j in order. That's the task.
+
+Maybe we can derive n199 as a function of current state and inputs by evaluating the chain symbolically in terms of x0 and the side inputs. Because operations are flip/set. If all side inputs b_i were independent constants c_i, then x_n = if last set-to-1 after last flip etc. Specifically scanning operations on x: start x0; for each i with side constant c_i: if c_i=0 set x=1; if c_i=1 flip. This can be expressed: after processing all, x = (x0 XOR F) if no set after? More exactly, keep track: operation sequence of set1 (S) and toggle (T). x_i = T_i(x_{i-1}) where T_i = flip if c_i=1 else constant1. Compose affine functions over GF(2) with possible constant. A flip is x->x⊕1; set1 is x->1 (constant). Composition yields either constant 1 if last op is set1 and no? Let's derive: process ops, result = A*x0 ⊕ B where A∈{0,1}. If A=1, result depends on x0; if A=0, result constant B. Start A=1,B=0 (result=x0). For op c=1 (flip): A stays1, B⊕=1. For op c=0 (set1): A=0,B=1 (regardless previous). If subsequent flips when A=0: result constant B⊕1. If subsequent set1 resets to constant1. So we can reduce constants. But side inputs include x_j, which are functions of x0 and previous side constants; still affine with A_j,B_j. We can maintain for each n_j its affine form (A_j,B_j) in terms of x0? Since side input b_i = n_j = A_j x0 ⊕ B_j. If A_j=1, then b_i depends on x0; the operation becomes conditional on x0: if x0 makes b_i=0 set else flip. That may introduce nonlinearity? Let's examine: operation with side input b = A_b x0 ⊕ B_b. If b=0 set x=1; if b=1 flip x. The resulting x = if b=0 then 1 else ~x_prev. This equals NAND(x_prev,b) = 1 ⊕ (x_prev & b). If b affine in x0 and x_prev affine in x0, AND of affine functions can be nonlinear (product of x0 with A_prev*A_b). However maybe because x_prev itself after a set has A_prev=0 or if A_prev=1 and b depends on x0, product term x0*x0 = x0 (still affine!) Since over GF(2), x0^2=x0 for boolean variable (only one variable). AND of affine functions in a single variable remains affine: (a x ⊕ b)(c x ⊕ d) = ac x^2 ⊕ (ad⊕bc)x ⊕ bd = (ac ⊕ ad ⊕ bc) x ⊕ bd. So affine in one variable. Good. We can represent each n_i as affine in x0: n_i = p_i x0 ⊕ r_i (p_i,r_i bits). Since x0 = ~(q5&q8) is a bit (function of current state). Then n199 = p199 x0 ⊕ r199. Great! But side inputs also include q's and external inputs; these are constants for the cycle. q5,q8 determine x0; note q5,q8 also appear as side inputs b_i in many places. But if we treat x0 as variable and also q5,q8 constants, there may be duplicate dependence? x0 = ~(q5&q8); q5 and q8 are independent state bits within a cycle. n_i may depend on q5/q8 both through x0 and directly as side inputs (e.g., n5 b=q5, n6 b=q8, n19 b=q5, etc.). If we only use affine in x0, we'd lose dependence on q5 and q8 separately when they appear as side inputs. However for computing n199 for a given cycle, q5,q8 are constants; we can just evaluate scalar. But maybe to build a cycle-independent function, we'd need variables for all state bits and inputs. Too many. Instead per cycle scalar with simplified op is okay.
+
+Can we reduce per-cycle computation by precomputing for each possible pattern of constant side inputs? There are side inputs from DFF q's and inputs. Since only 15 external constant bits per cycle (q0..q11,in0..in2) but n_i side taps include x_j. We can maybe derive n199 as function of current state and inputs by Boolean algebra with variables q0..q11,in0..in2. That's 15 vars, too complex. But trajectory only 24 cycles; scalar scan might be best. Need be meticulous.
+
+Potential further simplification: The operation scan with side b_i: if b_i=0 set x=1; if b_i=1 flip. Notice after a set to 1, subsequent side input equal to 1 flips to 0, equal to 0 keeps/sets to1. If we encode x as bit. We can process in segments between side taps that are computed n_j. But still need values at tap points. We can create list of side inputs and maybe precompute which n_j are used as side inputs. Then for each cycle, compute n_j only for used j in increasing order. However nearly all n_j are used as side inputs? Let's check many. We need n0..n198 possibly. But maybe we can compute all with compact notation per cycle. 24 cycles manageable if we make tables. Need avoid arithmetic mistakes. We can use a robust method: For each cycle, first list the current q state and inputs. Then evaluate n0..n199 using recurrence but maybe group runs where side input is constant (q/in) vs tap.
+
+Alternative: Since operation is either set-to-1 (S) or toggle (T), and toggles depend on side bit=1, we can process x by noting: If side bit b=0 -> x becomes 1. If b=1 -> x becomes 1-x. We can represent this as: after processing a side bit b, new x = (NOT b) OR (b AND NOT x). But for scalar we just do.
+
+Maybe we can precompute the entire chain transformation as a lookup keyed by the values of side inputs that are *not* n taps*. But side taps n_j create internal dependencies; however n_j are just earlier values of x, so the transformation from x0 and constant side inputs to x199 can be computed once per cycle by scanning. We still need update DFFs; d's are n153,n167,n177,n151,n188,n199,n152,n155,n197,n195. We need these values each cycle. They are along the scan; record them. Outputs q5,q6,q8 are state; record before update. Good.
+
+Need produce exactly 24 values for outputs. We can compute cycles sequentially. The initial state is given; inputs per cycle. We need for each cycle t: use q state (current) and inputs to compute all needed n's and d's; record outputs; then update q's. Need be extremely careful.
+
+Could there be an even deeper simplification due to q1=q8 after t=1, q9=q11 after t=1, and relationships among d's? Let's note DFF d mapping:
+- q0_d = n153
+- q1_d = n167
+- q2_d = n177
+- q3_d = n151
+- q4_d = n188
+- q5_d = n199 (output)
+- q6_d = n152
+- q7_d = n155
+- q8_d = n167 (same as q1)
+- q9_d = n197
+- q10_d = n195
+- q11_d = n197 (same as q9)
+Initial q3=1,q7=1,q8=1,q11=1; others 0.
+Thus after cycle0 edge: q1=q8=n167_0; q9=q11=n197_0. From t=1 onward q1=q8 and q9=q11. Also q8 output equals q1; q8 init special only cycle0.
+
+Maybe some d's are related: n151 and n152 share n150 etc. n153 = NAND(n152,n114). n155=NAND(n154,n135). n167 = NAND(n166,n30). n177=NAND(n176,n86). n188=NAND(n187,in1). n195=NAND(n194,n192). n197=NAND(n196,n104). n199=NAND(n198,n14). Need values.
+
+Given complexity, maybe we can build a manual "program" with variables and compute using tables. We as model can simulate systematically. Need maybe use algebra to reduce chain scans per cycle. Let's investigate structure of side inputs to possibly find periodicity or constant outputs. The circuit name chain_s5101_g200_d12 suggests generated random chain with depth 12? Maybe outputs may be chaotic. But 24 cycles only.
+
+Maybe we can derive the exact n_i sequence as a function of a small set of "source" side inputs (q/in) by using the set/toggle insight and intervals. Because side inputs that are n_j often refer back to earlier x; but since x is scalar, using an earlier n_j as side input has a simple effect: if n_j=0 set current x=1; if n_j=1 toggle current x. But n_j itself is the value of the same scalar x at an earlier point. So operation at i with side input n_j compares current x_{i-1} to past x_j. Specifically if past x_j=0 -> set to1; if past x_j=1 -> invert current. There may be patterns: If x_{i-1}=x_j? Let's compute NAND(x_{i-1}, x_j). If x_j=0 =>1; if x_j=1=>~x_{i-1}. Not simplifiable without values.
+
+Maybe there are duplicate side inputs b_i = n_{i-1} (n62 = NAND(n61,n61) = NOT n61; n121=NAND(n120,n111) not; n122=NAND(n121,n120); n170=NAND(n169,n169)=NOT n169; n188=NAND(n187,in1); n189=NAND(n188,in1) etc.) Some NOTs.
+
+Manual simulation with 200 gates per cycle may be feasible if we exploit that many n_i become constant due to a side input 0. But side inputs are often q's; state evolves. We can compute cycle by cycle with a table of only relevant n (d's and taps used later). However d's near end require many earlier n's; likely need all. But perhaps we can compute n_i sequence as a string of bits length 200 for each cycle using operation scan. Doing that 24 times manually is lengthy but possible with disciplined notation. Need find way to make it less error-prone.
+
+Could use mathematical composition with affine functions in multiple variables? Maybe too much. But perhaps because the chain is all NAND, if any side input is 0, it sets x=1 and effectively "resets" dependence on previous x. Long runs with side input 1 toggle. Since side inputs include many q's; in a given cycle, some q's are 0 causing resets. We can scan and maintain x; no need store all n except those referenced later. But to compute a referenced n_j later, we can note it when passing j. Let's compile the list of side inputs b_i and mark which are n references. Then during scan, we record n_i for i in D (needed as future side input or d/output). Let's identify needed n indices: all n_j that appear as b_i for some later gate, plus d indices {151,152,153,155,167,177,188,195,197,199}, plus maybe n14 output? n199 uses n198,n14; n14 is a side input and also needed for n199. It will be computed anyway. We can just record every n_i? Maybe not necessary if we compute sequentially and side inputs refer to earlier n_j; we need random access to n_j when at i. Since j<i, if we didn't store n_j we'd be stuck. But we can store only those needed later. Let's find set of n_j used as side inputs. From gate list, b_i values for i=1..199 (since a always n_{i-1}; for n0 special). Let's enumerate b_i by n_i:
+ n1 b q7
+ n2 q8
+ n3 q1
+ n4 q11
+ n5 q5
+ n6 q8
+ n7 q0
+ n8 n5
+ n9 q9
+ n10 q2
+ n11 q11
+ n12 q8
+ n13 q3
+ n14 q3
+ n15 q10
+ n16 q7
+ n17 n12
+ n18 n1
+ n19 q2
+ n20 q5
+ n21 in0
+ n22 n0
+ n23 n17
+ n24 q11
+ n25 n18
+ n26 n10
+ n27 in0
+ n28 q8
+ n29 n11
+ n30 n14
+ n31 n4
+ n32 n3
+ n33 n16
+ n34 n15
+ n35 n31
+ n36 n1
+ n37 n10
+ n38 n24
+ n39 n9
+ n40 n35
+ n41 q4
+ n42 n14
+ n43 n26
+ n44 n32
+ n45 q2
+ n46 q3
+ n47 q5
+ n48 n27
+ n49 n22
+ n50 n42
+ n51 q4
+ n52 n24
+ n53 n33
+ n54 n10
+ n55 n1
+ n56 n33
+ n57 n16
+ n58 n27
+ n59 n42
+ n60 n32
+ n61 n26
+ n62 n61 (self via a and b same? Gate n62: a=n61,b=n61 => NOT n61)
+ n63 n7
+ n64 n30
+ n65 n3
+ n66 n50
+ n67 n14
+ n68 n43
+ n69 n57
+ n70 n22
+ n71 n21
+ n72 n68
+ n73 n51
+ n74 n22
+ n75 n65
+ n76 n33
+ n77 q11
+ n78 n27
+ n79 in2
+ n80 n59
+ n81 n72
+ n82 in0
+ n83 n17
+ n84 n79
+ n85 n41
+ n86 n30
+ n87 n39
+ n88 n43
+ n89 n21
+ n90 n29
+ n91 n5
+ n92 n5
+ n93 n49
+ n94 n30
+ n95 n83
+ n96 n43
+ n97 n87
+ n98 n41
+ n99 n22
+ n100 n45
+ n101 n28
+ n102 q5
+ n103 n77
+ n104 n71
+ n105 n92
+ n106 n100
+ n107 n72
+ n108 n96
+ n109 n98
+ n110 n95
+ n111 n87
+ n112 n69
+ n113 n32
+ n114 n50
+ n115 n28
+ n116 n72
+ n117 q0
+ n118 n55
+ n119 n74
+ n120 n54
+ n121 n111
+ n122 n120
+ n123 n103
+ n124 n93
+ n125 q0
+ n126 n101
+ n127 n79
+ n128 n27
+ n129 n82
+ n130 n27
+ n131 n43
+ n132 n24
+ n133 n0
+ n134 n32
+ n135 n16
+ n136 n16
+ n137 n96
+ n138 n24
+ n139 n131
+ n140 n126
+ n141 n90
+ n142 n116
+ n143 n75
+ n144 n44
+ n145 q2
+ n146 n97
+ n147 n143
+ n148 n33
+ n149 n99
+ n150 n108
+ n151 n90
+ n152 n18
+ n153 n114
+ n154 n92
+ n155 n135
+ n156 n12
+ n157 n118
+ n158 q3
+ n159 n72
+ n160 n53
+ n161 n113
+ n162 n81
+ n163 n140
+ n164 n22
+ n165 n75
+ n166 n7
+ n167 n30
+ n168 n28
+ n169 n146
+ n170 n19
+ n171 n169
+ n172 n95
+ n173 n121
+ n174 n35
+ n175 n107
+ n176 n113
+ n177 n86
+ n178 n29
+ n179 n119
+ n180 n116
+ n181 n63
+ n182 n67
+ n183 n113
+ n184 q4
+ n185 n16
+ n186 n90
+ n187 n38
+ n188 in1
+ n189 in1
+ n190 n120
+ n191 n169
+ n192 n96
+ n193 n67
+ n194 n49
+ n195 n192
+ n196 n164
+ n197 n104
+ n198 n116
+ n199 n14
+
+Need verify from list around n151-n155: n151 a=n150 b=n90; n152 a=n151 b=n18; n153 a=n152 b=n114; n154 a=n153 b=n92; n155 a=n154 b=n135. Yes. DFF q7 d=n155. Good.
+
+Set of n references (side taps) includes many. Simpler to store all n_i maybe as a bit string; but we can compute and record needed d's. Since references are to earlier n, random access; if we compute sequentially and store all n_i in an array of 200 bits per cycle, that's robust. But writing 200 bits per cycle manually impossible. We need compute only final outputs, but due to dependencies maybe all. However we can perform scan and not write all bits, just keep current x and a dictionary for stored needed n. We need know when current index i is needed later; we can precompute needed set. Then store n_i if i in needed. Current x always available for next gate. This is feasible: for each cycle, we scan i=0..199, update x; if i in needed set, record. The needed set includes all n_j used as side inputs later and d's. Let's list needed set sorted; it's large (maybe 90). But recording only when needed still many. We can instead at the time we need n_j as side input, we must have stored it. Since j<i, we can store all j that are referenced. There are maybe ~100 unique. Still manageable? For each cycle we may compute/store maybe 100 values. But we can reduce by noting many referenced n_j are themselves computed from current x; if we maintain current x and also maybe a small set of past values. No alternative.
+
+Maybe we can exploit the operation scan to compute final d's without storing all taps by transforming with segments. For a given cycle, side inputs that are constants (q/in) partition the chain; side taps refer to positions. But to know tap values, we need evaluate at those positions. This is like evaluating a straight-line program; no way around if values matter. But maybe many taps are to positions whose values are constant because after a zero side input. We can compute on the fly.
+
+Given we are an AI with large context, we can simulate using a tabular method but need keep token count manageable. We can use the simplified operation and perhaps derive for each cycle only the d values by scanning with annotations. This will be lengthy but possible. We need be precise.
+
+Let's consider creating a reusable evaluation algorithm manually: For each cycle, we have constants: Q=(q0..q11), I=(in0,in1,in2). We compute n0 = ~(q5 & q8). Then for i=1..199, b_i as listed; n_i = (b_i==0) ? 1 : 1-n_{i-1}. Since n_{i-1} current x. In implementation by hand, if b_i=0, set x=1; if b_i=1, flip x. This means we don't even need compute AND; just side bit. For side bit that's an n_j, we look up stored value. Good.
+
+Potential to compress scan by runs: If b_i=0, x=1. If subsequent b's are 1, x alternates: after k consecutive side-1 gates following a set/initial, x = 1 if k even? Let's define after a reset to 1 at position r (x_r=1), for positions r+1..r+k with all side bits=1, x toggles each step: x_{r+m}=1 XOR (m mod 2)? Since start x_r=1; after one toggle x=0; after two x=1. So x_{r+m}=1 if m even, 0 if m odd. If a side bit=0 at any point, reset to 1 and start new run. This can speed: process consecutive gates whose side bits are constant 1 (q/in or stored n=1) as toggles; any side bit 0 resets to 1. But side bits that are n_j may vary; still we process one by one. We can in a cycle precompute which constant side bits are 0 (resets) among q/in. Taps need lookup. Hmm.
+
+Maybe there are many constant zero side inputs because state has several zeros; each zero q side input forces x=1, making downstream easier. We can leverage resets.
+
+Let's first compute state trajectory maybe without full n? But d's depend on n. No.
+
+Could try to implement the simulation mentally in a structured spreadsheet. Since final only needs 4 outputs length24, maybe we can compute using approximate and verify via invariants? Need exact. We need find a reliable manual method. We can simulate using symbolic boolean expressions restricted to current cycle with constants, and use the set/toggle scan. I think the best is to create for each cycle a compact line: state, inputs, then scan gates in chunks, recording x at needed positions. We can do chunking by segments where side input is constant (q/in) vs tap. But even with chunks, we must compute taps.
+
+Maybe we can use the affine composition in a single variable x0 *per cycle*, but including direct q5/q8 side inputs as constants. Since q5/q8 are constants for that cycle, we can choose x0 value and just scan. No.
+
+Let's see if outputs maybe stabilize or inputs periodic. Input traces length24: in0 = [0,0,1,1,0,0,1,0,0,0,1,1,0,1,0,0,0,0,0,0,0,1,1,1]
+in1 = [0,1,1,1,0,1,1,0,1,1,0,1,0,1,0,0,1,1,0,1,1,0,1,1]
+in2 = [0,1,0,0,0,1,1,0,1,1,1,1,1,0,1,1,0,1,0,1,0,1,0,0]
+No obvious period. State maybe random. Need compute.
+
+Maybe use the fact there are only 4 outputs and d's; perhaps n199 depends on n198 and n14. n198 = NAND(n197,n116). n197 = NAND(n196,n104), etc. This tail can be computed if we know a subset. But n14 is early (depends on n13,q3). We still need n14. Could compute from early part. The tail n151..n199 uses many earlier taps. Not enough.
+
+Maybe derive using a virtual machine in our head with operations represented by two global variables: x (current chain value) and a dictionary M for needed n. We can process each cycle in a pass. To reduce risk, I will build the b_i list and needed positions. Then for each cycle, I'll evaluate in chunks and write down values for d positions and outputs. I must be very careful.
+
+Let's formulate the update rule in a way that minimizes operations: maintain x = n_{i-1}. For each i, side b. If b=0 -> x=1 else x = 1-x. Actually if b=1 and x maybe? yes flip. We'll call R (reset to 1) when b=0, F when b=1. We can record n_i=x after op. We need n0 too = ~(q5&q8). Note if q5&q8=0 then n0=1 else0. Since q5/q8 often maybe.
+
+Important: NAND( a, b) with a=x, b=b. If b=0 -> y=1. If b=1 -> y=NOT x. Correct.
+
+Let's create a table of b_i in compact symbolic form. I'll make an indexed list with side token and maybe mark reset if token is a constant (input or q) but token value varies per cycle. We'll use per-cycle constants.
+
+I will name state bits at cycle start: Q0..Q11 and inputs A=in0, B=in1, C=in2. At each cycle, compute n's, record output O = [n199, Q5,Q6,Q8] (q5/q6/q8 current), then update Q. Since q8 = Q8 current; q1 maybe same after t1. Good.
+
+Let's list DFF update mapping clearly:
+newQ0 = n153
+newQ1 = n167
+newQ2 = n177
+newQ3 = n151
+newQ4 = n188
+newQ5 = n199
+newQ6 = n152
+newQ7 = n155
+newQ8 = n167
+newQ9 = n197
+newQ10 = n195
+newQ11 = n197
+
+After update, Q1=Q8, Q9=Q11. Good. We can update using recorded n values. Need ensure recording n153 etc.
+
+I think we should perform the simulation in passes but use algebra to compute n values in terms of current x and maybe store tap values. Let's precompute the side token list with indices in groups of 10 for reference. I'll create table T[i] = side token for n_i (for i=1..199). Already enumerated. I'll reformat into groups for scanning:
+1 q7 |2 q8 |3 q1 |4 q11 |5 q5 |6 q8 |7 q0 |8 n5 |9 q9 |10 q2
+11 q11 |12 q8 |13 q3 |14 q3 |15 q10 |16 q7 |17 n12 |18 n1 |19 q2 |20 q5
+21 in0 |22 n0 |23 n17 |24 q11 |25 n18 |26 n10 |27 in0 |28 q8 |29 n11 |30 n14
+31 n4 |32 n3 |33 n16 |34 n15 |35 n31 |36 n1 |37 n10 |38 n24 |39 n9 |40 n35
+41 q4 |42 n14 |43 n26 |44 n32 |45 q2 |46 q3 |47 q5 |48 n27 |49 n22 |50 n42
+51 q4 |52 n24 |53 n33 |54 n10 |55 n1 |56 n33 |57 n16 |58 n27 |59 n42 |60 n32
+61 n26 |62 n61 |63 n7 |64 n30 |65 n3 |66 n50 |67 n14 |68 n43 |69 n57 |70 n22
+71 n21 |72 n68 |73 n51 |74 n22 |75 n65 |76 n33 |77 q11 |78 n27 |79 in2 |80 n59
+81 n72 |82 in0 |83 n17 |84 n79 |85 n41 |86 n30 |87 n39 |88 n43 |89 n21 |90 n29
+91 n5 |92 n5 |93 n49 |94 n30 |95 n83 |96 n43 |97 n87 |98 n41 |99 n22 |100 n45
+101 n28 |102 q5 |103 n77 |104 n71 |105 n92 |106 n100 |107 n72 |108 n96 |109 n98 |110 n95
+111 n87 |112 n69 |113 n32 |114 n50 |115 n28 |116 n72 |117 q0 |118 n55 |119 n74 |120 n54
+121 n111 |122 n120 |123 n103 |124 n93 |125 q0 |126 n101 |127 n79 |128 n27 |129 n82 |130 n27
+131 n43 |132 n24 |133 n0 |134 n32 |135 n16 |136 n16 |137 n96 |138 n24 |139 n131 |140 n126
+141 n90 |142 n116 |143 n75 |144 n44 |145 q2 |146 n97 |147 n143 |148 n33 |149 n99 |150 n108
+151 n90 |152 n18 |153 n114 |154 n92 |155 n135 |156 n12 |157 n118 |158 q3 |159 n72 |160 n53
+161 n113 |162 n81 |163 n140 |164 n22 |165 n75 |166 n7 |167 n30 |168 n28 |169 n146 |170 n19
+171 n169 |172 n95 |173 n121 |174 n35 |175 n107 |176 n113 |177 n86 |178 n29 |179 n119 |180 n116
+181 n63 |182 n67 |183 n113 |184 q4 |185 n16 |186 n90 |187 n38 |188 in1 |189 in1 |190 n120
+191 n169 |192 n96 |193 n67 |194 n49 |195 n192 |196 n164 |197 n104 |198 n116 |199 n14
+Need double-check n170: gate n170 a=n169 b=n19 yes. n171 a=n170 b=n169. Good.
+
+We can precompute for each cycle the values of constant side tokens: q0..q11, in0..in2. Then scan. To compute n_i efficiently, maybe we only need current x and stored n for taps. We can store n at all indices that are tokens. But when scanning, if side token is n_j, we retrieve M[j]. So M must include all token n_j. Since token n_j can be any earlier index; easiest to store every n_i as we compute? But we can store in an associative array only for i that appears as a token later or d. Let's create needed set Nstore = all n_j appearing in T (unique) plus d positions. It will include many indices. But if an index appears as a token, by definition we need its value when later. We can store it at compute time. If an index is not needed later and not d, we can skip storing, but still need current x for next. However all n_i are computed as current x anyway; storing is just if needed. Let's get sorted Nstore to know when to record. Unique n tokens from T:
+From T list: n5,n12,n1,n17,n0,n18,n10,n11,n14,n4,n3,n16,n15,n31,n24,n9,n35,n26,n32,n27,n22,n42,n33,n61,n7,n30,n50,n43,n57,n21,n68,n51,n65,n59,n72,n79,n41,n39,n29,n49,n83,n87,n45,n28,n77,n71,n92,n100,n96,n98,n95,n69,n55,n74,n54,n111,n120,n103,n93,n101,n82,n131,n126,n90,n116,n75,n44,n97,n143,n99,n108,n114,n135,n118,n53,n113,n81,n140,n146,n19,n169,n121,n107,n86,n119,n63,n67,n38,n169 etc, n164,n192,n104,n116,n14.
+Let's sort and include d positions {151,152,153,155,167,177,188,195,197,199}; but if d position not in token list, still record. Many d positions may also be tokens? n151 not used as side token? It appears only as d q3; n152 d q6 and a for n153; n153 d q0 and a for n154; n155 d; n167 d; n177 d; n188 d and side for n189? n189 side in1, not n188. n195 d; n197 d and side? no (but q9/q11). n199 output/d q5. Need record d values at those indices. Also n199 output. We can record all indices at d. Since scanning current x, recording is trivial.
+
+Sorted Nstore (let's compile carefully). From unique tokens and d. I'll create set S:
+0,1,3,4,5,7,9,10,11,12,14,15,16,17,18,19,21,22,24,26,27,28,29,30,31,32,33,35,38,39,41,42,43,44,45,49,50,51,53,54,55,57,59,61,63,65,67,68,69,71,72,74,75,77,79,81,82,83,86,87,90,92,93,95,96,97,98,99,100,101,103,104,107,108,111,113,114,116,118,119,120,121,126,131,135,140,143,146,151,152,153,155,164,167,169,177,188,192,195,197,199. Did I miss n23? n23 token? T has n23? b for n24 is q11; n23 not used later? Search T: n23 appears? n24 q11, n25 n18, no n23. n23 not in set. n34? token? n35 uses n31, n36 n1, no n34? n34 not used. n36? used? T has n37 n10, no n36? n36 not used. n37? no. n40? no. n46? no. n47? no. n48? used by n49? n49 side n22; n50 side n42. n48 not used later? Search n48: b for n49 is n22; no n48. So not needed. n52? no? n53 side n33, n52 not used. n56? no? n57 side n16; n56 not used. n58? used by n59? n59 side n42; no n58. n60? no. n62? no? n63 side n7; n62 not used. n64? no? n65 side n3; no n64. n66? no? n67 side n14; n66 not used. n70? used by n71? n71 side n21; no n70. n73? no? n74 side n22; n73 not used. n76? used by n77 q11? no n76. n78? used by n79 in2? no n78. n80? used by n81 n72? no n80. n84? used by n85 n41? no. n85? used by n86 n30? no. n88? used by n89 n21? no. n89? used by n90 n29? no. n91? used by n92 n5? no n91. n94? used by n95 n83? no. n102? used by n103 n77? no. n105? used by n106 n100? no. n106? used by n107 n72? no. n109? used by n110 n95? no. n110? used by n111 n87? no. n112? used by n113 n32? no. n115? used by n116 n72? no. n117? used by n118 n55? no. n122? used by n123 n103? no. n123? used by n124 n93? no. n124? used by n125 q0? no. n125? used by n126 n101? no. n127? used by n128 n27? no. n128? used by n129 n82? no. n129? used by n130 n27? no. n130? used by n131 n43? no. n132? used by n133 n0? no. n133? used by n134 n32? no. n134? used by n135 n16? no. n136? used by n137 n96? no. n137? used by n138 n24? no. n138? used by n139 n131? no. n139? used by n140 n126? no. n141? used by n142 n116? no. n142? used by n143 n75? no. n144? used by n145 q2? no. n145? used by n146 n97? no. n147? used by n148 n33? no. n148? used by n149 n99? no. n149? used by n150 n108? no. n150? used by n151 n90? no (it's a input but value current; no need store unless d? n150 not d). n154? used by n155 n135 as a only; not d, no need store except current. n156? no. n157? no. n158? no. n159? no. n160? no. n161? no. n162? no. n163? no. n165? no? n166 side n7, no n165. n166? no? n167 d uses n166 current; no need store. n168? no? n169 side n146; n168 not used. n170? used by n171 n169? no n170. n171? used by n172 n95? no. n172? used by n173 n121? no. n173? used by n174 n35? no. n174? used by n175 n107? no. n175? used by n176 n113? no. n176? used by n177 n86 as a only; n177 d. no need store n176. n178? no. n179? no. n180? no. n181? no. n182? no. n183? no. n184? no. n185? no. n186? no. n187? used by n188 in1? a only; n188 d. n189? no. n190? no. n191? no. n193? no. n194? no. n196? used by n197 n104 as a only; no. n198? used by n199 n14 as a only; no. Good.
+
+But do we need store n0? T uses n0 at n22 and n133. yes include. n1 etc.
+
+Storing ~100 values per cycle still but we can record only when needed for future. However for computing the scan, we often need values at positions that are in S; we can store them in a compact map. In manual reasoning, carrying a map of 100 bits per cycle is too much. But we can compute taps at time of use if we had recorded them; we need a way to recall. Maybe we can write the entire n sequence as a bit string of length 200 for each cycle, but that's a lot. Yet perhaps the scan has long runs after resets; the bit string may be compressible. Hmm.
+
+Alternative: Because the chain is sequential and each gate's a input is previous n, the value n_i for all i can be generated from x0 and the sequence of side bits b_i. But the side bits that are n_j are themselves generated from same process, creating a deterministic finite transducer with one bit memory? Wait, is the whole gate-only graph (excluding DFF feedback) with side taps n_j actually still a single-bit memory process? At any point, n_i = NAND(n_{i-1}, n_j) for a tap. This depends on n_{i-1} and an earlier n_j. To compute future, you might need many past n_j, so memory is more than one bit. But note n_j for j<i can be expressed as a function of n_{i-1}? Not generally. However due to the chain of NAND with taps, maybe there is a theorem: Since n_j = NAND(n_{j-1}, b_j), and for i>j, n_i is computed from n_{i-1}; there may be relation if no resets between j and i. If between j and i there are only toggles (side bits 1), then n_i = parity relation to n_j; if there is a reset (side bit 0), n_i after reset independent of earlier. Side bits that are n_k complicate but perhaps resets dominate.
+
+Maybe we can derive n_i by tracking last reset position. Operation set-to-1 occurs when side bit b_i=0. If b_i is a constant q/in=0 or a tap n_j=0. After any set-to-1, previous history irrelevant until next set. Thus for a given i, n_i depends only on x0 and side bits since the most recent reset (where side bit=0). A tap n_j=0 causes a reset; if n_j=1 it's a toggle. Therefore if we know the value of tap n_j, we know whether it resets. Still need n_j. But maybe we can find resets from constants; taps can be computed relative to last reset too. This is like a stack; not simpler.
+
+Given time, maybe I can simulate by actually writing a small evaluator in my head? No code execution. But as ChatGPT, maybe I can internally perform computations more reliably if I create a representation and evaluate in bulk. Need choose.
+
+Let's consider using Boolean function synthesis with variables being the 12 state bits and 3 inputs. Because all gates are NAND and depth 200, but we only need functions for d's maybe. We could derive expressions for n_i in terms of the *primary inputs to the combinational block* (q0..q11,in0..in2). There are 15 variables; but maybe many gates are AND/NAND chain, expressions could be huge. Not manual.
+
+Could use the fact there are only 24 cycles and state initialized mostly zero; maybe compute using a custom notation where for each cycle we evaluate the chain and record only the DFF d's. I'll commit to this. To manage, I'll process each cycle in chunks (e.g., n0-n49, n50-n99, n100-n149, n150-n199) and maintain a small table of stored tap values as needed. But retrieving stored tap values from previous chunk within same cycle is okay if I write them down. I can write a per-cycle work area listing n indices and values for S encountered. That's many but maybe only values needed later; however I won't know which stored values will be needed later? I have S. At each index in S, record value. That is up to ~100 per cycle. In the final answer we don't show work, but in reasoning we can. It might be long. We need do it accurately.
+
+Maybe we can reduce S drastically: Many stored tap values are used only once or twice; but still needed. However we can compute the value of a tap n_j at the time it's needed by re-evaluating from last reset? Not easier.
+
+Could evaluate the chain for all cycles simultaneously using symbolic state transition? no.
+
+Let's see if the DFF states maybe can be updated with only a subset of n values that are late; to compute those late n values, due to resets, maybe they depend on a limited suffix of the chain after the last constant reset. The tail n151..n199 includes side inputs; if somewhere before n151 there is a side bit=0 reset, then n151.. depend only on suffix. We can find for each cycle the last reset before a d position. But resets from taps require values. Still, perhaps many d functions depend on suffixes and not entire 200. We still need compute suffix from some point; but suffixes may start late if a guaranteed reset occurs (constant q/in=0 or a tap known 0). For example n188=NAND(n187,in1). If in1=0, n188=1 regardless of n187. That makes q4 update easy in cycles with in1=0. n189=NAND(n188,in1) etc. Some d's simplify with inputs:
+- q4_d n188 = NAND(n187,in1): if in1=0 -> n188=1; if in1=1 -> n188=NOT n187. n187=NAND(n186,n38). Could still.
+- n79 = NAND(n78,in2): if in2=0 -> n79=1. This reset may simplify after n79. in2=0 cycles: t0,2,3,4,7,13,16,18,20,22,23. In those cycles n79=1, and because n79 used at n84,n127, etc. Good.
+- n21=NAND(n20,in0), n27=NAND(n26,in0), n82=NAND(n81,in0). If in0=0 then n21=n27=n82=1 (resets at those points). in0=0 many cycles. This can simplify.
+- n0 = ~(q5&q8); if either q5/q8=0 then n0=1. Since q5 init0 and maybe often? We'll see.
+
+Maybe the chain has resets at n21 if in0=0, n27 if in0=0, n79 if in2=0, n188 if in1=0. These resets can make suffix independent. For d positions before n21 (n153 etc no), not much.
+
+Let's maybe construct a per-cycle scan but use resets to skip: If at position i side bit=0, set x=1. Then if the following side bits up to some needed point are all 1, we can compute parity. But side bits include taps; no.
+
+Could there be a hidden issue: The gate-only graph must be acyclic. It is, because gates ordered but some gates use later n? Check n170 uses n169 (earlier), n171 uses n169 (earlier) and a n170, okay. n195 uses n192 (earlier), n194; okay. No combinational loops.
+
+Let's plan manual computation in detail. We will maintain for each cycle a work string maybe of x values at all indices? Perhaps I can compute and record the entire n sequence as a run-length encoded string. Since operation only flips on side=1 and sets to1 on side=0, the sequence n_i has a property: whenever side b_i=0, n_i=1. If side b_i=1, n_i = 1 - n_{i-1}. Thus over runs of consecutive b_i=1 (with no resets), n_i alternates. A run of toggles of length L after a value v (n_{start}) yields sequence n_{start+1}=1-v, n_{start+2}=v, etc. If a reset occurs at r (b_r=0), n_r=1 regardless of previous; then after r, toggle run. Therefore to compute n sequence, we need side bit sequence b_i. Taps make b_i depend on n_j, which are in the same sequence; but we can fill sequentially.
+
+Maybe we can compute using a single pass and write down n_i only at positions in S. I'll create S sorted with maybe groups and check off. For each cycle, I'll produce a compact list of assignments for S positions as I pass. To retrieve a tap n_j, I look at the list. Since S sorted ascending, and I scan ascending, I can maintain a printed list of pairs. It is long but manageable if I only record needed positions. However final reasoning token count might be huge (24*100=2400 assignments) but within budget? We have maybe large. But risk of mistakes. We need improve.
+
+Can we compute state trajectory using a smaller set by observing many n in S are not actually needed for d outputs because d positions late maybe depend on suffix after resets. But to know outputs we need n199; it depends on n198,n14. n198 depends on n197,n116; n197 on n196,n104; n196 on n195,n164; n195 on n194,n192; n194 on n193,n49; n193 on n192,n67; n192 on n191,n96; n191 on n190,n169; n190 on n189,n120; n189 on n188,in1; n188 on n187,in1; ... This tail dependency includes many earlier values (n187->n38, n120->n54..., n169->n146..., etc.). It might reach back to early. Not much.
+
+Maybe use an actual mental trick: Emulate code by treating each cycle's gate evaluation as a sequence of operations on a bit x. We don't need to store all n_j if we process gates in an order where when a tap n_j is needed, we can recompute it from a stored *checkpoint*. We could store checkpoints at all possible tap sources but that's S. No.
+
+Let's estimate if S size maybe ~95. Recording 95 bits/cycle = 2280 bits; plus operations. It is possible in the hidden reasoning if systematic, but final answer only JSON. We need not show work. We can do computations in tool content. Let's proceed but seek optimizations.
+
+Maybe we can choose to simulate using a table of DFF states and for each cycle compute n sequence with a custom "reset parity" method. Let's formulate the scan in terms of side bit b_i. For constant side tokens, we know b. For tap tokens, b=M[j]. We will maintain x. Instead of storing M for all S in a list, I can annotate the side token table with the actual b value for the current cycle in a second pass? Hmm.
+
+Maybe evaluate in two passes per cycle:
+Pass 1: compute constant side token values (q/in). Then scan i from 0 to199; maintain x; for tap token n_j, instead of needing random access, note that j<i and if we have been writing the n sequence in a contiguous array, we can read. So contiguous array is simplest. We can write n sequence as bits in chunks of 10. Maybe do that for each cycle. 200 bits*24=4800 bits, but writing bits in reasoning is possible? Too much. But we don't need to write all in final; in tool we can. However manually generating 4800 bits is error-prone.
+
+Could use mathematical pattern to compute chunks without writing each bit. Let's exploit runs. In a given cycle, many side bits are q/in constants. We can precompute reset positions from constants. Taps unknown, but if a run between constant resets contains taps, those taps are to positions perhaps before the run; their values can be looked up. Still.
+
+Maybe the generated circuit has depth d12 and seed; outputs could be produced by a known evaluator? No.
+
+Given the demand for exactness, maybe I can simulate with a pseudo-code mentally but verify by recomputing critical cycles multiple ways. Let's start and see if state maybe enters a pattern. We'll compute cycle by cycle with the simplified scan. To keep it manageable, I will for each cycle record only the values needed for DFF updates and output; but to compute them I will derive using back substitution from the target late nodes, possibly not requiring all 200. Let's try back-substitution for the d nodes. Maybe expressions for d nodes can be computed by recursively expanding until reaching q/in or until hitting a node already computed. This is similar but focuses on needed nodes. Since there are 10 d nodes, but they share a lot; we can compute needed subgraph. In the worst case it includes many nodes. But perhaps the d nodes are near the end and their cone includes a large fraction; still maybe less than all. Let's estimate dependency cone of {n151,n152,n153,n155,n167,n177,n188,n195,n197,n199}. It includes n151->n150->n149->... chain back; because each n_i depends on n_{i-1}, the cone of any n_i includes all previous n_0..n_{i-1} (via a inputs) plus side taps. So n199 depends on all n0..n198 through the chain a inputs! Indeed since a=n_{i-1} for every gate, n199 depends on entire chain. Even if side input resets make previous irrelevant dynamically, structurally all. But dynamically resets can cut dependence. Need values.
+
+Could use the reset property to cut: For computing n_i, if along the way a side bit b_k=0 for k<=i, then n_i may not depend on n_{k-1}; but we still compute sequentially. For n199, find the latest position r<=199 such that b_r=0 (n_r forced 1). Then n199 depends only on x_r=1 and side bits r+1..199; not on earlier chain. If we can identify a late guaranteed reset (b_r=0 constant) or compute that some tap is 0, we can start there. For cycles with in1=0, n188=1 (reset) and n189? b=in1=0 -> n189=1 too; then n190 side n120 maybe, etc. Latest constant reset maybe n189 if in1=0; if in1=1, n188/n189 are toggles of n187, not resets. There may be later side bits after n189: n190 b=n120, n191 n169, n192 n96, n193 n67, n194 n49, n195 n192 (tap), n196 n164, n197 n104, n198 n116, n199 n14. No constant inputs after n189 except none. So if in1=0, n188=n189=1 (since b=0). Then we can compute tail from n189=1 using taps n120,n169,n96,n67,n49,n192,n164,n104,n116,n14. Still need those. If in1=1, n188=~n187 and n189 = NAND(n188,1)=~n188 = n187 (interesting: when in1=1, n188=NOT n187, n189=NOT n188 = n187). So n189 = (in1? n187 : 1). Actually if in1=1, n189=n187. If in1=0, n189=1. Good. n187=NAND(n186,n38). We can simplify tail.
+
+Similarly n79 if in2=0 reset; n21/n27/n82 if in0=0 reset. Maybe dynamic resets late can be found.
+
+Let's derive some simplifications for repeated patterns:
+- n61 = NAND(n60,n26); n62 = NAND(n61,n61) = NOT n61. So n62 = ~n61 = n60 & n26? Since n61=~(n60 n26), n62= n60 n26. But in scan, after computing n61=x, n62 = flip(x) (because b=n61=x; NAND(x,x)=~x). Yes n62=~n61. It may be 0/1. n63=NAND(n62,n7). Not a reset unless n7=0.
+- n120=NAND(n119,n54); n121=NAND(n120,n111); n122=NAND(n121,n120). If n120=0, then n121=1 (reset), n122=NAND(1,0)=1. If n120=1, n121=~n119? wait n120 = ~(n119&n54). n121 = ~(n120&n111). n122=~(n121&n120). If n120=1, n122=~n121 = n120&n111 = n111. Actually if n120=1, n121=~n111, n122=~(~n111 &1)=n111. If n120=0, n121=1,n122=1. So n122 = n120 ? n111 : 1 = (~n120) OR n111. Could simplify but still.
+- n170=NAND(n169,n19); n171=NAND(n170,n169)=? If n169=0 -> n170=1, n171=NAND(1,0)=1. If n169=1 -> n170=~n19, n171=NAND(~n19,1)=n19. So n171 = n169 ? n19 : 1 = (~n169) OR n19. Nice. n169=NAND(n168,n146). We may use.
+- n188/n189 as above.
+- n194=NAND(n193,n49); n195=NAND(n194,n192). If n192=0 -> n195=1 reset. If n192=1 -> n195=~n194 = n193&n49? Since n194=~(n193&n49), if n192=1 n195= n193&n49. So n195 = (~n192) OR (n193&n49). But n193=NAND(n192,n67). If n192=1, n193=~n67, so n195 = (~n67)&n49. If n192=0, n195=1. Thus n195 = ~n192 OR (~n67 & n49). Nice. q10 update.
+- n197=NAND(n196,n104); n196=NAND(n195,n164). If n104=0 -> n197=1 reset. If n104=1 -> n197=~n196 = n195 & n164? Wait n196=~(n195&n164); ~n196 = n195&n164. So n197 = (~n104) OR (n195 & n164). Good. q9/q11 update. This uses n195,n164,n104.
+- n199=NAND(n198,n14); n198=NAND(n197,n116). If n14=0 -> n199=1 (output 1). If n14=1 -> n199=~n198 = n197 & n116? Since n198=~(n197&n116); ~n198=n197&n116. So n199 = (~n14) OR (n197 & n116). Great! This is a major simplification for output/q5. Need n14,n197,n116. n14=NAND(n13,q3) = if q3=0 ->1 else ~n13. n13=NAND(n12,q3); if q3=0 -> n13=1, then n14 = (q3=0)?1? Let's compute early: n12=NAND(n11,q8); n13=NAND(n12,q3); n14=NAND(n13,q3). If q3=0: n13=1,n14=1. If q3=1: n13=~n12, n14=~n13=n12. So n14 = q3 ? n12 : 1. Nice. n12=NAND(n11,q8) = q8? ~n11 :1. n11=NAND(n10,q11)=q11?~n10:1. n10=NAND(n9,q2)=q2?~n9:1. n9=NAND(n8,q9)=q9?~n8:1. n8=NAND(n7,n5). n7=NAND(n6,q0), n6=NAND(n5,q8), n5=NAND(n4,q5), n4=NAND(n3,q11), n3=NAND(n2,q1), n2=NAND(n1,q8), n1=NAND(n0,q7), n0=~(q5&q8). Since q1=q8 after cycle1, maybe simplifications. Early n14 can be computed with small chain. Good.
+
+Also n116 maybe can be simplified. n116=NAND(n115,n72). n115=NAND(n114,n28); n114=NAND(n113,n50); n113=NAND(n112,n32); n112=NAND(n111,n69); n111=NAND(n110,n87); n110=NAND(n109,n95); n109=NAND(n108,n98); n108=NAND(n107,n96); n107=NAND(n106,n72); n106=NAND(n105,n100); n105=NAND(n104,n92); n104=NAND(n103,n71); n103=NAND(n102,n77); n102=NAND(n101,q5); n101=NAND(n100,n28); n100=NAND(n99,n45); ... This still deep.
+
+Maybe derive n197 and n116 via resets. Let's find possible late resets:
+- n103=NAND(n102,n77). If n77=0 then n103=1. n77=NAND(n76,q11): if q11=0 then n77=1 (reset), actually NAND(n76,0)=1. If q11=1, n77=~n76. n77=0 would require q11=1 and n76=1. possible.
+- n117=NAND(n116,q0): if q0=0 -> n117=1 reset; n125 similarly. But n117/n125 used later.
+- n145=NAND(n144,q2): if q2=0 -> n145=1. n158=NAND(n157,q3): if q3=0 -> n158=1. n184=NAND(n183,q4): if q4=0 -> n184=1. These resets occur but positions after targets? n145 before n151; n158 before n167? Could cut for n167 maybe. For n177, n184 if q4=0 sets n184=1, then n185.. etc. Good.
+
+Maybe dynamic state has many zeros initially, causing resets; later maybe random. We still compute.
+
+Could we exploit that q3 init1 and q7/q8/q11 init1; after some updates maybe states not too random. Let's just simulate. I'll use the simplified formulas for key outputs to reduce: 
+Output n199 = (~n14) OR (n197 & n116). Because if n14=0 output=1; else output = n197&n116. Since n197 = (~n104) OR (n195 & n164). So if n14=1 and n197=1 and n116=1 output=1 else 0. Actually n199 = NAND(n198,n14), n198=NAND(n197,n116). Let's verify: if n14=0, n199=1. If n14=1, n199=NOT n198. n198 = NAND(n197,n116) = ~(n197&n116). NOT n198 = n197&n116. yes. So n199 = (n14==0) ? 1 : (n197 & n116). Since bits, n199 = ~n14 | (n197 & n116). Good. This means to get n199 we need n14,n197,n116. n197 needs n104,n195,n164. n195 = ~n192 | (~n67 & n49) (derived). Let's verify n195 formula: n193=NAND(n192,n67)=~(n192&n67). n194=NAND(n193,n49)=~(n193&n49). n195=NAND(n194,n192). If n192=0 -> n195=1. If n192=1 -> n193=~n67; n194=~((~n67)&n49)= n67 OR ~n49; n195=~n194 = (~n67)&n49. Formula n195 = ~n192 OR ((~n67)&n49). Yes. Nice. Then n197 = ~n104 OR (n195 & n164) = ~n104 | ( (~n192 | (~n67&n49)) & n164 ). If n104=0, n197=1 regardless. Good. n164=NAND(n163,n22); n163=NAND(n162,n140); n162=NAND(n161,n81); n161=NAND(n160,n113); n160=NAND(n159,n53); n159=NAND(n158,n72); n158=NAND(n157,q3). If q3=0 -> n158=1; if q2=0 -> n145=1 maybe affects n146 etc. Still.
+
+n116 = NAND(n115,n72). If n72=0 -> n116=1. If n72=1 -> n116=~n115. n115=NAND(n114,n28): if n28=0 ->1 else ~n114. n114=NAND(n113,n50): if n50=0 ->1 else ~n113. n113=NAND(n112,n32): if n32=0 ->1 else ~n112. n112=NAND(n111,n69): if n69=0 ->1 else ~n111. n111=NAND(n110,n87): if n87=0 ->1 else ~n110. n110=NAND(n109,n95): if n95=0 ->1 else ~n109. n109=NAND(n108,n98): if n98=0 ->1 else ~n108. n108=NAND(n107,n96): if n96=0 ->1 else ~n107. n107=NAND(n106,n72): if n72=0 ->1 else ~n106. So if n72=0, n107=1 and n116=1. If n72=1, n107=~n106; then n108 depends n96; etc. Maybe n116 often? Need compute.
+
+n14 early is easy. n116/n197 still need mid-chain. But maybe formulas can recursively simplify with conditional resets. We can define a helper for NAND chain with side tokens: Many subexpressions of form NAND(X, s) = ~s OR (s? ~X). We can expand to DNF? Could get complex but for scalar per cycle, conditional formulas let us skip if a side bit zero. We'll use scan anyway.
+
+Maybe use a programming-like evaluation but only store variables that appear in formulas for n14,n116,n197 and d's. However d's include n151,n152,n153,n155,n167,n177,n188 too. n151/n152/n153/n155 are close: 
+n151=NAND(n150,n90); n152=NAND(n151,n18); n153=NAND(n152,n114); n154=NAND(n153,n92); n155=NAND(n154,n135). We need n150,n90,n18,n114,n92,n135. n167=NAND(n166,n30); need n166,n30. n177=NAND(n176,n86); need n176,n86. n188 need n187/in1. So still many.
+
+I think no shortcut full. Let's begin systematic scan and maybe discover state evolves into all zeros? Initial q's: q3,q7,q8,q11=1. If many DFF d's evaluate maybe zeros, state could become mostly zeros after a cycle, making constant side zeros and resets. Let's compute cycle0 carefully; maybe it collapses.
+
+I'll define operation eval for a cycle. For cycle0: Q: q0=0,q1=0,q2=0,q3=1,q4=0,q5=0,q6=0,q7=1,q8=1,q9=0,q10=0,q11=1. Inputs t0: in0=0,in1=0,in2=0.
+Since q5=0,q8=1 -> n0=~(0&1)=1.
+Many constant side zeros: q0=0 causes n7=1, n117=1,n125=1; q2=0 causes n10=1,n19=1,n45=1,n145=1; q4=0 causes n41=1,n51=1,n184=1; q5=0 causes n5? side q5=0 -> n5=1, n20=1,n47=1,n102=1; q9=0 n9=1; q10=0 n15=1; in0=0 n21=1,n27=1,n82=1; in1=0 n188=1,n189=1; in2=0 n79=1. q1=0 side n3=1. q8=1 toggles at n2,n6,n12,n28; q11=1 toggles at n4,n11,n24,n77; q3=1 toggles n13,n14,n46,n158; q7=1 toggles n1,n16. Great. Cycle0 may be easy. Let's scan with resets.
+
+I'll compute n values needed. Let's do full scan for cycle0 using rule and record S. Start x=n0=1. M{0:1}.
+i1 b q7=1 -> flip x:1->0. n1=0 (store)
+i2 b q8=1 -> flip 0->1. n2=1 (not in S? n2 not needed; current x=1)
+i3 b q1=0 -> set x=1. n3=1 (store)
+i4 b q11=1 -> flip 1->0. n4=0 (store)
+i5 b q5=0 -> set x=1. n5=1 (store)
+i6 b q8=1 -> flip 1->0. n6=0 (not store? n6 not in S; x=0)
+i7 b q0=0 -> set x=1. n7=1 (store)
+i8 b n5=1 -> flip 1->0. n8=0 (not S? n8 not used later? no)
+i9 b q9=0 -> set x=1. n9=1 (store)
+i10 b q2=0 -> set x=1. n10=1 (store)
+i11 b q11=1 -> flip 1->0. n11=0 (store)
+i12 b q8=1 -> flip 0->1. n12=1 (store)
+i13 b q3=1 -> flip 1->0. n13=0 (not S? n13 not used later? n14 uses current n13; no need store, but x=0)
+i14 b q3=1 -> flip 0->1. n14=1 (store)
+This matches n14=q3? n12=1 ->1.
+i15 b q10=0 -> set x=1. n15=1 (store)
+i16 b q7=1 -> flip 1->0. n16=0 (store)
+i17 b n12=1 -> flip 0->1. n17=1 (store)
+i18 b n1=0 -> set x=1. n18=1 (store)
+i19 b q2=0 -> set x=1. n19=1 (store)
+i20 b q5=0 -> set x=1. n20=1 (not S? no)
+i21 b in0=0 -> set x=1. n21=1 (store)
+i22 b n0=1 -> flip 1->0. n22=0 (store)
+i23 b n17=1 -> flip 0->1. n23=1 (not S)
+i24 b q11=1 -> flip 1->0. n24=0 (store)
+i25 b n18=1 -> flip 0->1. n25=1 (not S? n25 not used later? search n25? no)
+i26 b n10=1 -> flip 1->0. n26=0 (store)
+i27 b in0=0 -> set x=1. n27=1 (store)
+i28 b q8=1 -> flip 1->0. n28=0 (store)
+i29 b n11=0 -> set x=1. n29=1 (store)
+i30 b n14=1 -> flip 1->0. n30=0 (store)
+i31 b n4=0 -> set x=1. n31=1 (store)
+i32 b n3=1 -> flip 1->0. n32=0 (store)
+i33 b n16=0 -> set x=1. n33=1 (store)
+i34 b n15=1 -> flip 1->0. n34=0 (not S)
+i35 b n31=1 -> flip 0->1. n35=1 (store)
+i36 b n1=0 -> set x=1. n36=1 (not S)
+i37 b n10=1 -> flip 1->0. n37=0 (not S)
+i38 b n24=0 -> set x=1. n38=1 (store)
+i39 b n9=1 -> flip 1->0. n39=0 (store)
+i40 b n35=1 -> flip 0->1. n40=1 (not S? n40 not used later? no)
+i41 b q4=0 -> set x=1. n41=1 (store)
+i42 b n14=1 -> flip 1->0. n42=0 (store)
+i43 b n26=0 -> set x=1. n43=1 (store)
+i44 b n32=0 -> set x=1. n44=1 (store)
+i45 b q2=0 -> set x=1. n45=1 (store)
+i46 b q3=1 -> flip 1->0. n46=0 (not S)
+i47 b q5=0 -> set x=1. n47=1 (not S? n47 not used later? no)
+i48 b n27=1 -> flip 1->0. n48=0 (not S)
+i49 b n22=0 -> set x=1. n49=1 (store)
+i50 b n42=0 -> set x=1. n50=1 (store)
+i51 b q4=0 -> set x=1. n51=1 (store)
+i52 b n24=0 -> set x=1. n52=1 (not S? no)
+i53 b n33=1 -> flip 1->0. n53=0 (store)
+i54 b n10=1 -> flip 0->1. n54=1 (store)
+i55 b n1=0 -> set x=1. n55=1 (store)
+i56 b n33=1 -> flip 1->0. n56=0 (not S)
+i57 b n16=0 -> set x=1. n57=1 (store)
+i58 b n27=1 -> flip 1->0. n58=0 (not S)
+i59 b n42=0 -> set x=1. n59=1 (store)
+i60 b n32=0 -> set x=1. n60=1 (not S? no)
+i61 b n26=0 -> set x=1. n61=1 (store? n61 used by n62 side; include yes we put n61 in S? We included n61 because token n62 b=n61. yes store)
+i62 b n61=1 -> flip 1->0. n62=0 (not S)
+i63 b n7=1 -> flip 0->1. n63=1 (store)
+i64 b n30=0 -> set x=1. n64=1 (not S)
+i65 b n3=1 -> flip 1->0. n65=0 (store)
+i66 b n50=1 -> flip 0->1. n66=1 (not S? n66 not used later? no)
+i67 b n14=1 -> flip 1->0. n67=0 (store)
+i68 b n43=1 -> flip 0->1. n68=1 (store)
+i69 b n57=1 -> flip 1->0. n69=0 (store)
+i70 b n22=0 -> set x=1. n70=1 (not S)
+i71 b n21=1 -> flip 1->0. n71=0 (store)
+i72 b n68=1 -> flip 0->1. n72=1 (store)
+i73 b n51=1 -> flip 1->0. n73=0 (not S)
+i74 b n22=0 -> set x=1. n74=1 (store)
+i75 b n65=0 -> set x=1. n75=1 (store)
+i76 b n33=1 -> flip 1->0. n76=0 (not S? n76 not used? no)
+i77 b q11=1 -> flip 0->1. n77=1 (store)
+i78 b n27=1 -> flip 1->0. n78=0 (not S)
+i79 b in2=0 -> set x=1. n79=1 (store)
+i80 b n59=1 -> flip 1->0. n80=0 (not S)
+i81 b n72=1 -> flip 0->1. n81=1 (store)
+i82 b in0=0 -> set x=1. n82=1 (store)
+i83 b n17=1 -> flip 1->0. n83=0 (store)
+i84 b n79=1 -> flip 0->1. n84=1 (not S)
+i85 b n41=1 -> flip 1->0. n85=0 (not S)
+i86 b n30=0 -> set x=1. n86=1 (store)
+i87 b n39=0 -> set x=1. n87=1 (store)
+i88 b n43=1 -> flip 1->0. n88=0 (not S)
+i89 b n21=1 -> flip 0->1. n89=1 (not S? n89 not used? no)
+i90 b n29=1 -> flip 1->0. n90=0 (store)
+i91 b n5=1 -> flip 0->1. n91=1 (not S)
+i92 b n5=1 -> flip 1->0. n92=0 (store)
+i93 b n49=1 -> flip 0->1. n93=1 (store)
+i94 b n30=0 -> set x=1. n94=1 (not S)
+i95 b n83=0 -> set x=1. n95=1 (store)
+i96 b n43=1 -> flip 1->0. n96=0 (store)
+i97 b n87=1 -> flip 0->1. n97=1 (store)
+i98 b n41=1 -> flip 1->0. n98=0 (store)
+i99 b n22=0 -> set x=1. n99=1 (store)
+i100 b n45=1 -> flip 1->0. n100=0 (store)
+i101 b n28=0 -> set x=1. n101=1 (store)
+i102 b q5=0 -> set x=1. n102=1 (not S? no)
+i103 b n77=1 -> flip 1->0. n103=0 (store)
+i104 b n71=0 -> set x=1. n104=1 (store)
+i105 b n92=0 -> set x=1. n105=1 (not S)
+i106 b n100=0 -> set x=1. n106=1 (not S)
+i107 b n72=1 -> flip 1->0. n107=0 (store)
+i108 b n96=0 -> set x=1. n108=1 (store)
+i109 b n98=0 -> set x=1. n109=1 (not S? n109 not used? no)
+i110 b n95=1 -> flip 1->0. n110=0 (not S? n110 not used? no)
+i111 b n87=1 -> flip 0->1. n111=1 (store)
+i112 b n69=0 -> set x=1. n112=1 (not S? no)
+i113 b n32=0 -> set x=1. n113=1 (store)
+i114 b n50=1 -> flip 1->0. n114=0 (store)
+i115 b n28=0 -> set x=1. n115=1 (not S)
+i116 b n72=1 -> flip 1->0. n116=0 (store)
+i117 b q0=0 -> set x=1. n117=1 (not S? no)
+i118 b n55=1 -> flip 1->0. n118=0 (store)
+i119 b n74=1 -> flip 0->1. n119=1 (store)
+i120 b n54=1 -> flip 1->0. n120=0 (store)
+i121 b n111=1 -> flip 0->1. n121=1 (store)
+i122 b n120=0 -> set x=1. n122=1 (not S)
+i123 b n103=0 -> set x=1. n123=1 (not S)
+i124 b n93=1 -> flip 1->0. n124=0 (not S)
+i125 b q0=0 -> set x=1. n125=1 (not S)
+i126 b n101=1 -> flip 1->0. n126=0 (store)
+i127 b n79=1 -> flip 0->1. n127=1 (not S)
+i128 b n27=1 -> flip 1->0. n128=0 (not S)
+i129 b n82=1 -> flip 0->1. n129=1 (not S)
+i130 b n27=1 -> flip 1->0. n130=0 (not S)
+i131 b n43=1 -> flip 0->1. n131=1 (store)
+i132 b n24=0 -> set x=1. n132=1 (not S)
+i133 b n0=1 -> flip 1->0. n133=0 (not S)
+i134 b n32=0 -> set x=1. n134=1 (not S)
+i135 b n16=0 -> set x=1. n135=1 (store)
+i136 b n16=0 -> set x=1. n136=1 (not S)
+i137 b n96=0 -> set x=1. n137=1 (not S)
+i138 b n24=0 -> set x=1. n138=1 (not S)
+i139 b n131=1 -> flip 1->0. n139=0 (not S)
+i140 b n126=0 -> set x=1. n140=1 (store)
+i141 b n90=0 -> set x=1. n141=1 (not S)
+i142 b n116=0 -> set x=1. n142=1 (not S)
+i143 b n75=1 -> flip 1->0. n143=0 (store)
+i144 b n44=1 -> flip 0->1. n144=1 (not S)
+i145 b q2=0 -> set x=1. n145=1 (not S)
+i146 b n97=1 -> flip 1->0. n146=0 (store)
+i147 b n143=0 -> set x=1. n147=1 (not S)
+i148 b n33=1 -> flip 1->0. n148=0 (not S)
+i149 b n99=1 -> flip 0->1. n149=1 (not S)
+i150 b n108=1 -> flip 1->0. n150=0 (not S)
+i151 b n90=0 -> set x=1. n151=1 (d q3) record
+i152 b n18=1 -> flip 1->0. n152=0 (d q6) record
+i153 b n114=0 -> set x=1. n153=1 (d q0)
+i154 b n92=0 -> set x=1. n154=1 (not S)
+i155 b n135=1 -> flip 1->0. n155=0 (d q7)
+i156 b n12=1 -> flip 0->1. n156=1 (not S)
+i157 b n118=0 -> set x=1. n157=1 (not S)
+i158 b q3=1 -> flip 1->0. n158=0 (not S)
+i159 b n72=1 -> flip 0->1. n159=1 (not S)
+i160 b n53=0 -> set x=1. n160=1 (not S)
+i161 b n113=1 -> flip 1->0. n161=0 (not S)
+i162 b n81=1 -> flip 0->1. n162=1 (not S)
+i163 b n140=1 -> flip 1->0. n163=0 (not S)
+i164 b n22=0 -> set x=1. n164=1 (store)
+i165 b n75=1 -> flip 1->0. n165=0 (not S)
+i166 b n7=1 -> flip 0->1. n166=1 (not S)
+i167 b n30=0 -> set x=1. n167=1 (d q1/q8)
+i168 b n28=0 -> set x=1. n168=1 (not S)
+i169 b n146=0 -> set x=1. n169=1 (store)
+i170 b n19=1 -> flip 1->0. n170=0 (not S)
+i171 b n169=1 -> flip 0->1. n171=1 (not S)
+i172 b n95=1 -> flip 1->0. n172=0 (not S)
+i173 b n121=1 -> flip 0->1. n173=1 (not S)
+i174 b n35=1 -> flip 1->0. n174=0 (not S)
+i175 b n107=0 -> set x=1. n175=1 (not S)
+i176 b n113=1 -> flip 1->0. n176=0 (not S)
+i177 b n86=1 -> flip 0->1. n177=1 (d q2)
+i178 b n29=1 -> flip 1->0. n178=0 (not S)
+i179 b n119=1 -> flip 0->1. n179=1 (not S)
+i180 b n116=0 -> set x=1. n180=1 (not S)
+i181 b n63=1 -> flip 1->0. n181=0 (not S)
+i182 b n67=0 -> set x=1. n182=1 (not S)
+i183 b n113=1 -> flip 1->0. n183=0 (not S)
+i184 b q4=0 -> set x=1. n184=1 (not S)
+i185 b n16=0 -> set x=1. n185=1 (not S)
+i186 b n90=0 -> set x=1. n186=1 (not S)
+i187 b n38=1 -> flip 1->0. n187=0 (not S)
+i188 b in1=0 -> set x=1. n188=1 (d q4)
+i189 b in1=0 -> set x=1. n189=1 (not S)
+i190 b n120=0 -> set x=1. n190=1 (not S)
+i191 b n169=1 -> flip 1->0. n191=0 (not S)
+i192 b n96=0 -> set x=1. n192=1 (store)
+i193 b n67=0 -> set x=1. n193=1 (not S)
+i194 b n49=1 -> flip 1->0. n194=0 (not S)
+i195 b n192=1 -> flip 0->1. n195=1 (d q10) [matches formula n192=1 -> (~n67&n49)=1&1=1]
+i196 b n164=1 -> flip 1->0. n196=0 (not S)
+i197 b n104=1 -> flip 0->1. n197=1 (d q9/q11) [n104=1, n195=1,n164=1 ->1]
+i198 b n116=0 -> set x=1. n198=1 (not S)
+i199 b n14=1 -> flip 1->0. n199=0 (output/d q5). Using formula n14=1,n197=1,n116=0 ->0 yes.
+Outputs cycle0: n199=0, q5=0,q6=0,q8=1 -> [0,0,0,1] for (n199,q5,q6,q8).
+Update after cycle0: q0=n153=1; q1=n167=1; q2=n177=1; q3=n151=1; q4=n188=1; q5=n199=0; q6=n152=0; q7=n155=0; q8=n167=1; q9=n197=1; q10=n195=1; q11=n197=1.
+State t1: q0=1,q1=1,q2=1,q3=1,q4=1,q5=0,q6=0,q7=0,q8=1,q9=1,q10=1,q11=1. Inputs t1: in0=0,in1=1,in2=1.
+This is also many constants: q5=0 => resets at n5,n20,n47,n102; q6=0 not used as side? q6 only output, not in gates? Search q6: no gate uses q6. q7=0 => n1=1 (reset), n16=1; q0=1 toggles n7,n117,n125; q1=1 toggles n3; q2=1 toggles n10,n19,n45,n145; q3=1 toggles; q4=1 toggles n41,n51,n184; q8=1; q9=1; q10=1; q11=1; in0=0 resets n21,n27,n82; in1=1 (n188/n189 toggles: n189=n187); in2=1 (n79 toggle). Good. Let's scan cycle1. Start n0=~(q5&q8)=~(0&1)=1. M0=1.
+i1 b q7=0 -> set x=1. n1=1.
+i2 b q8=1 -> flip 1->0. n2=0.
+i3 b q1=1 -> flip 0->1. n3=1.
+i4 b q11=1 -> flip 1->0. n4=0.
+i5 b q5=0 -> set x=1. n5=1.
+i6 b q8=1 -> flip 1->0. n6=0.
+i7 b q0=1 -> flip 0->1. n7=1.
+i8 b n5=1 -> flip 1->0. n8=0.
+i9 b q9=1 -> flip 0->1. n9=1.
+i10 b q2=1 -> flip 1->0. n10=0.
+i11 b q11=1 -> flip 0->1. n11=1.
+i12 b q8=1 -> flip 1->0. n12=0.
+i13 b q3=1 -> flip 0->1. n13=1.
+i14 b q3=1 -> flip 1->0. n14=0. (formula q3=1 -> n14=n12=0)
+i15 b q10=1 -> flip 0->1. n15=1.
+i16 b q7=0 -> set x=1. n16=1.
+i17 b n12=0 -> set x=1. n17=1.
+i18 b n1=1 -> flip 1->0. n18=0.
+i19 b q2=1 -> flip 0->1. n19=1.
+i20 b q5=0 -> set x=1. n20=1.
+i21 b in0=0 -> set x=1. n21=1.
+i22 b n0=1 -> flip 1->0. n22=0.
+i23 b n17=1 -> flip 0->1. n23=1.
+i24 b q11=1 -> flip 1->0. n24=0.
+i25 b n18=0 -> set x=1. n25=1.
+i26 b n10=0 -> set x=1. n26=1.
+i27 b in0=0 -> set x=1. n27=1.
+i28 b q8=1 -> flip 1->0. n28=0.
+i29 b n11=1 -> flip 0->1. n29=1.
+i30 b n14=0 -> set x=1. n30=1.
+i31 b n4=0 -> set x=1. n31=1.
+i32 b n3=1 -> flip 1->0. n32=0.
+i33 b n16=1 -> flip 0->1. n33=1.
+i34 b n15=1 -> flip 1->0. n34=0.
+i35 b n31=1 -> flip 0->1. n35=1.
+i36 b n1=1 -> flip 1->0. n36=0.
+i37 b n10=0 -> set x=1. n37=1.
+i38 b n24=0 -> set x=1. n38=1.
+i39 b n9=1 -> flip 1->0. n39=0.
+i40 b n35=1 -> flip 0->1. n40=1.
+i41 b q4=1 -> flip 1->0. n41=0.
+i42 b n14=0 -> set x=1. n42=1.
+i43 b n26=1 -> flip 1->0. n43=0.
+i44 b n32=0 -> set x=1. n44=1.
+i45 b q2=1 -> flip 1->0. n45=0.
+i46 b q3=1 -> flip 0->1. n46=1.
+i47 b q5=0 -> set x=1. n47=1.
+i48 b n27=1 -> flip 1->0. n48=0.
+i49 b n22=0 -> set x=1. n49=1.
+i50 b n42=1 -> flip 1->0. n50=0.
+i51 b q4=1 -> flip 0->1. n51=1.
+i52 b n24=0 -> set x=1. n52=1.
+i53 b n33=1 -> flip 1->0. n53=0.
+i54 b n10=0 -> set x=1. n54=1.
+i55 b n1=1 -> flip 1->0. n55=0.
+i56 b n33=1 -> flip 0->1. n56=1.
+i57 b n16=1 -> flip 1->0. n57=0.
+i58 b n27=1 -> flip 0->1. n58=1.
+i59 b n42=1 -> flip 1->0. n59=0.
+i60 b n32=0 -> set x=1. n60=1.
+i61 b n26=1 -> flip 1->0. n61=0.
+i62 b n61=0 -> set x=1. n62=1.
+i63 b n7=1 -> flip 1->0. n63=0.
+i64 b n30=1 -> flip 0->1. n64=1.
+i65 b n3=1 -> flip 1->0. n65=0.
+i66 b n50=0 -> set x=1. n66=1.
+i67 b n14=0 -> set x=1. n67=1.
+i68 b n43=0 -> set x=1. n68=1.
+i69 b n57=0 -> set x=1. n69=1.
+i70 b n22=0 -> set x=1. n70=1.
+i71 b n21=1 -> flip 1->0. n71=0.
+i72 b n68=1 -> flip 0->1. n72=1.
+i73 b n51=1 -> flip 1->0. n73=0.
+i74 b n22=0 -> set x=1. n74=1.
+i75 b n65=0 -> set x=1. n75=1.
+i76 b n33=1 -> flip 1->0. n76=0.
+i77 b q11=1 -> flip 0->1. n77=1.
+i78 b n27=1 -> flip 1->0. n78=0.
+i79 b in2=1 -> flip 0->1. n79=1.
+i80 b n59=0 -> set x=1. n80=1.
+i81 b n72=1 -> flip 1->0. n81=0.
+i82 b in0=0 -> set x=1. n82=1.
+i83 b n17=1 -> flip 1->0. n83=0.
+i84 b n79=1 -> flip 0->1. n84=1.
+i85 b n41=0 -> set x=1. n85=1.
+i86 b n30=1 -> flip 1->0. n86=0.
+i87 b n39=0 -> set x=1. n87=1.
+i88 b n43=0 -> set x=1. n88=1.
+i89 b n21=1 -> flip 1->0. n89=0.
+i90 b n29=1 -> flip 0->1. n90=1.
+i91 b n5=1 -> flip 1->0. n91=0.
+i92 b n5=1 -> flip 0->1. n92=1.
+i93 b n49=1 -> flip 1->0. n93=0.
+i94 b n30=1 -> flip 0->1. n94=1.
+i95 b n83=0 -> set x=1. n95=1.
+i96 b n43=0 -> set x=1. n96=1.
+i97 b n87=1 -> flip 1->0. n97=0.
+i98 b n41=0 -> set x=1. n98=1.
+i99 b n22=0 -> set x=1. n99=1.
+i100 b n45=0 -> set x=1. n100=1.
+i101 b n28=0 -> set x=1. n101=1.
+i102 b q5=0 -> set x=1. n102=1.
+i103 b n77=1 -> flip 1->0. n103=0.
+i104 b n71=0 -> set x=1. n104=1.
+i105 b n92=1 -> flip 1->0. n105=0.
+i106 b n100=1 -> flip 0->1. n106=1.
+i107 b n72=1 -> flip 1->0. n107=0.
+i108 b n96=1 -> flip 0->1. n108=1.
+i109 b n98=1 -> flip 1->0. n109=0.
+i110 b n95=1 -> flip 0->1. n110=1.
+i111 b n87=1 -> flip 1->0. n111=0.
+i112 b n69=1 -> flip 0->1. n112=1.
+i113 b n32=0 -> set x=1. n113=1.
+i114 b n50=0 -> set x=1. n114=1.
+i115 b n28=0 -> set x=1. n115=1.
+i116 b n72=1 -> flip 1->0. n116=0.
+i117 b q0=1 -> flip 0->1. n117=1.
+i118 b n55=0 -> set x=1. n118=1.
+i119 b n74=1 -> flip 1->0. n119=0.
+i120 b n54=1 -> flip 0->1. n120=1.
+i121 b n111=0 -> set x=1. n121=1.
+i122 b n120=1 -> flip 1->0. n122=0.
+i123 b n103=0 -> set x=1. n123=1.
+i124 b n93=0 -> set x=1. n124=1.
+i125 b q0=1 -> flip 1->0. n125=0.
+i126 b n101=1 -> flip 0->1. n126=1.
+i127 b n79=1 -> flip 1->0. n127=0.
+i128 b n27=1 -> flip 0->1. n128=1.
+i129 b n82=1 -> flip 1->0. n129=0.
+i130 b n27=1 -> flip 0->1. n130=1.
+i131 b n43=0 -> set x=1. n131=1.
+i132 b n24=0 -> set x=1. n132=1.
+i133 b n0=1 -> flip 1->0. n133=0.
+i134 b n32=0 -> set x=1. n134=1.
+i135 b n16=1 -> flip 1->0. n135=0.
+i136 b n16=1 -> flip 0->1. n136=1.
+i137 b n96=1 -> flip 1->0. n137=0.
+i138 b n24=0 -> set x=1. n138=1.
+i139 b n131=1 -> flip 1->0. n139=0.
+i140 b n126=1 -> flip 0->1. n140=1.
+i141 b n90=1 -> flip 1->0. n141=0.
+i142 b n116=0 -> set x=1. n142=1.
+i143 b n75=1 -> flip 1->0. n143=0.
+i144 b n44=1 -> flip 0->1. n144=1.
+i145 b q2=1 -> flip 1->0. n145=0.
+i146 b n97=0 -> set x=1. n146=1.
+i147 b n143=0 -> set x=1. n147=1.
+i148 b n33=1 -> flip 1->0. n148=0.
+i149 b n99=1 -> flip 0->1. n149=1.
+i150 b n108=1 -> flip 1->0. n150=0.
+i151 b n90=1 -> flip 0->1. n151=1.
+i152 b n18=0 -> set x=1. n152=1.
+i153 b n114=1 -> flip 1->0. n153=0.
+i154 b n92=1 -> flip 0->1. n154=1.
+i155 b n135=0 -> set x=1. n155=1.
+i156 b n12=0 -> set x=1. n156=1.
+i157 b n118=1 -> flip 1->0. n157=0.
+i158 b q3=1 -> flip 0->1. n158=1.
+i159 b n72=1 -> flip 1->0. n159=0.
+i160 b n53=0 -> set x=1. n160=1.
+i161 b n113=1 -> flip 1->0. n161=0.
+i162 b n81=0 -> set x=1. n162=1.
+i163 b n140=1 -> flip 1->0. n163=0.
+i164 b n22=0 -> set x=1. n164=1.
+i165 b n75=1 -> flip 1->0. n165=0.
+i166 b n7=1 -> flip 0->1. n166=1.
+i167 b n30=1 -> flip 1->0. n167=0.
+i168 b n28=0 -> set x=1. n168=1.
+i169 b n146=1 -> flip 1->0. n169=0.
+i170 b n19=1 -> flip 0->1. n170=1.
+i171 b n169=0 -> set x=1. n171=1.
+i172 b n95=1 -> flip 1->0. n172=0.
+i173 b n121=1 -> flip 0->1. n173=1.
+i174 b n35=1 -> flip 1->0. n174=0.
+i175 b n107=0 -> set x=1. n175=1.
+i176 b n113=1 -> flip 1->0. n176=0.
+i177 b n86=0 -> set x=1. n177=1.
+i178 b n29=1 -> flip 1->0. n178=0.
+i179 b n119=0 -> set x=1. n179=1.
+i180 b n116=0 -> set x=1. n180=1.
+i181 b n63=0 -> set x=1. n181=1.
+i182 b n67=1 -> flip 1->0. n182=0.
+i183 b n113=1 -> flip 0->1. n183=1.
+i184 b q4=1 -> flip 1->0. n184=0.
+i185 b n16=1 -> flip 0->1. n185=1.
+i186 b n90=1 -> flip 1->0. n186=0.
+i187 b n38=1 -> flip 0->1. n187=1.
+i188 b in1=1 -> flip 1->0. n188=0.
+i189 b in1=1 -> flip 0->1. n189=1. (since in1=1 n189=n187=1)
+i190 b n120=1 -> flip 1->0. n190=0.
+i191 b n169=0 -> set x=1. n191=1.
+i192 b n96=1 -> flip 1->0. n192=0.
+i193 b n67=1 -> flip 0->1. n193=1.
+i194 b n49=1 -> flip 1->0. n194=0.
+i195 b n192=0 -> set x=1. n195=1. [formula n192=0 ->1]
+i196 b n164=1 -> flip 1->0. n196=0.
+i197 b n104=1 -> flip 0->1. n197=1. [n104=1,n195=1,n164=1]
+i198 b n116=0 -> set x=1. n198=1.
+i199 b n14=0 -> set x=1. n199=1. Formula n14=0 ->1. Outputs cycle1: n199=1,q5=0,q6=0,q8=1.
+Update state t2: q0=n153=0; q1=n167=0; q2=n177=1; q3=n151=1; q4=n188=0; q5=n199=1; q6=n152=1; q7=n155=1; q8=n167=0; q9=n197=1; q10=n195=1; q11=n197=1.
+State t2: q0=0,q1=0,q2=1,q3=1,q4=0,q5=1,q6=1,q7=1,q8=0,q9=1,q10=1,q11=1. Inputs t2: in0=1,in1=1,in2=0.
+Now q5=1,q8=0 -> n0=~(1&0)=1. q8=0 causes resets at n2,n6,n12,n28. q1=0 reset n3. q0=0 reset n7,n117,n125. q4=0 reset n41,n51,n184. in2=0 reset n79. in0=1, in1=1. q2/q3/q5/q7/q9/q10/q11=1. Let's scan cycle2. Start x=n0=1.
+i1 b q7=1 -> flip 1->0. n1=0.
+i2 b q8=0 -> set x=1. n2=1.
+i3 b q1=0 -> set x=1. n3=1.
+i4 b q11=1 -> flip 1->0. n4=0.
+i5 b q5=1 -> flip 0->1. n5=1.
+i6 b q8=0 -> set x=1. n6=1.
+i7 b q0=0 -> set x=1. n7=1.
+i8 b n5=1 -> flip 1->0. n8=0.
+i9 b q9=1 -> flip 0->1. n9=1.
+i10 b q2=1 -> flip 1->0. n10=0.
+i11 b q11=1 -> flip 0->1. n11=1.
+i12 b q8=0 -> set x=1. n12=1.
+i13 b q3=1 -> flip 1->0. n13=0.
+i14 b q3=1 -> flip 0->1. n14=1. (n12=1)
+i15 b q10=1 -> flip 1->0. n15=0.
+i16 b q7=1 -> flip 0->1. n16=1.
+i17 b n12=1 -> flip 1->0. n17=0.
+i18 b n1=0 -> set x=1. n18=1.
+i19 b q2=1 -> flip 1->0. n19=0.
+i20 b q5=1 -> flip 0->1. n20=1.
+i21 b in0=1 -> flip 1->0. n21=0.
+i22 b n0=1 -> flip 0->1. n22=1.
+i23 b n17=0 -> set x=1. n23=1.
+i24 b q11=1 -> flip 1->0. n24=0.
+i25 b n18=1 -> flip 0->1. n25=1.
+i26 b n10=0 -> set x=1. n26=1.
+i27 b in0=1 -> flip 1->0. n27=0.
+i28 b q8=0 -> set x=1. n28=1.
+i29 b n11=1 -> flip 1->0. n29=0.
+i30 b n14=1 -> flip 0->1. n30=1.
+i31 b n4=0 -> set x=1. n31=1.
+i32 b n3=1 -> flip 1->0. n32=0.
+i33 b n16=1 -> flip 0->1. n33=1.
+i34 b n15=0 -> set x=1. n34=1.
+i35 b n31=1 -> flip 1->0. n35=0.
+i36 b n1=0 -> set x=1. n36=1.
+i37 b n10=0 -> set x=1. n37=1.
+i38 b n24=0 -> set x=1. n38=1.
+i39 b n9=1 -> flip 1->0. n39=0.
+i40 b n35=0 -> set x=1. n40=1.
+i41 b q4=0 -> set x=1. n41=1.
+i42 b n14=1 -> flip 1->0. n42=0.
+i43 b n26=1 -> flip 0->1. n43=1.
+i44 b n32=0 -> set x=1. n44=1.
+i45 b q2=1 -> flip 1->0. n45=0.
+i46 b q3=1 -> flip 0->1. n46=1.
+i47 b q5=1 -> flip 1->0. n47=0.
+i48 b n27=0 -> set x=1. n48=1.
+i49 b n22=1 -> flip 1->0. n49=0.
+i50 b n42=0 -> set x=1. n50=1.
+i51 b q4=0 -> set x=1. n51=1.
+i52 b n24=0 -> set x=1. n52=1.
+i53 b n33=1 -> flip 1->0. n53=0.
+i54 b n10=0 -> set x=1. n54=1.
+i55 b n1=0 -> set x=1. n55=1.
+i56 b n33=1 -> flip 1->0. n56=0.
+i57 b n16=1 -> flip 0->1. n57=1.
+i58 b n27=0 -> set x=1. n58=1.
+i59 b n42=0 -> set x=1. n59=1.
+i60 b n32=0 -> set x=1. n60=1.
+i61 b n26=1 -> flip 1->0. n61=0.
+i62 b n61=0 -> set x=1. n62=1.
+i63 b n7=1 -> flip 1->0. n63=0.
+i64 b n30=1 -> flip 0->1. n64=1.
+i65 b n3=1 -> flip 1->0. n65=0.
+i66 b n50=1 -> flip 0->1. n66=1.
+i67 b n14=1 -> flip 1->0. n67=0.
+i68 b n43=1 -> flip 0->1. n68=1.
+i69 b n57=1 -> flip 1->0. n69=0.
+i70 b n22=1 -> flip 0->1. n70=1.
+i71 b n21=0 -> set x=1. n71=1.
+i72 b n68=1 -> flip 1->0. n72=0.
+i73 b n51=1 -> flip 0->1. n73=1.
+i74 b n22=1 -> flip 1->0. n74=0.
+i75 b n65=0 -> set x=1. n75=1.
+i76 b n33=1 -> flip 1->0. n76=0.
+i77 b q11=1 -> flip 0->1. n77=1.
+i78 b n27=0 -> set x=1. n78=1.
+i79 b in2=0 -> set x=1. n79=1.
+i80 b n59=1 -> flip 1->0. n80=0.
+i81 b n72=0 -> set x=1. n81=1.
+i82 b in0=1 -> flip 1->0. n82=0.
+i83 b n17=0 -> set x=1. n83=1.
+i84 b n79=1 -> flip 1->0. n84=0.
+i85 b n41=1 -> flip 0->1. n85=1.
+i86 b n30=1 -> flip 1->0. n86=0.
+i87 b n39=0 -> set x=1. n87=1.
+i88 b n43=1 -> flip 1->0. n88=0.
+i89 b n21=0 -> set x=1. n89=1.
+i90 b n29=0 -> set x=1. n90=1.
+i91 b n5=1 -> flip 1->0. n91=0.
+i92 b n5=1 -> flip 0->1. n92=1.
+i93 b n49=0 -> set x=1. n93=1.
+i94 b n30=1 -> flip 1->0. n94=0.
+i95 b n83=1 -> flip 0->1. n95=1.
+i96 b n43=1 -> flip 1->0. n96=0.
+i97 b n87=1 -> flip 0->1. n97=1.
+i98 b n41=1 -> flip 1->0. n98=0.
+i99 b n22=1 -> flip 0->1. n99=1.
+i100 b n45=0 -> set x=1. n100=1.
+i101 b n28=1 -> flip 1->0. n101=0.
+i102 b q5=1 -> flip 0->1. n102=1.
+i103 b n77=1 -> flip 1->0. n103=0.
+i104 b n71=1 -> flip 0->1. n104=1.
+i105 b n92=1 -> flip 1->0. n105=0.
+i106 b n100=1 -> flip 0->1. n106=1.
+i107 b n72=0 -> set x=1. n107=1.
+i108 b n96=0 -> set x=1. n108=1.
+i109 b n98=0 -> set x=1. n109=1.
+i110 b n95=1 -> flip 1->0. n110=0.
+i111 b n87=1 -> flip 0->1. n111=1.
+i112 b n69=0 -> set x=1. n112=1.
+i113 b n32=0 -> set x=1. n113=1.
+i114 b n50=1 -> flip 1->0. n114=0.
+i115 b n28=1 -> flip 0->1. n115=1.
+i116 b n72=0 -> set x=1. n116=1.
+i117 b q0=0 -> set x=1. n117=1.
+i118 b n55=1 -> flip 1->0. n118=0.
+i119 b n74=0 -> set x=1. n119=1.
+i120 b n54=1 -> flip 1->0. n120=0.
+i121 b n111=1 -> flip 0->1. n121=1.
+i122 b n120=0 -> set x=1. n122=1.
+i123 b n103=0 -> set x=1. n123=1.
+i124 b n93=1 -> flip 1->0. n124=0.
+i125 b q0=0 -> set x=1. n125=1.
+i126 b n101=0 -> set x=1. n126=1.
+i127 b n79=1 -> flip 1->0. n127=0.
+i128 b n27=0 -> set x=1. n128=1.
+i129 b n82=0 -> set x=1. n129=1.
+i130 b n27=0 -> set x=1. n130=1.
+i131 b n43=1 -> flip 1->0. n131=0.
+i132 b n24=0 -> set x=1. n132=1.
+i133 b n0=1 -> flip 1->0. n133=0.
+i134 b n32=0 -> set x=1. n134=1.
+i135 b n16=1 -> flip 1->0. n135=0.
+i136 b n16=1 -> flip 0->1. n136=1.
+i137 b n96=0 -> set x=1. n137=1.
+i138 b n24=0 -> set x=1. n138=1.
+i139 b n131=0 -> set x=1. n139=1.
+i140 b n126=1 -> flip 1->0. n140=0.
+i141 b n90=1 -> flip 0->1. n141=1.
+i142 b n116=1 -> flip 1->0. n142=0.
+i143 b n75=1 -> flip 0->1. n143=1.
+i144 b n44=1 -> flip 1->0. n144=0.
+i145 b q2=1 -> flip 0->1. n145=1.
+i146 b n97=1 -> flip 1->0. n146=0.
+i147 b n143=1 -> flip 0->1. n147=1.
+i148 b n33=1 -> flip 1->0. n148=0.
+i149 b n99=1 -> flip 0->1. n149=1.
+i150 b n108=1 -> flip 1->0. n150=0.
+i151 b n90=1 -> flip 0->1. n151=1.
+i152 b n18=1 -> flip 1->0. n152=0.
+i153 b n114=0 -> set x=1. n153=1.
+i154 b n92=1 -> flip 1->0. n154=0.
+i155 b n135=0 -> set x=1. n155=1.
+i156 b n12=1 -> flip 1->0. n156=0.
+i157 b n118=0 -> set x=1. n157=1.
+i158 b q3=1 -> flip 1->0. n158=0.
+i159 b n72=0 -> set x=1. n159=1.
+i160 b n53=0 -> set x=1. n160=1.
+i161 b n113=1 -> flip 1->0. n161=0.
+i162 b n81=1 -> flip 0->1. n162=1.
+i163 b n140=0 -> set x=1. n163=1.
+i164 b n22=1 -> flip 1->0. n164=0.
+i165 b n75=1 -> flip 0->1. n165=1.
+i166 b n7=1 -> flip 1->0. n166=0.
+i167 b n30=1 -> flip 0->1. n167=1.
+i168 b n28=1 -> flip 1->0. n168=0.
+i169 b n146=0 -> set x=1. n169=1.
+i170 b n19=0 -> set x=1. n170=1.
+i171 b n169=1 -> flip 1->0. n171=0.
+i172 b n95=1 -> flip 0->1. n172=1.
+i173 b n121=1 -> flip 1->0. n173=0.
+i174 b n35=0 -> set x=1. n174=1.
+i175 b n107=1 -> flip 1->0. n175=0.
+i176 b n113=1 -> flip 0->1. n176=1.
+i177 b n86=0 -> set x=1. n177=1.
+i178 b n29=0 -> set x=1. n178=1.
+i179 b n119=1 -> flip 1->0. n179=0.
+i180 b n116=1 -> flip 0->1. n180=1.
+i181 b n63=0 -> set x=1. n181=1.
+i182 b n67=0 -> set x=1. n182=1.
+i183 b n113=1 -> flip 1->0. n183=0.
+i184 b q4=0 -> set x=1. n184=1.
+i185 b n16=1 -> flip 1->0. n185=0.
+i186 b n90=1 -> flip 0->1. n186=1.
+i187 b n38=1 -> flip 1->0. n187=0.
+i188 b in1=1 -> flip 0->1. n188=1.
+i189 b in1=1 -> flip 1->0. n189=0. (n187=0 yes)
+i190 b n120=0 -> set x=1. n190=1.
+i191 b n169=1 -> flip 1->0. n191=0.
+i192 b n96=0 -> set x=1. n192=1.
+i193 b n67=0 -> set x=1. n193=1.
+i194 b n49=0 -> set x=1. n194=1.
+i195 b n192=1 -> flip 1->0. n195=0. [formula n192=1 -> (~n67&n49)=1&0=0]
+i196 b n164=0 -> set x=1. n196=1.
+i197 b n104=1 -> flip 1->0. n197=0. [n104=1,n195=0,n164=0 ->0]
+i198 b n116=1 -> flip 0->1. n198=1.
+i199 b n14=1 -> flip 1->0. n199=0. Formula n14=1,n197=0 ->0. Outputs t2: n199=0, q5=1,q6=1,q8=0.
+Update state t3: q0=n153=1; q1=n167=1; q2=n177=1; q3=n151=1; q4=n188=1; q5=n199=0; q6=n152=0; q7=n155=1; q8=n167=1; q9=n197=0; q10=n195=0; q11=n197=0.
+State t3: q0=1,q1=1,q2=1,q3=1,q4=1,q5=0,q6=0,q7=1,q8=1,q9=0,q10=0,q11=0. Inputs t3: in0=1,in1=1,in2=0.
+Constants: q5=0 resets n5,n20,n47,n102; q6=0 unused; q9=0 reset n9; q10=0 reset n15; q11=0 resets n4? n4 b q11=0 -> set, n11 set, n24 set, n77 set. q0=1 toggles n7/n117/n125; q1=1,q2=1,q3=1,q4=1,q7=1,q8=1. in0=1,in1=1,in2=0 (n79 reset). Start n0=~(q5&q8)=~(0&1)=1.
+Scan t3:
+x=1 n0=1.
+1 b q7=1 flip ->0 n1=0
+2 b q8=1 flip ->1 n2=1
+3 b q1=1 flip ->0 n3=0
+4 b q11=0 set ->1 n4=1
+5 b q5=0 set ->1 n5=1
+6 b q8=1 flip ->0 n6=0
+7 b q0=1 flip ->1 n7=1
+8 b n5=1 flip ->0 n8=0
+9 b q9=0 set ->1 n9=1
+10 b q2=1 flip ->0 n10=0
+11 b q11=0 set ->1 n11=1
+12 b q8=1 flip ->0 n12=0
+13 b q3=1 flip ->1 n13=1
+14 b q3=1 flip ->0 n14=0 (n12=0)
+15 b q10=0 set ->1 n15=1
+16 b q7=1 flip ->0 n16=0
+17 b n12=0 set ->1 n17=1
+18 b n1=0 set ->1 n18=1
+19 b q2=1 flip ->0 n19=0
+20 b q5=0 set ->1 n20=1
+21 b in0=1 flip ->0 n21=0
+22 b n0=1 flip ->1 n22=1
+23 b n17=1 flip ->0 n23=0
+24 b q11=0 set ->1 n24=1
+25 b n18=1 flip ->0 n25=0
+26 b n10=0 set ->1 n26=1
+27 b in0=1 flip ->0 n27=0
+28 b q8=1 flip ->1 n28=1
+29 b n11=1 flip ->0 n29=0
+30 b n14=0 set ->1 n30=1
+31 b n4=1 flip ->0 n31=0
+32 b n3=0 set ->1 n32=1
+33 b n16=0 set ->1 n33=1
+34 b n15=1 flip ->0 n34=0
+35 b n31=0 set ->1 n35=1
+36 b n1=0 set ->1 n36=1
+37 b n10=0 set ->1 n37=1
+38 b n24=1 flip ->0 n38=0
+39 b n9=1 flip ->1 n39=1
+40 b n35=1 flip ->0 n40=0
+41 b q4=1 flip ->1 n41=1
+42 b n14=0 set ->1 n42=1
+43 b n26=1 flip ->0 n43=0
+44 b n32=1 flip ->1 n44=1
+45 b q2=1 flip ->0 n45=0
+46 b q3=1 flip ->1 n46=1
+47 b q5=0 set ->1 n47=1
+48 b n27=0 set ->1 n48=1
+49 b n22=1 flip ->0 n49=0
+50 b n42=1 flip ->1 n50=1
+51 b q4=1 flip ->0 n51=0
+52 b n24=1 flip ->1 n52=1
+53 b n33=1 flip ->0 n53=0
+54 b n10=0 set ->1 n54=1
+55 b n1=0 set ->1 n55=1
+56 b n33=1 flip ->0 n56=0
+57 b n16=0 set ->1 n57=1
+58 b n27=0 set ->1 n58=1
+59 b n42=1 flip ->0 n59=0
+60 b n32=1 flip ->1 n60=1
+61 b n26=1 flip ->0 n61=0
+62 b n61=0 set ->1 n62=1
+63 b n7=1 flip ->0 n63=0
+64 b n30=1 flip ->1 n64=1
+65 b n3=0 set ->1 n65=1
+66 b n50=1 flip ->0 n66=0
+67 b n14=0 set ->1 n67=1
+68 b n43=0 set ->1 n68=1
+69 b n57=1 flip ->0 n69=0
+70 b n22=1 flip ->1 n70=1
+71 b n21=0 set ->1 n71=1
+72 b n68=1 flip ->0 n72=0
+73 b n51=0 set ->1 n73=1
+74 b n22=1 flip ->0 n74=0
+75 b n65=1 flip ->1 n75=1
+76 b n33=1 flip ->0 n76=0
+77 b q11=0 set ->1 n77=1
+78 b n27=0 set ->1 n78=1
+79 b in2=0 set ->1 n79=1
+80 b n59=0 set ->1 n80=1
+81 b n72=0 set ->1 n81=1
+82 b in0=1 flip ->0 n82=0
+83 b n17=1 flip ->1 n83=1
+84 b n79=1 flip ->0 n84=0
+85 b n41=1 flip ->1 n85=1
+86 b n30=1 flip ->0 n86=0
+87 b n39=1 flip ->1 n87=1
+88 b n43=0 set ->1 n88=1
+89 b n21=0 set ->1 n89=1
+90 b n29=0 set ->1 n90=1
+91 b n5=1 flip ->0 n91=0
+92 b n5=1 flip ->1 n92=1
+93 b n49=0 set ->1 n93=1
+94 b n30=1 flip ->0 n94=0
+95 b n83=1 flip ->1 n95=1
+96 b n43=0 set ->1 n96=1
+97 b n87=1 flip ->0 n97=0
+98 b n41=1 flip ->1 n98=1
+99 b n22=1 flip ->0 n99=0
+100 b n45=0 set ->1 n100=1
+101 b n28=1 flip ->0 n101=0
+102 b q5=0 set ->1 n102=1
+103 b n77=1 flip ->0 n103=0
+104 b n71=1 flip ->1 n104=1
+105 b n92=1 flip ->0 n105=0
+106 b n100=1 flip ->1 n106=1
+107 b n72=0 set ->1 n107=1
+108 b n96=1 flip ->0 n108=0
+109 b n98=1 flip ->1 n109=1
+110 b n95=1 flip ->0 n110=0
+111 b n87=1 flip ->1 n111=1
+112 b n69=0 set ->1 n112=1
+113 b n32=1 flip ->0 n113=0
+114 b n50=1 flip ->1 n114=1
+115 b n28=1 flip ->0 n115=0
+116 b n72=0 set ->1 n116=1
+117 b q0=1 flip ->0 n117=0
+118 b n55=1 flip ->1 n118=1
+119 b n74=0 set ->1 n119=1
+120 b n54=1 flip ->0 n120=0
+121 b n111=1 flip ->1 n121=1
+122 b n120=0 set ->1 n122=1
+123 b n103=0 set ->1 n123=1
+124 b n93=1 flip ->0 n124=0
+125 b q0=1 flip ->1 n125=1
+126 b n101=0 set ->1 n126=1
+127 b n79=1 flip ->0 n127=0
+128 b n27=0 set ->1 n128=1
+129 b n82=0 set ->1 n129=1
+130 b n27=0 set ->1 n130=1
+131 b n43=0 set ->1 n131=1
+132 b n24=1 flip ->0 n132=0
+133 b n0=1 flip ->1 n133=1
+134 b n32=1 flip ->0 n134=0
+135 b n16=0 set ->1 n135=1
+136 b n16=0 set ->1 n136=1
+137 b n96=1 flip ->0 n137=0
+138 b n24=1 flip ->1 n138=1
+139 b n131=1 flip ->0 n139=0
+140 b n126=1 flip ->1 n140=1
+141 b n90=1 flip ->0 n141=0
+142 b n116=1 flip ->1 n142=1
+143 b n75=1 flip ->0 n143=0
+144 b n44=1 flip ->1 n144=1
+145 b q2=1 flip ->0 n145=0
+146 b n97=0 set ->1 n146=1
+147 b n143=0 set ->1 n147=1
+148 b n33=1 flip ->0 n148=0
+149 b n99=0 set ->1 n149=1
+150 b n108=0 set ->1 n150=1
+151 b n90=1 flip ->0 n151=0 (d q3)
+152 b n18=1 flip ->1 n152=1 (d q6)
+153 b n114=1 flip ->0 n153=0 (d q0)
+154 b n92=1 flip ->1 n154=1
+155 b n135=1 flip ->0 n155=0 (d q7)
+156 b n12=0 set ->1 n156=1
+157 b n118=1 flip ->0 n157=0
+158 b q3=1 flip ->1 n158=1
+159 b n72=0 set ->1 n159=1
+160 b n53=0 set ->1 n160=1
+161 b n113=0 set ->1 n161=1
+162 b n81=1 flip ->0 n162=0
+163 b n140=1 flip ->1 n163=1
+164 b n22=1 flip ->0 n164=0 (store)
+165 b n75=1 flip ->1 n165=1
+166 b n7=1 flip ->0 n166=0
+167 b n30=1 flip ->1 n167=1 (d q1/q8)
+168 b n28=1 flip ->0 n168=0
+169 b n146=1 flip ->1 n169=1
+170 b n19=0 set ->1 n170=1
+171 b n169=1 flip ->0 n171=0
+172 b n95=1 flip ->1 n172=1
+173 b n121=1 flip ->0 n173=0
+174 b n35=1 flip ->1 n174=1
+175 b n107=1 flip ->0 n175=0
+176 b n113=0 set ->1 n176=1
+177 b n86=0 set ->1 n177=1 (d q2)
+178 b n29=0 set ->1 n178=1
+179 b n119=1 flip ->0 n179=0
+180 b n116=1 flip ->1 n180=1
+181 b n63=0 set ->1 n181=1
+182 b n67=1 flip ->0 n182=0
+183 b n113=0 set ->1 n183=1
+184 b q4=1 flip ->0 n184=0
+185 b n16=0 set ->1 n185=1
+186 b n90=1 flip ->0 n186=0
+187 b n38=0 set ->1 n187=1
+188 b in1=1 flip ->0 n188=0 (d q4)
+189 b in1=1 flip ->1 n189=1 (n187=1)
+190 b n120=0 set ->1 n190=1
+191 b n169=1 flip ->0 n191=0
+192 b n96=1 flip ->1 n192=1 (store)
+193 b n67=1 flip ->0 n193=0
+194 b n49=0 set ->1 n194=1
+195 b n192=1 flip ->0 n195=0 (d q10) [formula n192=1 -> (~n67=0 & n49=0)=0]
+196 b n164=0 set ->1 n196=1
+197 b n104=1 flip ->0 n197=0 (d q9/q11) [n195=0]
+198 b n116=1 flip ->1 n198=1
+199 b n14=0 set ->1 n199=1. Output t3: n199=1,q5=0,q6=0,q8=1.
+Update state t4: q0=n153=0; q1=n167=1; q2=n177=1; q3=n151=0; q4=n188=0; q5=n199=1; q6=n152=1; q7=n155=0; q8=n167=1; q9=n197=0; q10=n195=0; q11=n197=0.
+State t4: q0=0,q1=1,q2=1,q3=0,q4=0,q5=1,q6=1,q7=0,q8=1,q9=0,q10=0,q11=0. Inputs t4: in0=0,in1=0,in2=0.
+Many resets: q0=0 (n7,n117,n125), q3=0 (n13,n14,n46,n158 all set? If side q3=0, yes n13=1,n14=1,n46=1,n158=1), q4=0 (n41,n51,n184), q7=0 (n1,n16 set), q9=0 n9 set, q10=0 n15 set, q11=0 n4,n11,n24,n77 set, in0=0 n21,n27,n82 set, in1=0 n188,n189 set, in2=0 n79 set. q5=1,q8=1,q1=1,q2=1,q6 unused. Start n0=~(q5&q8)=~(1&1)=0. Important n0=0. Scan t4:
+x=n0=0.
+1 b q7=0 set ->1 n1=1
+2 b q8=1 flip ->0 n2=0
+3 b q1=1 flip ->1 n3=1
+4 b q11=0 set ->1 n4=1
+5 b q5=1 flip ->0 n5=0
+6 b q8=1 flip ->1 n6=1
+7 b q0=0 set ->1 n7=1
+8 b n5=0 set ->1 n8=1
+9 b q9=0 set ->1 n9=1
+10 b q2=1 flip ->0 n10=0
+11 b q11=0 set ->1 n11=1
+12 b q8=1 flip ->0 n12=0
+13 b q3=0 set ->1 n13=1
+14 b q3=0 set ->1 n14=1
+15 b q10=0 set ->1 n15=1
+16 b q7=0 set ->1 n16=1
+17 b n12=0 set ->1 n17=1
+18 b n1=1 flip ->0 n18=0
+19 b q2=1 flip ->1 n19=1
+20 b q5=1 flip ->0 n20=0
+21 b in0=0 set ->1 n21=1
+22 b n0=0 set ->1 n22=1
+23 b n17=1 flip ->0 n23=0
+24 b q11=0 set ->1 n24=1
+25 b n18=0 set ->1 n25=1
+26 b n10=0 set ->1 n26=1
+27 b in0=0 set ->1 n27=1
+28 b q8=1 flip ->0 n28=0
+29 b n11=1 flip ->1 n29=1
+30 b n14=1 flip ->0 n30=0
+31 b n4=1 flip ->1 n31=1
+32 b n3=1 flip ->0 n32=0
+33 b n16=1 flip ->1 n33=1
+34 b n15=1 flip ->0 n34=0
+35 b n31=1 flip ->1 n35=1
+36 b n1=1 flip ->0 n36=0
+37 b n10=0 set ->1 n37=1
+38 b n24=1 flip ->0 n38=0
+39 b n9=1 flip ->1 n39=1
+40 b n35=1 flip ->0 n40=0
+41 b q4=0 set ->1 n41=1
+42 b n14=1 flip ->0 n42=0
+43 b n26=1 flip ->1 n43=1
+44 b n32=0 set ->1 n44=1
+45 b q2=1 flip ->0 n45=0
+46 b q3=0 set ->1 n46=1
+47 b q5=1 flip ->0 n47=0
+48 b n27=1 flip ->1 n48=1
+49 b n22=1 flip ->0 n49=0
+50 b n42=0 set ->1 n50=1
+51 b q4=0 set ->1 n51=1
+52 b n24=1 flip ->0 n52=0
+53 b n33=1 flip ->1 n53=1
+54 b n10=0 set ->1 n54=1
+55 b n1=1 flip ->0 n55=0
+56 b n33=1 flip ->1 n56=1
+57 b n16=1 flip ->0 n57=0
+58 b n27=1 flip ->1 n58=1
+59 b n42=0 set ->1 n59=1
+60 b n32=0 set ->1 n60=1
+61 b n26=1 flip ->0 n61=0
+62 b n61=0 set ->1 n62=1
+63 b n7=1 flip ->0 n63=0
+64 b n30=0 set ->1 n64=1
+65 b n3=1 flip ->0 n65=0
+66 b n50=1 flip ->1 n66=1
+67 b n14=1 flip ->0 n67=0
+68 b n43=1 flip ->1 n68=1
+69 b n57=0 set ->1 n69=1
+70 b n22=1 flip ->0 n70=0
+71 b n21=1 flip ->1 n71=1
+72 b n68=1 flip ->0 n72=0
+73 b n51=1 flip ->1 n73=1
+74 b n22=1 flip ->0 n74=0
+75 b n65=0 set ->1 n75=1
+76 b n33=1 flip ->0 n76=0
+77 b q11=0 set ->1 n77=1
+78 b n27=1 flip ->0 n78=0
+79 b in2=0 set ->1 n79=1
+80 b n59=1 flip ->0 n80=0
+81 b n72=0 set ->1 n81=1
+82 b in0=0 set ->1 n82=1
+83 b n17=1 flip ->0 n83=0
+84 b n79=1 flip ->1 n84=1
+85 b n41=1 flip ->0 n85=0
+86 b n30=0 set ->1 n86=1
+87 b n39=1 flip ->0 n87=0
+88 b n43=1 flip ->1 n88=1
+89 b n21=1 flip ->0 n89=0
+90 b n29=1 flip ->1 n90=1
+91 b n5=0 set ->1 n91=1
+92 b n5=0 set ->1 n92=1
+93 b n49=0 set ->1 n93=1
+94 b n30=0 set ->1 n94=1
+95 b n83=0 set ->1 n95=1
+96 b n43=1 flip ->0 n96=0
+97 b n87=0 set ->1 n97=1
+98 b n41=1 flip ->0 n98=0
+99 b n22=1 flip ->1 n99=1
+100 b n45=0 set ->1 n100=1
+101 b n28=0 set ->1 n101=1
+102 b q5=1 flip ->0 n102=0
+103 b n77=1 flip ->1 n103=1
+104 b n71=1 flip ->0 n104=0
+105 b n92=1 flip ->1 n105=1
+106 b n100=1 flip ->0 n106=0
+107 b n72=0 set ->1 n107=1
+108 b n96=0 set ->1 n108=1
+109 b n98=0 set ->1 n109=1
+110 b n95=1 flip ->0 n110=0
+111 b n87=0 set ->1 n111=1
+112 b n69=1 flip ->0 n112=0
+113 b n32=0 set ->1 n113=1
+114 b n50=1 flip ->0 n114=0
+115 b n28=0 set ->1 n115=1
+116 b n72=0 set ->1 n116=1
+117 b q0=0 set ->1 n117=1
+118 b n55=0 set ->1 n118=1
+119 b n74=0 set ->1 n119=1
+120 b n54=1 flip ->0 n120=0
+121 b n111=1 flip ->1 n121=1
+122 b n120=0 set ->1 n122=1
+123 b n103=1 flip ->0 n123=0
+124 b n93=1 flip ->1 n124=1
+125 b q0=0 set ->1 n125=1
+126 b n101=1 flip ->0 n126=0
+127 b n79=1 flip ->1 n127=1
+128 b n27=1 flip ->0 n128=0
+129 b n82=1 flip ->1 n129=1
+130 b n27=1 flip ->0 n130=0
+131 b n43=1 flip ->1 n131=1
+132 b n24=1 flip ->0 n132=0
+133 b n0=0 set ->1 n133=1
+134 b n32=0 set ->1 n134=1
+135 b n16=1 flip ->0 n135=0
+136 b n16=1 flip ->1 n136=1
+137 b n96=0 set ->1 n137=1
+138 b n24=1 flip ->0 n138=0
+139 b n131=1 flip ->1 n139=1
+140 b n126=0 set ->1 n140=1
+141 b n90=1 flip ->0 n141=0
+142 b n116=1 flip ->1 n142=1
+143 b n75=1 flip ->0 n143=0
+144 b n44=1 flip ->1 n144=1
+145 b q2=1 flip ->0 n145=0
+146 b n97=1 flip ->1 n146=1
+147 b n143=0 set ->1 n147=1
+148 b n33=1 flip ->0 n148=0
+149 b n99=1 flip ->1 n149=1
+150 b n108=1 flip ->0 n150=0
+151 b n90=1 flip ->1 n151=1 (d q3)
+152 b n18=0 set ->1 n152=1 (d q6)
+153 b n114=0 set ->1 n153=1 (d q0)
+154 b n92=1 flip ->0 n154=0
+155 b n135=0 set ->1 n155=1 (d q7)
+156 b n12=0 set ->1 n156=1
+157 b n118=1 flip ->0 n157=0
+158 b q3=0 set ->1 n158=1
+159 b n72=0 set ->1 n159=1
+160 b n53=1 flip ->0 n160=0
+161 b n113=1 flip ->1 n161=1
+162 b n81=1 flip ->0 n162=0
+163 b n140=1 flip ->1 n163=1
+164 b n22=1 flip ->0 n164=0
+165 b n75=1 flip ->1 n165=1
+166 b n7=1 flip ->0 n166=0
+167 b n30=0 set ->1 n167=1 (d q1/q8)
+168 b n28=0 set ->1 n168=1
+169 b n146=1 flip ->0 n169=0
+170 b n19=1 flip ->1 n170=1
+171 b n169=0 set ->1 n171=1
+172 b n95=1 flip ->0 n172=0
+173 b n121=1 flip ->1 n173=1
+174 b n35=1 flip ->0 n174=0
+175 b n107=1 flip ->1 n175=1
+176 b n113=1 flip ->0 n176=0
+177 b n86=1 flip ->1 n177=1 (d q2)
+178 b n29=1 flip ->0 n178=0
+179 b n119=1 flip ->1 n179=1
+180 b n116=1 flip ->0 n180=0
+181 b n63=0 set ->1 n181=1
+182 b n67=0 set ->1 n182=1
+183 b n113=1 flip ->0 n183=0
+184 b q4=0 set ->1 n184=1
+185 b n16=1 flip ->0 n185=0
+186 b n90=1 flip ->1 n186=1
+187 b n38=0 set ->1 n187=1
+188 b in1=0 set ->1 n188=1 (d q4)
+189 b in1=0 set ->1 n189=1
+190 b n120=0 set ->1 n190=1
+191 b n169=0 set ->1 n191=1
+192 b n96=0 set ->1 n192=1
+193 b n67=0 set ->1 n193=1
+194 b n49=0 set ->1 n194=1
+195 b n192=1 flip ->0 n195=0 (d q10) [n192=1, ~n67=1 & n49=0 ->0]
+196 b n164=0 set ->1 n196=1
+197 b n104=0 set ->1 n197=1 (d q9/q11) [n104=0 ->1]
+198 b n116=1 flip ->0 n198=0
+199 b n14=1 flip ->1 n199=1. Formula n14=1,n197=1,n116=1 ->1 yes. Output t4: n199=1,q5=1,q6=1,q8=1.
+Update state t5: q0=n153=1; q1=n167=1; q2=n177=1; q3=n151=1; q4=n188=1; q5=n199=1; q6=n152=1; q7=n155=1; q8=n167=1; q9=n197=1; q10=n195=0; q11=n197=1.
+State t5: q0=1,q1=1,q2=1,q3=1,q4=1,q5=1,q6=1,q7=1,q8=1,q9=1,q10=0,q11=1. Inputs t5: in0=0,in1=1,in2=1.
+Only q10=0 resets n15; in0=0 resets n21,n27,n82. All q else 1, in1/in2=1. Start n0=~(q5&q8)=~(1&1)=0. Scan t5:
+x=0 n0=0.
+1 q7=1 flip ->1 n1=1
+2 q8=1 flip ->0 n2=0
+3 q1=1 flip ->1 n3=1
+4 q11=1 flip ->0 n4=0
+5 q5=1 flip ->1 n5=1
+6 q8=1 flip ->0 n6=0
+7 q0=1 flip ->1 n7=1
+8 n5=1 flip ->0 n8=0
+9 q9=1 flip ->1 n9=1
+10 q2=1 flip ->0 n10=0
+11 q11=1 flip ->1 n11=1
+12 q8=1 flip ->0 n12=0
+13 q3=1 flip ->1 n13=1
+14 q3=1 flip ->0 n14=0 (n12=0)
+15 q10=0 set ->1 n15=1
+16 q7=1 flip ->0 n16=0
+17 n12=0 set ->1 n17=1
+18 n1=1 flip ->0 n18=0
+19 q2=1 flip ->1 n19=1
+20 q5=1 flip ->0 n20=0
+21 in0=0 set ->1 n21=1
+22 n0=0 set ->1 n22=1
+23 n17=1 flip ->0 n23=0
+24 q11=1 flip ->1 n24=1
+25 n18=0 set ->1 n25=1
+26 n10=0 set ->1 n26=1
+27 in0=0 set ->1 n27=1
+28 q8=1 flip ->0 n28=0
+29 n11=1 flip ->1 n29=1
+30 n14=0 set ->1 n30=1
+31 n4=0 set ->1 n31=1
+32 n3=1 flip ->0 n32=0
+33 n16=0 set ->1 n33=1
+34 n15=1 flip ->0 n34=0
+35 n31=1 flip ->1 n35=1
+36 n1=1 flip ->0 n36=0
+37 n10=0 set ->1 n37=1
+38 n24=1 flip ->0 n38=0
+39 n9=1 flip ->1 n39=1
+40 n35=1 flip ->0 n40=0
+41 q4=1 flip ->1 n41=1
+42 n14=0 set ->1 n42=1
+43 n26=1 flip ->0 n43=0
+44 n32=0 set ->1 n44=1
+45 q2=1 flip ->0 n45=0
+46 q3=1 flip ->1 n46=1
+47 q5=1 flip ->0 n47=0
+48 n27=1 flip ->1 n48=1
+49 n22=1 flip ->0 n49=0
+50 n42=1 flip ->1 n50=1
+51 q4=1 flip ->0 n51=0
+52 n24=1 flip ->1 n52=1
+53 n33=1 flip ->0 n53=0
+54 n10=0 set ->1 n54=1
+55 n1=1 flip ->0 n55=0
+56 n33=1 flip ->1 n56=1
+57 n16=0 set ->1 n57=1
+58 n27=1 flip ->0 n58=0
+59 n42=1 flip ->1 n59=1
+60 n32=0 set ->1 n60=1
+61 n26=1 flip ->0 n61=0
+62 n61=0 set ->1 n62=1
+63 n7=1 flip ->0 n63=0
+64 n30=1 flip ->1 n64=1
+65 n3=1 flip ->0 n65=0
+66 n50=1 flip ->1 n66=1
+67 n14=0 set ->1 n67=1
+68 n43=0 set ->1 n68=1
+69 n57=1 flip ->0 n69=0
+70 n22=1 flip ->1 n70=1
+71 n21=1 flip ->0 n71=0
+72 n68=1 flip ->1 n72=1
+73 n51=0 set ->1 n73=1
+74 n22=1 flip ->0 n74=0
+75 n65=0 set ->1 n75=1
+76 n33=1 flip ->0 n76=0
+77 q11=1 flip ->1 n77=1
+78 n27=1 flip ->0 n78=0
+79 in2=1 flip ->1 n79=1
+80 n59=1 flip ->0 n80=0
+81 n72=1 flip ->1 n81=1
+82 in0=0 set ->1 n82=1
+83 n17=1 flip ->0 n83=0
+84 n79=1 flip ->1 n84=1
+85 n41=1 flip ->0 n85=0
+86 n30=1 flip ->1 n86=1
+87 n39=1 flip ->0 n87=0
+88 n43=0 set ->1 n88=1
+89 n21=1 flip ->0 n89=0
+90 n29=1 flip ->1 n90=1
+91 n5=1 flip ->0 n91=0
+92 n5=1 flip ->1 n92=1
+93 n49=0 set ->1 n93=1
+94 n30=1 flip ->0 n94=0
+95 n83=0 set ->1 n95=1
+96 n43=0 set ->1 n96=1
+97 n87=0 set ->1 n97=1
+98 n41=1 flip ->0 n98=0
+99 n22=1 flip ->1 n99=1
+100 n45=0 set ->1 n100=1
+101 n28=0 set ->1 n101=1
+102 q5=1 flip ->0 n102=0
+103 n77=1 flip ->1 n103=1
+104 n71=0 set ->1 n104=1
+105 n92=1 flip ->0 n105=0
+106 n100=1 flip ->1 n106=1
+107 n72=1 flip ->0 n107=0
+108 n96=1 flip ->1 n108=1
+109 n98=0 set ->1 n109=1
+110 n95=1 flip ->0 n110=0
+111 n87=0 set ->1 n111=1
+112 n69=0 set ->1 n112=1
+113 n32=0 set ->1 n113=1
+114 n50=1 flip ->0 n114=0
+115 n28=0 set ->1 n115=1
+116 n72=1 flip ->0 n116=0
+117 q0=1 flip ->1 n117=1
+118 n55=0 set ->1 n118=1
+119 n74=0 set ->1 n119=1
+120 n54=1 flip ->0 n120=0
+121 n111=1 flip ->1 n121=1
+122 n120=0 set ->1 n122=1
+123 n103=1 flip ->0 n123=0
+124 n93=1 flip ->1 n124=1
+125 q0=1 flip ->0 n125=0
+126 n101=1 flip ->1 n126=1
+127 n79=1 flip ->0 n127=0
+128 n27=1 flip ->1 n128=1
+129 n82=1 flip ->0 n129=0
+130 n27=1 flip ->1 n130=1
+131 n43=0 set ->1 n131=1
+132 n24=1 flip ->0 n132=0
+133 n0=0 set ->1 n133=1
+134 n32=0 set ->1 n134=1
+135 n16=0 set ->1 n135=1
+136 n16=0 set ->1 n136=1
+137 n96=1 flip ->0 n137=0
+138 n24=1 flip ->1 n138=1
+139 n131=1 flip ->0 n139=0
+140 n126=1 flip ->1 n140=1
+141 n90=1 flip ->0 n141=0
+142 n116=0 set ->1 n142=1
+143 n75=1 flip ->0 n143=0
+144 n44=1 flip ->1 n144=1
+145 q2=1 flip ->0 n145=0
+146 n97=1 flip ->1 n146=1
+147 n143=0 set ->1 n147=1
+148 n33=1 flip ->0 n148=0
+149 n99=1 flip ->1 n149=1
+150 n108=1 flip ->0 n150=0
+151 n90=1 flip ->1 n151=1 (q3 d)
+152 n18=0 set ->1 n152=1 (q6 d)
+153 n114=0 set ->1 n153=1 (q0 d)
+154 n92=1 flip ->0 n154=0
+155 n135=1 flip ->1 n155=1 (q7 d)
+156 n12=0 set ->1 n156=1
+157 n118=1 flip ->0 n157=0
+158 q3=1 flip ->1 n158=1
+159 n72=1 flip ->0 n159=0
+160 n53=0 set ->1 n160=1
+161 n113=1 flip ->0 n161=0
+162 n81=1 flip ->1 n162=1
+163 n140=1 flip ->0 n163=0
+164 n22=1 flip ->1 n164=1
+165 n75=1 flip ->0 n165=0
+166 n7=1 flip ->1 n166=1
+167 n30=1 flip ->0 n167=0 (q1/q8 d)
+168 n28=0 set ->1 n168=1
+169 n146=1 flip ->0 n169=0
+170 n19=1 flip ->1 n170=1
+171 n169=0 set ->1 n171=1
+172 n95=1 flip ->0 n172=0
+173 n121=1 flip ->1 n173=1
+174 n35=1 flip ->0 n174=0
+175 n107=0 set ->1 n175=1
+176 n113=1 flip ->0 n176=0
+177 n86=1 flip ->1 n177=1 (q2 d)
+178 n29=1 flip ->0 n178=0
+179 n119=1 flip ->1 n179=1
+180 n116=0 set ->1 n180=1
+181 n63=0 set ->1 n181=1
+182 n67=1 flip ->0 n182=0
+183 n113=1 flip ->1 n183=1
+184 q4=1 flip ->0 n184=0
+185 n16=0 set ->1 n185=1
+186 n90=1 flip ->0 n186=0
+187 n38=0 set ->1 n187=1
+188 in1=1 flip ->0 n188=0 (q4 d)
+189 in1=1 flip ->1 n189=1 (n187=1)
+190 n120=0 set ->1 n190=1
+191 n169=0 set ->1 n191=1
+192 n96=1 flip ->0 n192=0
+193 n67=1 flip ->1 n193=1
+194 n49=0 set ->1 n194=1
+195 n192=0 set ->1 n195=1 (q10 d) [n192=0 ->1]
+196 n164=1 flip ->0 n196=0
+197 n104=1 flip ->1 n197=1 (q9/q11 d) [n195=1,n164=1]
+198 n116=0 set ->1 n198=1
+199 n14=0 set ->1 n199=1. Output t5: n199=1,q5=1,q6=1,q8=1.
+Update state t6: q0=n153=1; q1=n167=0; q2=n177=1; q3=n151=1; q4=n188=0; q5=n199=1; q6=n152=1; q7=n155=1; q8=n167=0; q9=n197=1; q10=n195=1; q11=n197=1.
+State t6: q0=1,q1=0,q2=1,q3=1,q4=0,q5=1,q6=1,q7=1,q8=0,q9=1,q10=1,q11=1. Inputs t6: in0=1,in1=1,in2=1.
+Resets: q1=0 n3 set; q4=0 n41,n51,n184 set; q8=0 n2,n6,n12,n28 set. All else 1 (in0/in1/in2=1). Start n0=~(q5&q8)=~(1&0)=1. Scan t6:
+x=1 n0=1.
+1 q7=1 flip ->0 n1=0
+2 q8=0 set ->1 n2=1
+3 q1=0 set ->1 n3=1
+4 q11=1 flip ->0 n4=0
+5 q5=1 flip ->1 n5=1
+6 q8=0 set ->1 n6=1
+7 q0=1 flip ->0 n7=0
+8 n5=1 flip ->1 n8=1
+9 q9=1 flip ->0 n9=0
+10 q2=1 flip ->1 n10=1
+11 q11=1 flip ->0 n11=0
+12 q8=0 set ->1 n12=1
+13 q3=1 flip ->0 n13=0
+14 q3=1 flip ->1 n14=1 (n12=1)
+15 q10=1 flip ->0 n15=0
+16 q7=1 flip ->1 n16=1
+17 n12=1 flip ->0 n17=0
+18 n1=0 set ->1 n18=1
+19 q2=1 flip ->0 n19=0
+20 q5=1 flip ->1 n20=1
+21 in0=1 flip ->0 n21=0
+22 n0=1 flip ->1 n22=1
+23 n17=0 set ->1 n23=1
+24 q11=1 flip ->0 n24=0
+25 n18=1 flip ->1 n25=1
+26 n10=1 flip ->0 n26=0
+27 in0=1 flip ->1 n27=1
+28 q8=0 set ->1 n28=1
+29 n11=0 set ->1 n29=1
+30 n14=1 flip ->0 n30=0
+31 n4=0 set ->1 n31=1
+32 n3=1 flip ->0 n32=0
+33 n16=1 flip ->1 n33=1
+34 n15=0 set ->1 n34=1
+35 n31=1 flip ->0 n35=0
+36 n1=0 set ->1 n36=1
+37 n10=1 flip ->0 n37=0
+38 n24=0 set ->1 n38=1
+39 n9=0 set ->1 n39=1
+40 n35=0 set ->1 n40=1
+41 q4=0 set ->1 n41=1
+42 n14=1 flip ->0 n42=0
+43 n26=0 set ->1 n43=1
+44 n32=0 set ->1 n44=1
+45 q2=1 flip ->0 n45=0
+46 q3=1 flip ->1 n46=1
+47 q5=1 flip ->0 n47=0
+48 n27=1 flip ->1 n48=1
+49 n22=1 flip ->0 n49=0
+50 n42=0 set ->1 n50=1
+51 q4=0 set ->1 n51=1
+52 n24=0 set ->1 n52=1
+53 n33=1 flip ->0 n53=0
+54 n10=1 flip ->1 n54=1
+55 n1=0 set ->1 n55=1
+56 n33=1 flip ->0 n56=0
+57 n16=1 flip ->1 n57=1
+58 n27=1 flip ->0 n58=0
+59 n42=0 set ->1 n59=1
+60 n32=0 set ->1 n60=1
+61 n26=0 set ->1 n61=1
+62 n61=1 flip ->0 n62=0
+63 n7=0 set ->1 n63=1
+64 n30=0 set ->1 n64=1
+65 n3=1 flip ->0 n65=0
+66 n50=1 flip ->1 n66=1
+67 n14=1 flip ->0 n67=0
+68 n43=1 flip ->1 n68=1
+69 n57=1 flip ->0 n69=0
+70 n22=1 flip ->1 n70=1
+71 n21=0 set ->1 n71=1
+72 n68=1 flip ->0 n72=0
+73 n51=1 flip ->1 n73=1
+74 n22=1 flip ->0 n74=0
+75 n65=0 set ->1 n75=1
+76 n33=1 flip ->0 n76=0
+77 q11=1 flip ->1 n77=1
+78 n27=1 flip ->0 n78=0
+79 in2=1 flip ->1 n79=1
+80 n59=1 flip ->0 n80=0
+81 n72=0 set ->1 n81=1
+82 in0=1 flip ->0 n82=0
+83 n17=0 set ->1 n83=1
+84 n79=1 flip ->0 n84=0
+85 n41=1 flip ->1 n85=1
+86 n30=0 set ->1 n86=1
+87 n39=1 flip ->0 n87=0
+88 n43=1 flip ->1 n88=1
+89 n21=0 set ->1 n89=1
+90 n29=1 flip ->0 n90=0
+91 n5=1 flip ->1 n91=1
+92 n5=1 flip ->0 n92=0
+93 n49=0 set ->1 n93=1
+94 n30=0 set ->1 n94=1
+95 n83=1 flip ->0 n95=0
+96 n43=1 flip ->1 n96=1
+97 n87=0 set ->1 n97=1
+98 n41=1 flip ->0 n98=0
+99 n22=1 flip ->1 n99=1
+100 n45=0 set ->1 n100=1
+101 n28=1 flip ->0 n101=0
+102 q5=1 flip ->1 n102=1
+103 n77=1 flip ->0 n103=0
+104 n71=1 flip ->1 n104=1
+105 n92=0 set ->1 n105=1
+106 n100=1 flip ->0 n106=0
+107 n72=0 set ->1 n107=1
+108 n96=1 flip ->0 n108=0
+109 n98=0 set ->1 n109=1
+110 n95=0 set ->1 n110=1
+111 n87=0 set ->1 n111=1
+112 n69=0 set ->1 n112=1
+113 n32=0 set ->1 n113=1
+114 n50=1 flip ->0 n114=0
+115 n28=1 flip ->1 n115=1
+116 n72=0 set ->1 n116=1
+117 q0=1 flip ->0 n117=0
+118 n55=1 flip ->1 n118=1
+119 n74=0 set ->1 n119=1
+120 n54=1 flip ->0 n120=0
+121 n111=1 flip ->1 n121=1
+122 n120=0 set ->1 n122=1
+123 n103=0 set ->1 n123=1
+124 n93=1 flip ->0 n124=0
+125 q0=1 flip ->1 n125=1
+126 n101=0 set ->1 n126=1
+127 n79=1 flip ->0 n127=0
+128 n27=1 flip ->1 n128=1
+129 n82=0 set ->1 n129=1
+130 n27=1 flip ->0 n130=0
+131 n43=1 flip ->1 n131=1
+132 n24=0 set ->1 n132=1
+133 n0=1 flip ->0 n133=0
+134 n32=0 set ->1 n134=1
+135 n16=1 flip ->0 n135=0
+136 n16=1 flip ->1 n136=1
+137 n96=1 flip ->0 n137=0
+138 n24=0 set ->1 n138=1
+139 n131=1 flip ->0 n139=0
+140 n126=1 flip ->1 n140=1
+141 n90=0 set ->1 n141=1
+142 n116=1 flip ->0 n142=0
+143 n75=1 flip ->1 n143=1
+144 n44=1 flip ->0 n144=0
+145 q2=1 flip ->1 n145=1
+146 n97=1 flip ->0 n146=0
+147 n143=1 flip ->1 n147=1
+148 n33=1 flip ->0 n148=0
+149 n99=1 flip ->1 n149=1
+150 n108=0 set ->1 n150=1
+151 n90=0 set ->1 n151=1 (q3 d)
+152 n18=1 flip ->0 n152=0 (q6 d)
+153 n114=0 set ->1 n153=1 (q0 d)
+154 n92=0 set ->1 n154=1
+155 n135=0 set ->1 n155=1 (q7 d)
+156 n12=1 flip ->0 n156=0
+157 n118=1 flip ->1 n157=1
+158 q3=1 flip ->0 n158=0
+159 n72=0 set ->1 n159=1
+160 n53=0 set ->1 n160=1
+161 n113=1 flip ->0 n161=0
+162 n81=1 flip ->1 n162=1
+163 n140=1 flip ->0 n163=0
+164 n22=1 flip ->1 n164=1
+165 n75=1 flip ->0 n165=0
+166 n7=0 set ->1 n166=1
+167 n30=0 set ->1 n167=1 (q1/q8 d)
+168 n28=1 flip ->0 n168=0
+169 n146=0 set ->1 n169=1
+170 n19=0 set ->1 n170=1
+171 n169=1 flip ->0 n171=0
+172 n95=0 set ->1 n172=1
+173 n121=1 flip ->0 n173=0
+174 n35=0 set ->1 n174=1
+175 n107=1 flip ->0 n175=0
+176 n113=1 flip ->1 n176=1
+177 n86=1 flip ->0 n177=0 (q2 d)
+178 n29=1 flip ->1 n178=1
+179 n119=1 flip ->0 n179=0
+180 n116=1 flip ->1 n180=1
+181 n63=1 flip ->0 n181=0
+182 n67=0 set ->1 n182=1
+183 n113=1 flip ->0 n183=0
+184 q4=0 set ->1 n184=1
+185 n16=1 flip ->0 n185=0
+186 n90=0 set ->1 n186=1
+187 n38=1 flip ->0 n187=0
+188 in1=1 flip ->1 n188=1 (q4 d)
+189 in1=1 flip ->0 n189=0 (n187=0)
+190 n120=0 set ->1 n190=1
+191 n169=1 flip ->0 n191=0
+192 n96=1 flip ->1 n192=1
+193 n67=0 set ->1 n193=1
+194 n49=0 set ->1 n194=1
+195 n192=1 flip ->0 n195=0 (q10 d) [n192=1 -> (~n67=1 & n49=0)=0]
+196 n164=1 flip ->1 n196=1
+197 n104=1 flip ->0 n197=0 (q9/q11 d) [n195=0]
+198 n116=1 flip ->1 n198=1
+199 n14=1 flip ->0 n199=0. Output t6: n199=0,q5=1,q6=1,q8=0.
+Update state t7: q0=n153=1; q1=n167=1; q2=n177=0; q3=n151=1; q4=n188=1; q5=n199=0; q6=n152=0; q7=n155=1; q8=n167=1; q9=n197=0; q10=n195=0; q11=n197=0.
+State t7: q0=1,q1=1,q2=0,q3=1,q4=1,q5=0,q6=0,q7=1,q8=1,q9=0,q10=0,q11=0. Inputs t7: in0=0,in1=0,in2=0.
+This state similar to t3? t3 was [1,1,1,1,1,0,0,1,1,0,0,0]; t7 [1,1,0,1,1,0,0,1,1,0,0,0] differs q2=0,q4=1 vs t3 q2=1,q4=1? t3 q0=1,q1=1,q2=1,q3=1,q4=1,q5=0,q6=0,q7=1,q8=1,q9=0,q10=0,q11=0. t7 q2=0 only difference; inputs t7 all 0 vs t3 in0=1,in1=1,in2=0. So different.
+Resets t7: q2=0 -> n10,n19,n45,n145 set; q5=0 -> n5,n20,n47,n102 set; q9=0 n9 set; q10=0 n15 set; q11=0 n4,n11,n24,n77 set; in0=0 n21,n27,n82 set; in1=0 n188,n189 set; in2=0 n79 set. q0,q1,q3,q4,q7,q8=1. Start n0=~(0&1)=1.
+Scan t7:
+x=1 n0=1.
+1 q7=1 flip ->0 n1=0
+2 q8=1 flip ->1 n2=1
+3 q1=1 flip ->0 n3=0
+4 q11=0 set ->1 n4=1
+5 q5=0 set ->1 n5=1
+6 q8=1 flip ->0 n6=0
+7 q0=1 flip ->1 n7=1
+8 n5=1 flip ->0 n8=0
+9 q9=0 set ->1 n9=1
+10 q2=0 set ->1 n10=1
+11 q11=0 set ->1 n11=1
+12 q8=1 flip ->0 n12=0
+13 q3=1 flip ->1 n13=1
+14 q3=1 flip ->0 n14=0
+15 q10=0 set ->1 n15=1
+16 q7=1 flip ->0 n16=0
+17 n12=0 set ->1 n17=1
+18 n1=0 set ->1 n18=1
+19 q2=0 set ->1 n19=1
+20 q5=0 set ->1 n20=1
+21 in0=0 set ->1 n21=1
+22 n0=1 flip ->0 n22=0
+23 n17=1 flip ->1 n23=1
+24 q11=0 set ->1 n24=1
+25 n18=1 flip ->0 n25=0
+26 n10=1 flip ->1 n26=1
+27 in0=0 set ->1 n27=1
+28 q8=1 flip ->0 n28=0
+29 n11=1 flip ->1 n29=1
+30 n14=0 set ->1 n30=1
+31 n4=1 flip ->0 n31=0
+32 n3=0 set ->1 n32=1
+33 n16=0 set ->1 n33=1
+34 n15=1 flip ->0 n34=0
+35 n31=0 set ->1 n35=1
+36 n1=0 set ->1 n36=1
+37 n10=1 flip ->0 n37=0
+38 n24=1 flip ->1 n38=1
+39 n9=1 flip ->0 n39=0
+40 n35=1 flip ->1 n40=1
+41 q4=1 flip ->0 n41=0
+42 n14=0 set ->1 n42=1
+43 n26=1 flip ->0 n43=0
+44 n32=1 flip ->1 n44=1
+45 q2=0 set ->1 n45=1
+46 q3=1 flip ->0 n46=0
+47 q5=0 set ->1 n47=1
+48 n27=1 flip ->0 n48=0
+49 n22=0 set ->1 n49=1
+50 n42=1 flip ->0 n50=0
+51 q4=1 flip ->1 n51=1
+52 n24=1 flip ->0 n52=0
+53 n33=1 flip ->1 n53=1
+54 n10=1 flip ->0 n54=0
+55 n1=0 set ->1 n55=1
+56 n33=1 flip ->0 n56=0
+57 n16=0 set ->1 n57=1
+58 n27=1 flip ->0 n58=0
+59 n42=1 flip ->1 n59=1
+60 n32=1 flip ->0 n60=0
+61 n26=1 flip ->1 n61=1
+62 n61=1 flip ->0 n62=0
+63 n7=1 flip ->1 n63=1
+64 n30=1 flip ->0 n64=0
+65 n3=0 set ->1 n65=1
+66 n50=0 set ->1 n66=1
+67 n14=0 set ->1 n67=1
+68 n43=0 set ->1 n68=1
+69 n57=1 flip ->0 n69=0
+70 n22=0 set ->1 n70=1
+71 n21=1 flip ->0 n71=0
+72 n68=1 flip ->1 n72=1
+73 n51=1 flip ->0 n73=0
+74 n22=0 set ->1 n74=1
+75 n65=1 flip ->0 n75=0
+76 n33=1 flip ->1 n76=1
+77 q11=0 set ->1 n77=1
+78 n27=1 flip ->0 n78=0
+79 in2=0 set ->1 n79=1
+80 n59=1 flip ->0 n80=0
+81 n72=1 flip ->1 n81=1
+82 in0=0 set ->1 n82=1
+83 n17=1 flip ->0 n83=0
+84 n79=1 flip ->1 n84=1
+85 n41=0 set ->1 n85=1
+86 n30=1 flip ->0 n86=0
+87 n39=0 set ->1 n87=1
+88 n43=0 set ->1 n88=1
+89 n21=1 flip ->0 n89=0
+90 n29=1 flip ->1 n90=1
+91 n5=1 flip ->0 n91=0
+92 n5=1 flip ->1 n92=1
+93 n49=1 flip ->0 n93=0
+94 n30=1 flip ->1 n94=1
+95 n83=0 set ->1 n95=1
+96 n43=0 set ->1 n96=1
+97 n87=1 flip ->0 n97=0
+98 n41=0 set ->1 n98=1
+99 n22=0 set ->1 n99=1
+100 n45=1 flip ->0 n100=0
+101 n28=0 set ->1 n101=1
+102 q5=0 set ->1 n102=1
+103 n77=1 flip ->0 n103=0
+104 n71=0 set ->1 n104=1
+105 n92=1 flip ->0 n105=0
+106 n100=0 set ->1 n106=1
+107 n72=1 flip ->0 n107=0
+108 n96=1 flip ->1 n108=1
+109 n98=1 flip ->0 n109=0
+110 n95=1 flip ->1 n110=1
+111 n87=1 flip ->0 n111=0
+112 n69=0 set ->1 n112=1
+113 n32=1 flip ->0 n113=0
+114 n50=0 set ->1 n114=1
+115 n28=0 set ->1 n115=1
+116 n72=1 flip ->0 n116=0
+117 q0=1 flip ->1 n117=1
+118 n55=1 flip ->0 n118=0
+119 n74=1 flip ->1 n119=1
+120 n54=0 set ->1 n120=1
+121 n111=0 set ->1 n121=1
+122 n120=1 flip ->0 n122=0
+123 n103=0 set ->1 n123=1
+124 n93=0 set ->1 n124=1
+125 q0=1 flip ->0 n125=0
+126 n101=1 flip ->1 n126=1
+127 n79=1 flip ->0 n127=0
+128 n27=1 flip ->1 n128=1
+129 n82=1 flip ->0 n129=0
+130 n27=1 flip ->1 n130=1
+131 n43=0 set ->1 n131=1
+132 n24=1 flip ->0 n132=0
+133 n0=1 flip ->1 n133=1
+134 n32=1 flip ->0 n134=0
+135 n16=0 set ->1 n135=1
+136 n16=0 set ->1 n136=1
+137 n96=1 flip ->0 n137=0
+138 n24=1 flip ->1 n138=1
+139 n131=1 flip ->0 n139=0
+140 n126=1 flip ->1 n140=1
+141 n90=1 flip ->0 n141=0
+142 n116=0 set ->1 n142=1
+143 n75=0 set ->1 n143=1
+144 n44=1 flip ->0 n144=0
+145 q2=0 set ->1 n145=1
+146 n97=0 set ->1 n146=1
+147 n143=1 flip ->0 n147=0
+148 n33=1 flip ->1 n148=1
+149 n99=1 flip ->0 n149=0
+150 n108=1 flip ->1 n150=1
+151 n90=1 flip ->0 n151=0 (q3 d)
+152 n18=1 flip ->1 n152=1 (q6 d)
+153 n114=1 flip ->0 n153=0 (q0 d)
+154 n92=1 flip ->1 n154=1
+155 n135=1 flip ->0 n155=0 (q7 d)
+156 n12=0 set ->1 n156=1
+157 n118=0 set ->1 n157=1
+158 q3=1 flip ->0 n158=0
+159 n72=1 flip ->1 n159=1
+160 n53=1 flip ->0 n160=0
+161 n113=0 set ->1 n161=1
+162 n81=1 flip ->0 n162=0
+163 n140=1 flip ->1 n163=1
+164 n22=0 set ->1 n164=1
+165 n75=0 set ->1 n165=1
+166 n7=1 flip ->0 n166=0
+167 n30=1 flip ->1 n167=1 (q1/q8 d)
+168 n28=0 set ->1 n168=1
+169 n146=1 flip ->0 n169=0
+170 n19=1 flip ->1 n170=1
+171 n169=0 set ->1 n171=1
+172 n95=1 flip ->0 n172=0
+173 n121=1 flip ->1 n173=1
+174 n35=1 flip ->0 n174=0
+175 n107=0 set ->1 n175=1
+176 n113=0 set ->1 n176=1
+177 n86=0 set ->1 n177=1 (q2 d)
+178 n29=1 flip ->0 n178=0
+179 n119=1 flip ->1 n179=1
+180 n116=0 set ->1 n180=1
+181 n63=1 flip ->0 n181=0
+182 n67=1 flip ->1 n182=1
+183 n113=0 set ->1 n183=1
+184 q4=1 flip ->0 n184=0
+185 n16=0 set ->1 n185=1
+186 n90=1 flip ->0 n186=0
+187 n38=1 flip ->1 n187=1
+188 in1=0 set ->1 n188=1 (q4 d)
+189 in1=0 set ->1 n189=1
+190 n120=1 flip ->0 n190=0
+191 n169=0 set ->1 n191=1
+192 n96=1 flip ->0 n192=0
+193 n67=1 flip ->1 n193=1
+194 n49=1 flip ->0 n194=0
+195 n192=0 set ->1 n195=1 (q10 d)
+196 n164=1 flip ->0 n196=0
+197 n104=1 flip ->1 n197=1 (q9/q11 d)
+198 n116=0 set ->1 n198=1
+199 n14=0 set ->1 n199=1. Output t7: n199=1,q5=0,q6=0,q8=1.
+Update state t8: q0=n153=0; q1=n167=1; q2=n177=1; q3=n151=0; q4=n188=1; q5=n199=1; q6=n152=1; q7=n155=0; q8=n167=1; q9=n197=1; q10=n195=1; q11=n197=1.
+State t8: q0=0,q1=1,q2=1,q3=0,q4=1,q5=1,q6=1,q7=0,q8=1,q9=1,q10=1,q11=1. Inputs t8: in0=0,in1=1,in2=1.
+Resets: q0=0 n7,n117,n125; q3=0 n13,n14,n46,n158; q7=0 n1,n16; in0=0 n21,n27,n82. Others 1. Start n0=~(q5&q8)=~(1&1)=0. Scan t8:
+x=0 n0=0.
+1 q7=0 set ->1 n1=1
+2 q8=1 flip ->0 n2=0
+3 q1=1 flip ->1 n3=1
+4 q11=1 flip ->0 n4=0
+5 q5=1 flip ->1 n5=1
+6 q8=1 flip ->0 n6=0
+7 q0=0 set ->1 n7=1
+8 n5=1 flip ->0 n8=0
+9 q9=1 flip ->1 n9=1
+10 q2=1 flip ->0 n10=0
+11 q11=1 flip ->1 n11=1
+12 q8=1 flip ->0 n12=0
+13 q3=0 set ->1 n13=1
+14 q3=0 set ->1 n14=1
+15 q10=1 flip ->0 n15=0
+16 q7=0 set ->1 n16=1
+17 n12=0 set ->1 n17=1
+18 n1=1 flip ->0 n18=0
+19 q2=1 flip ->1 n19=1
+20 q5=1 flip ->0 n20=0
+21 in0=0 set ->1 n21=1
+22 n0=0 set ->1 n22=1
+23 n17=1 flip ->0 n23=0
+24 q11=1 flip ->1 n24=1
+25 n18=0 set ->1 n25=1
+26 n10=0 set ->1 n26=1
+27 in0=0 set ->1 n27=1
+28 q8=1 flip ->0 n28=0
+29 n11=1 flip ->1 n29=1
+30 n14=1 flip ->0 n30=0
+31 n4=0 set ->1 n31=1
+32 n3=1 flip ->0 n32=0
+33 n16=1 flip ->1 n33=1
+34 n15=0 set ->1 n34=1
+35 n31=1 flip ->0 n35=0
+36 n1=1 flip ->1 n36=1
+37 n10=0 set ->1 n37=1
+38 n24=1 flip ->0 n38=0
+39 n9=1 flip ->1 n39=1
+40 n35=0 set ->1 n40=1
+41 q4=1 flip ->0 n41=0
+42 n14=1 flip ->1 n42=1
+43 n26=1 flip ->0 n43=0
+44 n32=0 set ->1 n44=1
+45 q2=1 flip ->0 n45=0
+46 q3=0 set ->1 n46=1
+47 q5=1 flip ->0 n47=0
+48 n27=1 flip ->1 n48=1
+49 n22=1 flip ->0 n49=0
+50 n42=1 flip ->1 n50=1
+51 q4=1 flip ->0 n51=0
+52 n24=1 flip ->1 n52=1
+53 n33=1 flip ->0 n53=0
+54 n10=0 set ->1 n54=1
+55 n1=1 flip ->0 n55=0
+56 n33=1 flip ->1 n56=1
+57 n16=1 flip ->0 n57=0
+58 n27=1 flip ->1 n58=1
+59 n42=1 flip ->0 n59=0
+60 n32=0 set ->1 n60=1
+61 n26=1 flip ->0 n61=0
+62 n61=0 set ->1 n62=1
+63 n7=1 flip ->0 n63=0
+64 n30=0 set ->1 n64=1
+65 n3=1 flip ->0 n65=0
+66 n50=1 flip ->1 n66=1
+67 n14=1 flip ->0 n67=0
+68 n43=0 set ->1 n68=1
+69 n57=0 set ->1 n69=1
+70 n22=1 flip ->0 n70=0
+71 n21=1 flip ->1 n71=1
+72 n68=1 flip ->0 n72=0
+73 n51=0 set ->1 n73=1
+74 n22=1 flip ->0 n74=0
+75 n65=0 set ->1 n75=1
+76 n33=1 flip ->0 n76=0
+77 q11=1 flip ->1 n77=1
+78 n27=1 flip ->0 n78=0
+79 in2=1 flip ->1 n79=1
+80 n59=0 set ->1 n80=1
+81 n72=0 set ->1 n81=1
+82 in0=0 set ->1 n82=1
+83 n17=1 flip ->0 n83=0
+84 n79=1 flip ->1 n84=1
+85 n41=0 set ->1 n85=1
+86 n30=0 set ->1 n86=1
+87 n39=1 flip ->0 n87=0
+88 n43=0 set ->1 n88=1
+89 n21=1 flip ->0 n89=0
+90 n29=1 flip ->1 n90=1
+91 n5=1 flip ->0 n91=0
+92 n5=1 flip ->1 n92=1
+93 n49=0 set ->1 n93=1
+94 n30=0 set ->1 n94=1
+95 n83=0 set ->1 n95=1
+96 n43=0 set ->1 n96=1
+97 n87=0 set ->1 n97=1
+98 n41=0 set ->1 n98=1
+99 n22=1 flip ->0 n99=0
+100 n45=0 set ->1 n100=1
+101 n28=0 set ->1 n101=1
+102 q5=1 flip ->0 n102=0
+103 n77=1 flip ->1 n103=1
+104 n71=1 flip ->0 n104=0
+105 n92=1 flip ->1 n105=1
+106 n100=1 flip ->0 n106=0
+107 n72=0 set ->1 n107=1
+108 n96=1 flip ->0 n108=0
+109 n98=1 flip ->1 n109=1
+110 n95=1 flip ->0 n110=0
+111 n87=0 set ->1 n111=1
+112 n69=1 flip ->0 n112=0
+113 n32=0 set ->1 n113=1
+114 n50=1 flip ->0 n114=0
+115 n28=0 set ->1 n115=1
+116 n72=0 set ->1 n116=1
+117 q0=0 set ->1 n117=1
+118 n55=0 set ->1 n118=1
+119 n74=0 set ->1 n119=1
+120 n54=1 flip ->0 n120=0
+121 n111=1 flip ->1 n121=1
+122 n120=0 set ->1 n122=1
+123 n103=1 flip ->0 n123=0
+124 n93=1 flip ->1 n124=1
+125 q0=0 set ->1 n125=1
+126 n101=1 flip ->0 n126=0
+127 n79=1 flip ->1 n127=1
+128 n27=1 flip ->0 n128=0
+129 n82=1 flip ->1 n129=1
+130 n27=1 flip ->0 n130=0
+131 n43=0 set ->1 n131=1
+132 n24=1 flip ->0 n132=0
+133 n0=0 set ->1 n133=1
+134 n32=0 set ->1 n134=1
+135 n16=1 flip ->0 n135=0
+136 n16=1 flip ->1 n136=1
+137 n96=1 flip ->0 n137=0
+138 n24=1 flip ->1 n138=1
+139 n131=1 flip ->0 n139=0
+140 n126=0 set ->1 n140=1
+141 n90=1 flip ->0 n141=0
+142 n116=1 flip ->1 n142=1
+143 n75=1 flip ->0 n143=0
+144 n44=1 flip ->1 n144=1
+145 q2=1 flip ->0 n145=0
+146 n97=1 flip ->1 n146=1
+147 n143=0 set ->1 n147=1
+148 n33=1 flip ->0 n148=0
+149 n99=0 set ->1 n149=1
+150 n108=0 set ->1 n150=1
+151 n90=1 flip ->0 n151=0 (q3 d)
+152 n18=0 set ->1 n152=1 (q6 d)
+153 n114=0 set ->1 n153=1 (q0 d)
+154 n92=1 flip ->0 n154=0
+155 n135=0 set ->1 n155=1 (q7 d)
+156 n12=0 set ->1 n156=1
+157 n118=1 flip ->0 n157=0
+158 q3=0 set ->1 n158=1
+159 n72=0 set ->1 n159=1
+160 n53=0 set ->1 n160=1
+161 n113=1 flip ->0 n161=0
+162 n81=1 flip ->1 n162=1
+163 n140=1 flip ->0 n163=0
+164 n22=1 flip ->1 n164=1
+165 n75=1 flip ->0 n165=0
+166 n7=1 flip ->1 n166=1
+167 n30=0 set ->1 n167=1 (q1/q8 d)
+168 n28=0 set ->1 n168=1
+169 n146=1 flip ->0 n169=0
+170 n19=1 flip ->1 n170=1
+171 n169=0 set ->1 n171=1
+172 n95=1 flip ->0 n172=0
+173 n121=1 flip ->1 n173=1
+174 n35=0 set ->1 n174=1
+175 n107=1 flip ->0 n175=0
+176 n113=1 flip ->1 n176=1
+177 n86=1 flip ->0 n177=0 (q2 d)
+178 n29=1 flip ->1 n178=1
+179 n119=1 flip ->0 n179=0
+180 n116=1 flip ->1 n180=1
+181 n63=0 set ->1 n181=1
+182 n67=0 set ->1 n182=1
+183 n113=1 flip ->0 n183=0
+184 q4=1 flip ->1 n184=1
+185 n16=1 flip ->0 n185=0
+186 n90=1 flip ->1 n186=1
+187 n38=0 set ->1 n187=1
+188 in1=1 flip ->0 n188=0 (q4 d)
+189 in1=1 flip ->1 n189=1 (n187=1)
+190 n120=0 set ->1 n190=1
+191 n169=0 set ->1 n191=1
+192 n96=1 flip ->0 n192=0
+193 n67=0 set ->1 n193=1
+194 n49=0 set ->1 n194=1
+195 n192=0 set ->1 n195=1 (q10 d)
+196 n164=1 flip ->0 n196=0
+197 n104=0 set ->1 n197=1 (q9/q11 d)
+198 n116=1 flip ->0 n198=0
+199 n14=1 flip ->1 n199=1. Formula n14=1,n197=1,n116=1 ->1. Output t8: n199=1,q5=1,q6=1,q8=1.
+Update state t9: q0=n153=1; q1=n167=1; q2=n177=0; q3=n151=0; q4=n188=0; q5=n199=1; q6=n152=1; q7=n155=1; q8=n167=1; q9=n197=1; q10=n195=1; q11=n197=1.
+State t9: q0=1,q1=1,q2=0,q3=0,q4=0,q5=1,q6=1,q7=1,q8=1,q9=1,q10=1,q11=1. Inputs t9: in0=0,in1=1,in2=1.
+Resets: q2=0 n10,n19,n45,n145; q3=0 n13,n14,n46,n158; q4=0 n41,n51,n184; in0=0 n21,n27,n82. Others 1. Start n0=~(1&1)=0. Scan t9:
+x=0 n0=0.
+1 q7=1 flip ->1 n1=1
+2 q8=1 flip ->0 n2=0
+3 q1=1 flip ->1 n3=1
+4 q11=1 flip ->0 n4=0
+5 q5=1 flip ->1 n5=1
+6 q8=1 flip ->0 n6=0
+7 q0=1 flip ->1 n7=1
+8 n5=1 flip ->0 n8=0
+9 q9=1 flip ->1 n9=1
+10 q2=0 set ->1 n10=1
+11 q11=1 flip ->0 n11=0
+12 q8=1 flip ->1 n12=1
+13 q3=0 set ->1 n13=1
+14 q3=0 set ->1 n14=1
+15 q10=1 flip ->0 n15=0
+16 q7=1 flip ->1 n16=1
+17 n12=1 flip ->0 n17=0
+18 n1=1 flip ->1 n18=1
+19 q2=0 set ->1 n19=1
+20 q5=1 flip ->0 n20=0
+21 in0=0 set ->1 n21=1
+22 n0=0 set ->1 n22=1
+23 n17=0 set ->1 n23=1
+24 q11=1 flip ->0 n24=0
+25 n18=1 flip ->1 n25=1
+26 n10=1 flip ->0 n26=0
+27 in0=0 set ->1 n27=1
+28 q8=1 flip ->0 n28=0
+29 n11=0 set ->1 n29=1
+30 n14=1 flip ->0 n30=0
+31 n4=0 set ->1 n31=1
+32 n3=1 flip ->0 n32=0
+33 n16=1 flip ->1 n33=1
+34 n15=0 set ->1 n34=1
+35 n31=1 flip ->0 n35=0
+36 n1=1 flip ->1 n36=1
+37 n10=1 flip ->0 n37=0
+38 n24=0 set ->1 n38=1
+39 n9=1 flip ->0 n39=0
+40 n35=0 set ->1 n40=1
+41 q4=0 set ->1 n41=1
+42 n14=1 flip ->0 n42=0
+43 n26=0 set ->1 n43=1
+44 n32=0 set ->1 n44=1
+45 q2=0 set ->1 n45=1
+46 q3=0 set ->1 n46=1
+47 q5=1 flip ->0 n47=0
+48 n27=1 flip ->1 n48=1
+49 n22=1 flip ->0 n49=0
+50 n42=0 set ->1 n50=1
+51 q4=0 set ->1 n51=1
+52 n24=0 set ->1 n52=1
+53 n33=1 flip ->0 n53=0
+54 n10=1 flip ->1 n54=1
+55 n1=1 flip ->0 n55=0
+56 n33=1 flip ->1 n56=1
+57 n16=1 flip ->0 n57=0
+58 n27=1 flip ->1 n58=1
+59 n42=0 set ->1 n59=1
+60 n32=0 set ->1 n60=1
+61 n26=0 set ->1 n61=1
+62 n61=1 flip ->0 n62=0
+63 n7=1 flip ->1 n63=1
+64 n30=0 set ->1 n64=1
+65 n3=1 flip ->0 n65=0
+66 n50=1 flip ->1 n66=1
+67 n14=1 flip ->0 n67=0
+68 n43=1 flip ->1 n68=1
+69 n57=0 set ->1 n69=1
+70 n22=1 flip ->0 n70=0
+71 n21=1 flip ->1 n71=1
+72 n68=1 flip ->0 n72=0
+73 n51=1 flip ->1 n73=1
+74 n22=1 flip ->0 n74=0
+75 n65=0 set ->1 n75=1
+76 n33=1 flip ->0 n76=0
+77 q11=1 flip ->1 n77=1
+78 n27=1 flip ->0 n78=0
+79 in2=1 flip ->1 n79=1
+80 n59=1 flip ->0 n80=0
+81 n72=0 set ->1 n81=1
+82 in0=0 set ->1 n82=1
+83 n17=0 set ->1 n83=1
+84 n79=1 flip ->0 n84=0
+85 n41=1 flip ->1 n85=1
+86 n30=0 set ->1 n86=1
+87 n39=0 set ->1 n87=1
+88 n43=1 flip ->0 n88=0
+89 n21=1 flip ->1 n89=1
+90 n29=1 flip ->0 n90=0
+91 n5=1 flip ->1 n91=1
+92 n5=1 flip ->0 n92=0
+93 n49=0 set ->1 n93=1
+94 n30=0 set ->1 n94=1
+95 n83=1 flip ->0 n95=0
+96 n43=1 flip ->1 n96=1
+97 n87=1 flip ->0 n97=0
+98 n41=1 flip ->1 n98=1
+99 n22=1 flip ->0 n99=0
+100 n45=1 flip ->1 n100=1
+101 n28=0 set ->1 n101=1
+102 q5=1 flip ->0 n102=0
+103 n77=1 flip ->1 n103=1
+104 n71=1 flip ->0 n104=0
+105 n92=0 set ->1 n105=1
+106 n100=1 flip ->0 n106=0
+107 n72=0 set ->1 n107=1
+108 n96=1 flip ->0 n108=0
+109 n98=1 flip ->1 n109=1
+110 n95=0 set ->1 n110=1
+111 n87=1 flip ->0 n111=0
+112 n69=1 flip ->1 n112=1
+113 n32=0 set ->1 n113=1
+114 n50=1 flip ->0 n114=0
+115 n28=0 set ->1 n115=1
+116 n72=0 set ->1 n116=1
+117 q0=1 flip ->0 n117=0
+118 n55=0 set ->1 n118=1
+119 n74=0 set ->1 n119=1
+120 n54=1 flip ->0 n120=0
+121 n111=0 set ->1 n121=1
+122 n120=0 set ->1 n122=1
+123 n103=1 flip ->0 n123=0
+124 n93=1 flip ->1 n124=1
+125 q0=1 flip ->0 n125=0
+126 n101=1 flip ->1 n126=1
+127 n79=1 flip ->0 n127=0
+128 n27=1 flip ->1 n128=1
+129 n82=1 flip ->0 n129=0
+130 n27=1 flip ->1 n130=1
+131 n43=1 flip ->0 n131=0
+132 n24=0 set ->1 n132=1
+133 n0=0 set ->1 n133=1
+134 n32=0 set ->1 n134=1
+135 n16=1 flip ->0 n135=0
+136 n16=1 flip ->1 n136=1
+137 n96=1 flip ->0 n137=0
+138 n24=0 set ->1 n138=1
+139 n131=0 set ->1 n139=1
+140 n126=1 flip ->0 n140=0
+141 n90=0 set ->1 n141=1
+142 n116=1 flip ->0 n142=0
+143 n75=1 flip ->1 n143=1
+144 n44=1 flip ->0 n144=0
+145 q2=0 set ->1 n145=1
+146 n97=0 set ->1 n146=1
+147 n143=1 flip ->0 n147=0
+148 n33=1 flip ->1 n148=1
+149 n99=0 set ->1 n149=1
+150 n108=0 set ->1 n150=1
+151 n90=0 set ->1 n151=1 (q3 d)
+152 n18=1 flip ->0 n152=0 (q6 d)
+153 n114=0 set ->1 n153=1 (q0 d)
+154 n92=0 set ->1 n154=1
+155 n135=0 set ->1 n155=1 (q7 d)
+156 n12=1 flip ->0 n156=0
+157 n118=1 flip ->1 n157=1
+158 q3=0 set ->1 n158=1
+159 n72=0 set ->1 n159=1
+160 n53=0 set ->1 n160=1
+161 n113=1 flip ->0 n161=0
+162 n81=1 flip ->1 n162=1
+163 n140=0 set ->1 n163=1
+164 n22=1 flip ->0 n164=0
+165 n75=1 flip ->1 n165=1
+166 n7=1 flip ->0 n166=0
+167 n30=0 set ->1 n167=1 (q1/q8 d)
+168 n28=0 set ->1 n168=1
+169 n146=1 flip ->0 n169=0
+170 n19=1 flip ->1 n170=1
+171 n169=0 set ->1 n171=1
+172 n95=0 set ->1 n172=1
+173 n121=1 flip ->0 n173=0
+174 n35=0 set ->1 n174=1
+175 n107=1 flip ->0 n175=0
+176 n113=1 flip ->1 n176=1
+177 n86=1 flip ->0 n177=0 (q2 d)
+178 n29=1 flip ->1 n178=1
+179 n119=1 flip ->0 n179=0
+180 n116=1 flip ->1 n180=1
+181 n63=1 flip ->0 n181=0
+182 n67=0 set ->1 n182=1
+183 n113=1 flip ->0 n183=0
+184 q4=0 set ->1 n184=1
+185 n16=1 flip ->0 n185=0
+186 n90=0 set ->1 n186=1
+187 n38=1 flip ->0 n187=0
+188 in1=1 flip ->1 n188=1 (q4 d)
+189 in1=1 flip ->0 n189=0 (n187=0)
+190 n120=0 set ->1 n190=1
+191 n169=0 set ->1 n191=1
+192 n96=1 flip ->0 n192=0
+193 n67=0 set ->1 n193=1
+194 n49=0 set ->1 n194=1
+195 n192=0 set ->1 n195=1 (q10 d)
+196 n164=0 set ->1 n196=1
+197 n104=0 set ->1 n197=1 (q9/q11 d)
+198 n116=1 flip ->0 n198=0
+199 n14=1 flip ->1 n199=1. Output t9: n199=1,q5=1,q6=1,q8=1.
+Update state t10: q0=n153=1; q1=n167=1; q2=n177=0; q3=n151=1; q4=n188=1; q5=n199=1; q6=n152=0; q7=n155=1; q8=n167=1; q9=n197=1; q10=n195=1; q11=n197=1.
+State t10: [1,1,0,1,1,1,0,1,1,1,1,1]. Inputs t10: in0=1,in1=0,in2=1.
+Resets: q2=0 n10,n19,n45,n145; q6=0 unused; in1=0 n188,n189 set. Others q1,q3,q4,q5,q7,q8,q9,q10,q11,q0=1, in0=1,in2=1. Start n0=~(q5&q8)=0. Scan t10:
+x=0 n0=0.
+1 q7=1 flip ->1 n1=1
+2 q8=1 flip ->0 n2=0
+3 q1=1 flip ->1 n3=1
+4 q11=1 flip ->0 n4=0
+5 q5=1 flip ->1 n5=1
+6 q8=1 flip ->0 n6=0
+7 q0=1 flip ->1 n7=1
+8 n5=1 flip ->0 n8=0
+9 q9=1 flip ->1 n9=1
+10 q2=0 set ->1 n10=1
+11 q11=1 flip ->0 n11=0
+12 q8=1 flip ->1 n12=1
+13 q3=1 flip ->0 n13=0
+14 q3=1 flip ->1 n14=1 (n12=1)
+15 q10=1 flip ->0 n15=0
+16 q7=1 flip ->1 n16=1
+17 n12=1 flip ->0 n17=0
+18 n1=1 flip ->1 n18=1
+19 q2=0 set ->1 n19=1
+20 q5=1 flip ->0 n20=0
+21 in0=1 flip ->1 n21=1
+22 n0=0 set ->1 n22=1
+23 n17=0 set ->1 n23=1
+24 q11=1 flip ->0 n24=0
+25 n18=1 flip ->1 n25=1
+26 n10=1 flip ->0 n26=0
+27 in0=1 flip ->1 n27=1
+28 q8=1 flip ->0 n28=0
+29 n11=0 set ->1 n29=1
+30 n14=1 flip ->0 n30=0
+31 n4=0 set ->1 n31=1
+32 n3=1 flip ->0 n32=0
+33 n16=1 flip ->1 n33=1
+34 n15=0 set ->1 n34=1
+35 n31=1 flip ->0 n35=0
+36 n1=1 flip ->1 n36=1
+37 n10=1 flip ->0 n37=0
+38 n24=0 set ->1 n38=1
+39 n9=1 flip ->0 n39=0
+40 n35=0 set ->1 n40=1
+41 q4=1 flip ->0 n41=0
+42 n14=1 flip ->1 n42=1
+43 n26=0 set ->1 n43=1
+44 n32=0 set ->1 n44=1
+45 q2=0 set ->1 n45=1
+46 q3=1 flip ->0 n46=0
+47 q5=1 flip ->1 n47=1
+48 n27=1 flip ->0 n48=0
+49 n22=1 flip ->1 n49=1
+50 n42=1 flip ->0 n50=0
+51 q4=1 flip ->1 n51=1
+52 n24=0 set ->1 n52=1
+53 n33=1 flip ->0 n53=0
+54 n10=1 flip ->1 n54=1
+55 n1=1 flip ->0 n55=0
+56 n33=1 flip ->1 n56=1
+57 n16=1 flip ->0 n57=0
+58 n27=1 flip ->1 n58=1
+59 n42=1 flip ->0 n59=0
+60 n32=0 set ->1 n60=1
+61 n26=0 set ->1 n61=1
+62 n61=1 flip ->0 n62=0
+63 n7=1 flip ->1 n63=1
+64 n30=0 set ->1 n64=1
+65 n3=1 flip ->0 n65=0
+66 n50=0 set ->1 n66=1
+67 n14=1 flip ->0 n67=0
+68 n43=1 flip ->1 n68=1
+69 n57=0 set ->1 n69=1
+70 n22=1 flip ->0 n70=0
+71 n21=1 flip ->1 n71=1
+72 n68=1 flip ->0 n72=0
+73 n51=1 flip ->1 n73=1
+74 n22=1 flip ->0 n74=0
+75 n65=0 set ->1 n75=1
+76 n33=1 flip ->0 n76=0
+77 q11=1 flip ->1 n77=1
+78 n27=1 flip ->0 n78=0
+79 in2=1 flip ->1 n79=1
+80 n59=0 set ->1 n80=1
+81 n72=0 set ->1 n81=1
+82 in0=1 flip ->0 n82=0
+83 n17=0 set ->1 n83=1
+84 n79=1 flip ->0 n84=0
+85 n41=0 set ->1 n85=1
+86 n30=0 set ->1 n86=1
+87 n39=0 set ->1 n87=1
+88 n43=1 flip ->0 n88=0
+89 n21=1 flip ->1 n89=1
+90 n29=1 flip ->0 n90=0
+91 n5=1 flip ->1 n91=1
+92 n5=1 flip ->0 n92=0
+93 n49=1 flip ->1 n93=1
+94 n30=0 set ->1 n94=1
+95 n83=1 flip ->0 n95=0
+96 n43=1 flip ->1 n96=1
+97 n87=1 flip ->0 n97=0
+98 n41=0 set ->1 n98=1
+99 n22=1 flip ->0 n99=0
+100 n45=1 flip ->1 n100=1
+101 n28=0 set ->1 n101=1
+102 q5=1 flip ->0 n102=0
+103 n77=1 flip ->1 n103=1
+104 n71=1 flip ->0 n104=0
+105 n92=0 set ->1 n105=1
+106 n100=1 flip ->0 n106=0
+107 n72=0 set ->1 n107=1
+108 n96=1 flip ->0 n108=0
+109 n98=1 flip ->1 n109=1
+110 n95=0 set ->1 n110=1
+111 n87=1 flip ->0 n111=0
+112 n69=1 flip ->1 n112=1
+113 n32=0 set ->1 n113=1
+114 n50=0 set ->1 n114=1
+115 n28=0 set ->1 n115=1
+116 n72=0 set ->1 n116=1
+117 q0=1 flip ->0 n117=0
+118 n55=0 set ->1 n118=1
+119 n74=0 set ->1 n119=1
+120 n54=1 flip ->0 n120=0
+121 n111=0 set ->1 n121=1
+122 n120=0 set ->1 n122=1
+123 n103=1 flip ->0 n123=0
+124 n93=1 flip ->1 n124=1
+125 q0=1 flip ->0 n125=0
+126 n101=1 flip ->1 n126=1
+127 n79=1 flip ->0 n127=0
+128 n27=1 flip ->1 n128=1
+129 n82=0 set ->1 n129=1
+130 n27=1 flip ->0 n130=0
+131 n43=1 flip ->1 n131=1
+132 n24=0 set ->1 n132=1
+133 n0=0 set ->1 n133=1
+134 n32=0 set ->1 n134=1
+135 n16=1 flip ->0 n135=0
+136 n16=1 flip ->1 n136=1
+137 n96=1 flip ->0 n137=0
+138 n24=0 set ->1 n138=1
+139 n131=1 flip ->0 n139=0
+140 n126=1 flip ->1 n140=1
+141 n90=0 set ->1 n141=1
+142 n116=1 flip ->0 n142=0
+143 n75=1 flip ->1 n143=1
+144 n44=1 flip ->0 n144=0
+145 q2=0 set ->1 n145=1
+146 n97=0 set ->1 n146=1
+147 n143=1 flip ->0 n147=0
+148 n33=1 flip ->1 n148=1
+149 n99=0 set ->1 n149=1
+150 n108=0 set ->1 n150=1
+151 n90=0 set ->1 n151=1 (q3 d)
+152 n18=1 flip ->0 n152=0 (q6 d)
+153 n114=1 flip ->0 n153=0 (q0 d)
+154 n92=0 set ->1 n154=1
+155 n135=0 set ->1 n155=1 (q7 d)
+156 n12=1 flip ->0 n156=0
+157 n118=1 flip ->1 n157=1
+158 q3=1 flip ->0 n158=0
+159 n72=0 set ->1 n159=1
+160 n53=0 set ->1 n160=1
+161 n113=1 flip ->0 n161=0
+162 n81=1 flip ->1 n162=1
+163 n140=1 flip ->0 n163=0
+164 n22=1 flip ->1 n164=1
+165 n75=1 flip ->0 n165=0
+166 n7=1 flip ->1 n166=1
+167 n30=0 set ->1 n167=1 (q1/q8 d)
+168 n28=0 set ->1 n168=1
+169 n146=1 flip ->0 n169=0
+170 n19=1 flip ->1 n170=1
+171 n169=0 set ->1 n171=1
+172 n95=0 set ->1 n172=1
+173 n121=1 flip ->0 n173=0
+174 n35=0 set ->1 n174=1
+175 n107=1 flip ->0 n175=0
+176 n113=1 flip ->1 n176=1
+177 n86=1 flip ->0 n177=0 (q2 d)
+178 n29=1 flip ->1 n178=1
+179 n119=1 flip ->0 n179=0
+180 n116=1 flip ->1 n180=1
+181 n63=1 flip ->0 n181=0
+182 n67=0 set ->1 n182=1
+183 n113=1 flip ->0 n183=0
+184 q4=1 flip ->1 n184=1
+185 n16=1 flip ->0 n185=0
+186 n90=0 set ->1 n186=1
+187 n38=1 flip ->0 n187=0
+188 in1=0 set ->1 n188=1 (q4 d)
+189 in1=0 set ->1 n189=1
+190 n120=0 set ->1 n190=1
+191 n169=0 set ->1 n191=1
+192 n96=1 flip ->0 n192=0
+193 n67=0 set ->1 n193=1
+194 n49=1 flip ->0 n194=0
+195 n192=0 set ->1 n195=1 (q10 d)
+196 n164=1 flip ->0 n196=0
+197 n104=0 set ->1 n197=1 (q9/q11 d)
+198 n116=1 flip ->0 n198=0
+199 n14=1 flip ->1 n199=1. Output t10: n199=1,q5=1,q6=0,q8=1.
+Update state t11: q0=n153=0; q1=n167=1; q2=n177=0; q3=n151=1; q4=n188=1; q5=n199=1; q6=n152=0; q7=n155=1; q8=n167=1; q9=n197=1; q10=n195=1; q11=n197=1.
+State t11: [0,1,0,1,1,1,0,1,1,1,1,1]. Inputs t11: in0=1,in1=1,in2=1.
+Resets: q0=0 n7,n117,n125; q2=0 n10,n19,n45,n145; q6=0 unused. Others 1. Start n0=~(1&1)=0. Scan t11:
+x=0 n0=0.
+1 q7=1 flip ->1 n1=1
+2 q8=1 flip ->0 n2=0
+3 q1=1 flip ->1 n3=1
+4 q11=1 flip ->0 n4=0
+5 q5=1 flip ->1 n5=1
+6 q8=1 flip ->0 n6=0
+7 q0=0 set ->1 n7=1
+8 n5=1 flip ->0 n8=0
+9 q9=1 flip ->1 n9=1
+10 q2=0 set ->1 n10=1
+11 q11=1 flip ->0 n11=0
+12 q8=1 flip ->1 n12=1
+13 q3=1 flip ->0 n13=0
+14 q3=1 flip ->1 n14=1
+15 q10=1 flip ->0 n15=0
+16 q7=1 flip ->1 n16=1
+17 n12=1 flip ->0 n17=0
+18 n1=1 flip ->1 n18=1
+19 q2=0 set ->1 n19=1
+20 q5=1 flip ->0 n20=0
+21 in0=1 flip ->1 n21=1
+22 n0=0 set ->1 n22=1
+23 n17=0 set ->1 n23=1
+24 q11=1 flip ->0 n24=0
+25 n18=1 flip ->1 n25=1
+26 n10=1 flip ->0 n26=0
+27 in0=1 flip ->1 n27=1
+28 q8=1 flip ->0 n28=0
+29 n11=0 set ->1 n29=1
+30 n14=1 flip ->0 n30=0
+31 n4=0 set ->1 n31=1
+32 n3=1 flip ->0 n32=0
+33 n16=1 flip ->1 n33=1
+34 n15=0 set ->1 n34=1
+35 n31=1 flip ->0 n35=0
+36 n1=1 flip ->1 n36=1
+37 n10=1 flip ->0 n37=0
+38 n24=0 set ->1 n38=1
+39 n9=1 flip ->0 n39=0
+40 n35=0 set ->1 n40=1
+41 q4=1 flip ->0 n41=0
+42 n14=1 flip ->1 n42=1
+43 n26=0 set ->1 n43=1
+44 n32=0 set ->1 n44=1
+45 q2=0 set ->1 n45=1
+46 q3=1 flip ->0 n46=0
+47 q5=1 flip ->1 n47=1
+48 n27=1 flip ->0 n48=0
+49 n22=1 flip ->1 n49=1
+50 n42=1 flip ->0 n50=0
+51 q4=1 flip ->1 n51=1
+52 n24=0 set ->1 n52=1
+53 n33=1 flip ->0 n53=0
+54 n10=1 flip ->1 n54=1
+55 n1=1 flip ->0 n55=0
+56 n33=1 flip ->1 n56=1
+57 n16=1 flip ->0 n57=0
+58 n27=1 flip ->1 n58=1
+59 n42=1 flip ->0 n59=0
+60 n32=0 set ->1 n60=1
+61 n26=0 set ->1 n61=1
+62 n61=1 flip ->0 n62=0
+63 n7=1 flip ->1 n63=1
+64 n30=0 set ->1 n64=1
+65 n3=1 flip ->0 n65=0
+66 n50=0 set ->1 n66=1
+67 n14=1 flip ->0 n67=0
+68 n43=1 flip ->1 n68=1
+69 n57=0 set ->1 n69=1
+70 n22=1 flip ->0 n70=0
+71 n21=1 flip ->1 n71=1
+72 n68=1 flip ->0 n72=0
+73 n51=1 flip ->1 n73=1
+74 n22=1 flip ->0 n74=0
+75 n65=0 set ->1 n75=1
+76 n33=1 flip ->0 n76=0
+77 q11=1 flip ->1 n77=1
+78 n27=1 flip ->0 n78=0
+79 in2=1 flip ->1 n79=1
+80 n59=0 set ->1 n80=1
+81 n72=0 set ->1 n81=1
+82 in0=1 flip ->0 n82=0
+83 n17=0 set ->1 n83=1
+84 n79=1 flip ->0 n84=0
+85 n41=0 set ->1 n85=1
+86 n30=0 set ->1 n86=1
+87 n39=0 set ->1 n87=1
+88 n43=1 flip ->0 n88=0
+89 n21=1 flip ->1 n89=1
+90 n29=1 flip ->0 n90=0
+91 n5=1 flip ->1 n91=1
+92 n5=1 flip ->0 n92=0
+93 n49=1 flip ->0 n93=0  [Careful: n49=1, b=n49=1 at i93, current x after n92=0 -> flip to1? Wait I made a mistake here! Let's recompute around i91-93. At i90 x=n90=0. i91 b=n5=1 -> flip x 0->1, n91=1. i92 b=n5=1 -> flip x 1->0, n92=0. i93 b=n49=1 -> flip x 0->1, n93=1, not 0. I erroneously wrote flip ->0. Correct n93=1. Need continue with x=1.]
+Let's correct from i93: x after n92 =0. i93 b n49=1 -> x=1 n93=1.
+94 b n30=0 -> set x=1 n94=1 (stays 1)
+95 b n83=1 -> flip x 1->0 n95=0
+96 b n43=1 -> flip x 0->1 n96=1
+97 b n87=1 -> flip x 1->0 n97=0
+98 b n41=0 -> set x=1 n98=1
+99 b n22=1 -> flip x 1->0 n99=0
+100 b n45=1 -> flip x 0->1 n100=1
+101 b n28=0 -> set x=1 n101=1
+102 q5=1 -> flip x 1->0 n102=0
+103 n77=1 -> flip x 0->1 n103=1
+104 n71=1 -> flip x 1->0 n104=0
+105 n92=0 -> set x=1 n105=1
+106 n100=1 -> flip x 1->0 n106=0
+107 n72=0 -> set x=1 n107=1
+108 n96=1 -> flip x 1->0 n108=0
+109 n98=1 -> flip x 0->1 n109=1
+110 n95=0 -> set x=1 n110=1
+111 n87=1 -> flip x 1->0 n111=0
+112 n69=1 -> flip x 0->1 n112=1
+113 n32=0 -> set x=1 n113=1
+114 n50=0 -> set x=1 n114=1
+115 n28=0 -> set x=1 n115=1
+116 n72=0 -> set x=1 n116=1
+117 q0=0 -> set x=1 n117=1 (since q0=0; earlier I in t11 initial wrote q0=0 reset n7,n117,n125 yes; at i117 set, not flip. Good.)
+118 n55=0 -> set x=1 n118=1
+119 n74=0 -> set x=1 n119=1
+120 n54=1 -> flip x 1->0 n120=0
+121 n111=0 -> set x=1 n121=1
+122 n120=0 -> set x=1 n122=1
+123 n103=1 -> flip x 1->0 n123=0
+124 n93=1 -> flip x 0->1 n124=1
+125 q0=0 -> set x=1 n125=1
+126 n101=1 -> flip x 1->0 n126=0
+127 n79=1 -> flip x 0->1 n127=1
+128 n27=1 -> flip x 1->0 n128=0
+129 n82=0 -> set x=1 n129=1
+130 n27=1 -> flip x 1->0 n130=0
+131 n43=1 -> flip x 0->1 n131=1
+132 n24=0 -> set x=1 n132=1
+133 n0=0 -> set x=1 n133=1
+134 n32=0 -> set x=1 n134=1
+135 n16=1 -> flip x 1->0 n135=0
+136 n16=1 -> flip x 0->1 n136=1
+137 n96=1 -> flip x 1->0 n137=0
+138 n24=0 -> set x=1 n138=1
+139 n131=1 -> flip x 1->0 n139=0
+140 n126=0 -> set x=1 n140=1
+141 n90=0 -> set x=1 n141=1
+142 n116=1 -> flip x 1->0 n142=0
+143 n75=1 -> flip x 0->1 n143=1
+144 n44=1 -> flip x 1->0 n144=0
+145 q2=0 -> set x=1 n145=1
+146 n97=0 -> set x=1 n146=1
+147 n143=1 -> flip x 1->0 n147=0
+148 n33=1 -> flip x 0->1 n148=1
+149 n99=0 -> set x=1 n149=1
+150 n108=0 -> set x=1 n150=1
+151 n90=0 -> set x=1 n151=1 (q3 d)
+152 n18=1 -> flip x 1->0 n152=0 (q6 d)
+153 n114=1 -> flip x 0->1 n153=1 (q0 d)  [In t10 n114=1 too; I set n153=0 there after flip from n152=0? Let's check t10: after n152=0, i153 b=n114=1 -> flip 0->1, so n153 should be 1, not 0! I made an error in t10 update. Need revisit t10 later. For t11, n114=1, x before i153 = n152=0, flip ->1 n153=1.]
+154 n92=0 -> set x=1 n154=1
+155 n135=0 -> set x=1 n155=1 (q7 d)
+156 n12=1 -> flip x 1->0 n156=0
+157 n118=1 -> flip x 0->1 n157=1
+158 q3=1 -> flip x 1->0 n158=0
+159 n72=0 -> set x=1 n159=1
+160 n53=0 -> set x=1 n160=1
+161 n113=1 -> flip x 1->0 n161=0
+162 n81=1 -> flip x 0->1 n162=1
+163 n140=1 -> flip x 1->0 n163=0
+164 n22=1 -> flip x 0->1 n164=1
+165 n75=1 -> flip x 1->0 n165=0
+166 n7=1 -> flip x 0->1 n166=1
+167 n30=0 -> set x=1 n167=1 (q1/q8 d)
+168 n28=0 -> set x=1 n168=1
+169 n146=1 -> flip x 1->0 n169=0
+170 n19=1 -> flip x 0->1 n170=1
+171 n169=0 -> set x=1 n171=1
+172 n95=0 -> set x=1 n172=1
+173 n121=1 -> flip x 1->0 n173=0
+174 n35=0 -> set x=1 n174=1
+175 n107=1 -> flip x 1->0 n175=0
+176 n113=1 -> flip x 0->1 n176=1
+177 n86=1 -> flip x 1->0 n177=0 (q2 d)
+178 n29=1 -> flip x 0->1 n178=1
+179 n119=1 -> flip x 1->0 n179=0
+180 n116=1 -> flip x 0->1 n180=1
+181 n63=1 -> flip x 1->0 n181=0
+182 n67=0 -> set x=1 n182=1
+183 n113=1 -> flip x 1->0 n183=0
+184 q4=1 -> flip x 0->1 n184=1
+185 n16=1 -> flip x 1->0 n185=0
+186 n90=0 -> set x=1 n186=1
+187 n38=1 -> flip x 1->0 n187=0
+188 in1=1 -> flip x 0->1 n188=1 (q4 d)
+189 in1=1 -> flip x 1->0 n189=0 (n187=0)
+190 n120=0 -> set x=1 n190=1
+191 n169=0 -> set x=1 n191=1
+192 n96=1 -> flip x 1->0 n192=0
+193 n67=0 -> set x=1 n193=1
+194 n49=1 -> flip x 1->0 n194=0
+195 n192=0 -> set x=1 n195=1 (q10 d)
+196 n164=1 -> flip x 1->0 n196=0
+197 n104=0 -> set x=1 n197=1 (q9/q11 d)
+198 n116=1 -> flip x 1->0 n198=0
+199 n14=1 -> flip x 0->1 n199=1. Output t11: n199=1,q5=1,q6=0,q8=1.
+But we need revisit t10 for n153 error and possibly state t11 was based on wrong q0. Let's handle after finishing? We already used t11 state from t10 update with q0=0 (from erroneous n153=0). If t10 n153 actually=1, then state t11 q0 should be1, not 0; also maybe other t10 d values. Need correct t10 before proceeding. Let's audit t10 carefully.
+
+Audit cycle10 (t10): State t10 [q0=1,q1=1,q2=0,q3=1,q4=1,q5=1,q6=0,q7=1,q8=1,q9=1,q10=1,q11=1], inputs in0=1,in1=0,in2=1. This state came from t9 update; need verify t9 d values too maybe. But focus t10.
+We scanned t10 and around i93 similar potential error? Let's recalc t10 from i88 onward. Up to i87 for t10: Let's verify early t10. Start n0=0. Sequence:
+n1=1,n2=0,n3=1,n4=0,n5=1,n6=0,n7=1,n8=0,n9=1,n10=1(q2=0 set), n11=0 (q11 flip from n10=1 ->0), n12=1 (q8 flip 0->1), n13=0,n14=1,n15=0,n16=1,n17=0 (n12=1 flip n16=1 ->0), n18=1 (n1=1 flip n17=0 ->1), n19=1 (q2=0 set), n20=0 (q5=1 flip n19=1 ->0), n21=1 (in0=1 flip n20=0 ->1), n22=1 (n0=0 set), n23=1 (n17=0 set), n24=0 (q11 flip n23=1 ->0), n25=1 (n18=1 flip n24=0 ->1), n26=0 (n10=1 flip n25=1 ->0), n27=1 (in0=1 flip n26=0 ->1), n28=0 (q8 flip n27=1 ->0), n29=1 (n11=0 set), n30=0 (n14=1 flip n29=1 ->0), n31=1 (n4=0 set), n32=0 (n3=1 flip n31=1 ->0), n33=1 (n16=1 flip n32=0 ->1), n34=1 (n15=0 set), n35=0 (n31=1 flip n34=1 ->0), n36=1 (n1=1 flip n35=0 ->1), n37=0 (n10=1 flip n36=1 ->0), n38=1 (n24=0 set), n39=0 (n9=1 flip n38=1 ->0), n40=1 (n35=0 set), n41=0 (q4=1 flip n40=1 ->0), n42=1 (n14=1 flip n41=0 ->1), n43=1 (n26=0 set), n44=1 (n32=0 set), n45=1 (q2=0 set), n46=0 (q3=1 flip n45=1 ->0), n47=1 (q5=1 flip n46=0 ->1), n48=0 (n27=1 flip n47=1 ->0), n49=1 (n22=1 flip n48=0 ->1), n50=0 (n42=1 flip n49=1 ->0), n51=1 (q4=1 flip n50=0 ->1), n52=1 (n24=0 set), n53=0 (n33=1 flip n52=1 ->0), n54=1 (n10=1 flip n53=0 ->1), n55=0 (n1=1 flip n54=1 ->0), n56=1 (n33=1 flip n55=0 ->1), n57=0 (n16=1 flip n56=1 ->0), n58=1 (n27=1 flip n57=0 ->1), n59=0 (n42=1 flip n58=1 ->0), n60=1 (n32=0 set), n61=1 (n26=0 set), n62=0 (n61=1 flip), n63=1 (n7=1 flip n62=0 ->1), n64=1 (n30=0 set), n65=0 (n3=1 flip n64=1 ->0), n66=1 (n50=0 set), n67=0 (n14=1 flip n66=1 ->0), n68=1 (n43=1 flip n67=0 ->1), n69=1 (n57=0 set), n70=0 (n22=1 flip n69=1 ->0), n71=1 (n21=1 flip n70=0 ->1), n72=0 (n68=1 flip n71=1 ->0), n73=1 (n51=1 flip n72=0 ->1), n74=0 (n22=1 flip n73=1 ->0), n75=1 (n65=0 set), n76=0 (n33=1 flip n75=1 ->0), n77=1 (q11=1 flip n76=0 ->1), n78=0 (n27=1 flip n77=1 ->0), n79=1 (in2=1 flip n78=0 ->1), n80=1 (n59=0 set), n81=1 (n72=0 set), n82=0 (in0=1 flip n81=1 ->0), n83=1 (n17=0 set), n84=0 (n79=1 flip n83=1 ->0), n85=1 (n41=0 set), n86=1 (n30=0 set), n87=1 (n39=0 set), n88=0 (n43=1 flip n87=1 ->0), n89=1 (n21=1 flip n88=0 ->1), n90=0 (n29=1 flip n89=1 ->0), n91=1 (n5=1 flip n90=0 ->1), n92=0 (n5=1 flip n91=1 ->0), n93: b=n49=1 -> flip n92=0 ->1 (I wrote n93=1 for t10? I wrote n93=1 yes at i93 in t10? Let's check t10 text: I wrote "93 n49=1 flip ->1 n93=1" yes good. n94=1 (n30=0 set), n95=0 (n83=1 flip n94=1 ->0), n96=1 (n43=1 flip n95=0 ->1), n97=0 (n87=1 flip n96=1 ->0), n98=1 (n41=0 set), n99=0 (n22=1 flip n98=1 ->0), n100=1 (n45=1 flip n99=0 ->1), n101=1 (n28=0 set), n102=0 (q5=1 flip n101=1 ->0), n103=1 (n77=1 flip n102=0 ->1), n104=0 (n71=1 flip n103=1 ->0), n105=1 (n92=0 set), n106=0 (n100=1 flip n105=1 ->0), n107=1 (n72=0 set), n108=0 (n96=1 flip n107=1 ->0), n109=1 (n98=1 flip n108=0 ->1), n110=1 (n95=0 set), n111=0 (n87=1 flip n110=1 ->0), n112=1 (n69=1 flip n111=0 ->1), n113=1 (n32=0 set), n114=1 (n50=0 set), n115=1 (n28=0 set), n116=1 (n72=0 set), n117=0 (q0=1 flip n116=1 ->0), n118=1 (n55=0 set), n119=1 (n74=0 set), n120=0 (n54=1 flip n119=1 ->0), n121=1 (n111=0 set), n122=1 (n120=0 set), n123=0 (n103=1 flip n122=1 ->0), n124=1 (n93=1 flip n123=0 ->1), n125=0 (q0=1 flip n124=1 ->0), n126=1 (n101=1 flip n125=0 ->1), n127=0 (n79=1 flip n126=1 ->0), n128=1 (n27=1 flip n127=0 ->1), n129=1 (n82=0 set), n130=0 (n27=1 flip n129=1 ->0), n131=1 (n43=1 flip n130=0 ->1), n132=1 (n24=0 set), n133=1 (n0=0 set), n134=1 (n32=0 set), n135=0 (n16=1 flip n134=1 ->0), n136=1 (n16=1 flip n135=0 ->1), n137=0 (n96=1 flip n136=1 ->0), n138=1 (n24=0 set), n139=0 (n131=1 flip n138=1 ->0), n140=1 (n126=1 flip n139=0 ->1), n141=1 (n90=0 set), n142=0 (n116=1 flip n141=1 ->0), n143=1 (n75=1 flip n142=0 ->1), n144=0 (n44=1 flip n143=1 ->0), n145=1 (q2=0 set), n146=1 (n97=0 set), n147=0 (n143=1 flip n146=1 ->0), n148=1 (n33=1 flip n147=0 ->1), n149=1 (n99=0 set), n150=1 (n108=0 set), n151: b=n90=0 -> set n151=1 (correct). n152: b=n18=1 -> flip from n151=1 ->0 (correct). n153: b=n114=1 -> flip from n152=0 ->1. I erroneously recorded n153=0 in t10. Correct n153=1. n154 b=n92=0 -> set n154=1. n155 b=n135=0 -> set n155=1 (correct). So t10 q0 d should be1, q3d=1,q6d=0,q7d=1. Continue t10 after correction: n156 b=n12=1 flip n155=1 ->0; n157 b=n118=1 flip ->1; n158 q3=1 flip ->0; n159 n72=0 set ->1; n160 n53=0 set ->1; n161 n113=1 flip ->0; n162 n81=1 flip ->1; n163 n140=1 flip ->0; n164 n22=1 flip ->1; n165 n75=1 flip ->0; n166 n7=1 flip ->1; n167 n30=0 set ->1; n168 n28=0 set ->1; n169 n146=1 flip ->0; n170 n19=1 flip ->1; n171 n169=0 set ->1; n172 n95=0 set ->1; n173 n121=1 flip ->0; n174 n35=0 set ->1; n175 n107=1 flip ->0; n176 n113=1 flip ->1; n177 n86=1 flip ->0 (correct); n178 n29=1 flip ->1; n179 n119=1 flip ->0; n180 n116=1 flip ->1; n181 n63=1 flip ->0; n182 n67=0 set ->1; n183 n113=1 flip ->0; n184 q4=1 flip ->1; n185 n16=1 flip ->0; n186 n90=0 set ->1; n187 n38=1 flip ->0; n188 in1=0 set ->1; n189 in1=0 set ->1; n190 n120=0 set ->1; n191 n169=0 set ->1; n192 n96=1 flip ->0; n193 n67=0 set ->1; n194 n49=1 flip ->0; n195 n192=0 set ->1; n196 n164=1 flip ->0; n197 n104=0 set ->1; n198 n116=1 flip ->0; n199 n14=1 flip ->1. So t10 output n199=1,q5=1,q6=0,q8=1 same; update t11 should be q0=1 (not 0), q1=1,q2=0,q3=1,q4=1,q5=1,q6=0,q7=1,q8=1,q9=1,q10=1,q11=1. So only q0 differs from what we used for t11 (we used q0=0). Therefore t11 computation is invalid (we set q0=0 resets at n7,n117,n125; actual q0=1 toggles). Need recompute t11 with corrected state q0=1. State t11 actual: [1,1,0,1,1,1,0,1,1,1,1,1], inputs in0=1,in1=1,in2=1. This is same as t10 except in1=1 (not 0) and q0 same1. Actually t10 state [1,1,0,1,1,1,0,1,1,1,1,1], inputs (1,0,1). t11 inputs (1,1,1). So t11 combinational same as t10 except in1=1 affecting n188,n189 and downstream n190... maybe q4 update. Also t10 had in1=0 causing n188=n189=1; t11 in1=1 means n188=~n187, n189=n187. This can affect n190+ and q10/q9 maybe. Need recompute t11 from scratch with q0=1. We can reuse t10 scan up to n187 because inputs in0/in2 same and state same; only difference in1 at i188/i189. Since in1 not used before i188, n0..n187 for t11 are identical to t10 (corrected). Great. So for t11, use n0..n187 as in corrected t10. We have through n187: n187=0 (corrected t10). Then i188 b=in1=1 -> flip x from n187=0 ->1, n188=1. i189 b=in1=1 -> flip x 1->0, n189=0 (equals n187=0). In t10 with in1=0, n188=1,n189=1. So from i190 onward t11 differs because n189=0 vs t10 n189=1. Continue t11 from x=n189=0:
+i190 b=n120. Need t11 n120 = same as t10 n120 =0. So set x=1 n190=1.
+i191 b=n169 (t11 same as t10 n169=0) -> set x=1 n191=1.
+i192 b=n96 (same=1) -> flip x 1->0 n192=0.
+i193 b=n67 (same=0) -> set x=1 n193=1.
+i194 b=n49 (same=1) -> flip x 1->0 n194=0.
+i195 b=n192=0 -> set x=1 n195=1 (same as t10)
+i196 b=n164 (same=1) -> flip x 1->0 n196=0
+i197 b=n104 (same=0) -> set x=1 n197=1
+i198 b=n116 (same=1) -> flip x 1->0 n198=0
+i199 b=n14 (same=1) -> flip x 0->1 n199=1.
+So t11 outputs same as previously (n199=1,q5=1,q6=0,q8=1) and d updates: q0=n153=1 (corrected), q1=n167=1,q2=n177=0,q3=n151=1,q4=n188=1,q5=1,q6=n152=0,q7=n155=1,q8=1,q9=n197=1,q10=n195=1,q11=1. Interesting same as t10 except q0 remains1, q6 remains0, etc. State t12: [1,1,0,1,1,1,0,1,1,1,1,1] again? Let's update from t11: q0=1,q1=1,q2=0,q3=1,q4=1,q5=1,q6=0,q7=1,q8=1,q9=1,q10=1,q11=1. Yes identical to t10/t11 state. Inputs t12: in0=0,in1=0,in2=1. State S = [1,1,0,1,1,1,0,1,1,1,1,1]. Good. We need be mindful earlier t10/t11 corrections; outputs recorded for t10/t11 remain same, state t12 as above.
+
+Let's also audit t9 update that led to t10: t9 state [1,1,0,0,0,1,1,1,1,1,1,1]? Wait t9 state was [q0=1,q1=1,q2=0,q3=0,q4=0,q5=1,q6=1,q7=1,q8=1,q9=1,q10=1,q11=1]. We computed d: n153=1,n167=1,n177=0,n151=1,n188=1,n199=1,n152=0,n155=1,n197=1,n195=1. So t10 [1,1,0,1,1,1,0,1,1,1,1,1]. Good.
+
+Now cycle12 (t12): State S [q0=1,q1=1,q2=0,q3=1,q4=1,q5=1,q6=0,q7=1,q8=1,q9=1,q10=1,q11=1], inputs in0=0,in1=0,in2=1.
+This is same state as t10/t11 but inputs in0=0 (vs1), in1=0 (t10 in1=0, t11 in1=1), in2=1. Since state same, n0..n187 may differ from t10 because in0=0 affects n21,n27,n82 (t10 in0=1), so not same. Need scan. Resets: q2=0 n10,n19,n45,n145; q6=0 unused; in0=0 n21,n27,n82; in1=0 n188,n189. q0,q1,q3,q4,q5,q7,q8,q9,q10,q11=1,in2=1. Start n0=~(1&1)=0. Scan t12:
+x=0.
+1 q7=1 flip ->1 n1=1
+2 q8=1 flip ->0 n2=0
+3 q1=1 flip ->1 n3=1
+4 q11=1 flip ->0 n4=0
+5 q5=1 flip ->1 n5=1
+6 q8=1 flip ->0 n6=0
+7 q0=1 flip ->1 n7=1
+8 n5=1 flip ->0 n8=0
+9 q9=1 flip ->1 n9=1
+10 q2=0 set ->1 n10=1
+11 q11=1 flip ->0 n11=0
+12 q8=1 flip ->1 n12=1
+13 q3=1 flip ->0 n13=0
+14 q3=1 flip ->1 n14=1
+15 q10=1 flip ->0 n15=0
+16 q7=1 flip ->1 n16=1
+17 n12=1 flip ->0 n17=0
+18 n1=1 flip ->1 n18=1
+19 q2=0 set ->1 n19=1
+20 q5=1 flip ->0 n20=0
+21 in0=0 set ->1 n21=1
+22 n0=0 set ->1 n22=1
+23 n17=0 set ->1 n23=1
+24 q11=1 flip ->0 n24=0
+25 n18=1 flip ->1 n25=1
+26 n10=1 flip ->0 n26=0
+27 in0=0 set ->1 n27=1
+28 q8=1 flip ->0 n28=0
+29 n11=0 set ->1 n29=1
+30 n14=1 flip ->0 n30=0
+31 n4=0 set ->1 n31=1
+32 n3=1 flip ->0 n32=0
+33 n16=1 flip ->1 n33=1
+34 n15=0 set ->1 n34=1
+35 n31=1 flip ->0 n35=0
+36 n1=1 flip ->1 n36=1
+37 n10=1 flip ->0 n37=0
+38 n24=0 set ->1 n38=1
+39 n9=1 flip ->0 n39=0
+40 n35=0 set ->1 n40=1
+41 q4=1 flip ->0 n41=0
+42 n14=1 flip ->1 n42=1
+43 n26=0 set ->1 n43=1
+44 n32=0 set ->1 n44=1
+45 q2=0 set ->1 n45=1
+46 q3=1 flip ->0 n46=0
+47 q5=1 flip ->1 n47=1
+48 n27=1 flip ->0 n48=0
+49 n22=1 flip ->1 n49=1
+50 n42=1 flip ->0 n50=0
+51 q4=1 flip ->1 n51=1
+52 n24=0 set ->1 n52=1
+53 n33=1 flip ->0 n53=0
+54 n10=1 flip ->1 n54=1
+55 n1=1 flip ->0 n55=0
+56 n33=1 flip ->1 n56=1
+57 n16=1 flip ->0 n57=0
+58 n27=1 flip ->1 n58=1
+59 n42=1 flip ->0 n59=0
+60 n32=0 set ->1 n60=1
+61 n26=0 set ->1 n61=1
+62 n61=1 flip ->0 n62=0
+63 n7=1 flip ->1 n63=1
+64 n30=0 set ->1 n64=1
+65 n3=1 flip ->0 n65=0
+66 n50=0 set ->1 n66=1
+67 n14=1 flip ->0 n67=0
+68 n43=1 flip ->1 n68=1
+69 n57=0 set ->1 n69=1
+70 n22=1 flip ->0 n70=0
+71 n21=1 flip ->1 n71=1
+72 n68=1 flip ->0 n72=0
+73 n51=1 flip ->1 n73=1
+74 n22=1 flip ->0 n74=0
+75 n65=0 set ->1 n75=1
+76 n33=1 flip ->0 n76=0
+77 q11=1 flip ->1 n77=1
+78 n27=1 flip ->0 n78=0
+79 in2=1 flip ->1 n79=1
+80 n59=0 set ->1 n80=1
+81 n72=0 set ->1 n81=1
+82 in0=0 set ->1 n82=1 (diff from t10 where n82=0)
+83 n17=0 set ->1 n83=1
+84 n79=1 flip ->0 n84=0
+85 n41=0 set ->1 n85=1
+86 n30=0 set ->1 n86=1
+87 n39=0 set ->1 n87=1
+88 n43=1 flip ->0 n88=0
+89 n21=1 flip ->1 n89=1
+90 n29=1 flip ->0 n90=0
+91 n5=1 flip ->1 n91=1
+92 n5=1 flip ->0 n92=0
+93 n49=1 flip ->1 n93=1
+94 n30=0 set ->1 n94=1
+95 n83=1 flip ->0 n95=0
+96 n43=1 flip ->1 n96=1
+97 n87=1 flip ->0 n97=0
+98 n41=0 set ->1 n98=1
+99 n22=1 flip ->0 n99=0
+100 n45=1 flip ->1 n100=1
+101 n28=0 set ->1 n101=1
+102 q5=1 flip ->0 n102=0
+103 n77=1 flip ->1 n103=1
+104 n71=1 flip ->0 n104=0
+105 n92=0 set ->1 n105=1
+106 n100=1 flip ->0 n106=0
+107 n72=0 set ->1 n107=1
+108 n96=1 flip ->0 n108=0
+109 n98=1 flip ->1 n109=1
+110 n95=0 set ->1 n110=1
+111 n87=1 flip ->0 n111=0
+112 n69=1 flip ->1 n112=1
+113 n32=0 set ->1 n113=1
+114 n50=0 set ->1 n114=1
+115 n28=0 set ->1 n115=1
+116 n72=0 set ->1 n116=1
+117 q0=1 flip ->0 n117=0
+118 n55=0 set ->1 n118=1
+119 n74=0 set ->1 n119=1
+120 n54=1 flip ->0 n120=0
+121 n111=0 set ->1 n121=1
+122 n120=0 set ->1 n122=1
+123 n103=1 flip ->0 n123=0
+124 n93=1 flip ->1 n124=1
+125 q0=1 flip ->0 n125=0
+126 n101=1 flip ->1 n126=1
+127 n79=1 flip ->0 n127=0
+128 n27=1 flip ->1 n128=1
+129 n82=1 flip ->0 n129=0 (t10 n82=0 made n129=1; here diff)
+130 n27=1 flip ->1 n130=1
+131 n43=1 flip ->0 n131=0
+132 n24=0 set ->1 n132=1
+133 n0=0 set ->1 n133=1
+134 n32=0 set ->1 n134=1
+135 n16=1 flip ->0 n135=0
+136 n16=1 flip ->1 n136=1
+137 n96=1 flip ->0 n137=0
+138 n24=0 set ->1 n138=1
+139 n131=0 set ->1 n139=1
+140 n126=1 flip ->0 n140=0 (diff t10 n140=1)
+141 n90=0 set ->1 n141=1
+142 n116=1 flip ->0 n142=0
+143 n75=1 flip ->1 n143=1
+144 n44=1 flip ->0 n144=0
+145 q2=0 set ->1 n145=1
+146 n97=0 set ->1 n146=1
+147 n143=1 flip ->0 n147=0
+148 n33=1 flip ->1 n148=1
+149 n99=0 set ->1 n149=1
+150 n108=0 set ->1 n150=1
+151 n90=0 set ->1 n151=1 (q3 d)
+152 n18=1 flip ->0 n152=0 (q6 d)
+153 n114=1 flip ->1 n153=1 (q0 d) (corrected pattern)
+154 n92=0 set ->1 n154=1
+155 n135=0 set ->1 n155=1 (q7 d)
+156 n12=1 flip ->0 n156=0
+157 n118=1 flip ->1 n157=1
+158 q3=1 flip ->0 n158=0
+159 n72=0 set ->1 n159=1
+160 n53=0 set ->1 n160=1
+161 n113=1 flip ->0 n161=0
+162 n81=1 flip ->1 n162=1
+163 n140=0 set ->1 n163=1 (diff)
+164 n22=1 flip ->0 n164=0 (diff; t10 n164=1)
+165 n75=1 flip ->1 n165=1
+166 n7=1 flip ->0 n166=0
+167 n30=0 set ->1 n167=1 (q1/q8 d)
+168 n28=0 set ->1 n168=1
+169 n146=1 flip ->0 n169=0
+170 n19=1 flip ->1 n170=1
+171 n169=0 set ->1 n171=1
+172 n95=0 set ->1 n172=1
+173 n121=1 flip ->0 n173=0
+174 n35=0 set ->1 n174=1
+175 n107=1 flip ->0 n175=0
+176 n113=1 flip ->1 n176=1
+177 n86=1 flip ->0 n177=0 (q2 d)
+178 n29=1 flip ->1 n178=1
+179 n119=1 flip ->0 n179=0
+180 n116=1 flip ->1 n180=1
+181 n63=1 flip ->0 n181=0
+182 n67=0 set ->1 n182=1
+183 n113=1 flip ->0 n183=0
+184 q4=1 flip ->1 n184=1
+185 n16=1 flip ->0 n185=0
+186 n90=0 set ->1 n186=1
+187 n38=1 flip ->0 n187=0
+188 in1=0 set ->1 n188=1 (q4 d)
+189 in1=0 set ->1 n189=1
+190 n120=0 set ->1 n190=1
+191 n169=0 set ->1 n191=1
+192 n96=1 flip ->0 n192=0
+193 n67=0 set ->1 n193=1
+194 n49=1 flip ->0 n194=0
+195 n192=0 set ->1 n195=1 (q10 d)
+196 n164=0 set ->1 n196=1 (diff; t10 n196=0)
+197 n104=0 set ->1 n197=1 (q9/q11 d) [n104=0 so still1]
+198 n116=1 flip ->0 n198=0
+199 n14=1 flip ->1 n199=1. Output t12: n199=1,q5=1,q6=0,q8=1.
+Update state t13: q0=1,q1=1,q2=0,q3=1,q4=1,q5=1,q6=0,q7=1,q8=1,q9=1,q10=1,q11=1 (same S). Inputs t13: in0=1,in1=0,in2=0.
+State S again. in0=1,in1=0,in2=0. Differences from t12: in0 1 vs0 (affects n21,n27,n82), in2 0 vs1 (n79 reset), in1=0 same. Need scan t13. State S: q0=1,q1=1,q2=0,q3=1,q4=1,q5=1,q6=0,q7=1,q8=1,q9=1,q10=1,q11=1. Resets: q2=0; q6 unused; in1=0 n188/189; in2=0 n79. in0=1 (n21,n27,n82 toggles). Start n0=0.
+We can reuse t12 until i20? in0 first at i21. Up to n20 same as t12: let's list from t12 corrected: n0=0,n1=1,n2=0,n3=1,n4=0,n5=1,n6=0,n7=1,n8=0,n9=1,n10=1,n11=0,n12=1,n13=0,n14=1,n15=0,n16=1,n17=0,n18=1,n19=1,n20=0. At i21 in0=1 -> flip x n20=0 ->1 n21=1 (same as t12 because t12 in0=0 set to1; same result n21=1). i22 n0=0 set ->1 n22=1. i23 n17=0 set ->1. i24 q11=1 flip ->0 n24=0. i25 n18=1 flip ->1 n25=1. i26 n10=1 flip ->0 n26=0. i27 in0=1 -> flip x n26=0 ->1 n27=1 (same as t12 set1). So through n27 same. i28 q8=1 flip n27=1 ->0 n28=0; i29 n11=0 set1; i30 n14=1 flip ->0; same as t12 until i82? The only in0 differences at n21,n27,n82; n21/n27 ended same as t12 (because t12 in0=0 set to1 and t13 in0=1 flipped from 0 to1). Need check n21 input previous n20=0; with in0=1 flip ->1 yes. n27 previous n26=0; flip->1. n82 later previous n81 maybe could differ if n79 changes due to in2=0. in2=0 at i79 sets n79=1, whereas t12 in2=1 flipped from n78=0 to1; same n79=1. n80 same? n80 b=n59; n59 same? Need ensure n59 same. Since through n78 same? in2 only at i79; before i79 no in2, and in0 differences resolved same, so n0..n78 same as t12. At i79 t13 in2=0 set n79=1; t12 in2=1 flip n78=0 ->1; same. n80 b=n59 same (0) -> set n80=1; n81 b=n72 same0 -> set n81=1; i82 in0=1 -> flip n81=1 ->0 n82=0. In t12 in0=0 set n82=1. So divergence at n82: t13 n82=0. Then continue.
+We have t13 same as t12 through n81, with n82=0 (vs t12 n82=1). Let's note key same values from t12: n83=1 (n17=0 set), n84=0 (n79=1 flip n83=1), n85=1,n86=1,n87=1,n88=0,n89=1,n90=0,n91=1,n92=0,n93=1,n94=1,n95=0,n96=1,n97=0,n98=1,n99=0,n100=1,n101=1,n102=0,n103=1,n104=0,n105=1,n106=0,n107=1,n108=0,n109=1,n110=1,n111=0,n112=1,n113=1,n114=1,n115=1,n116=1,n117=0,n118=1,n119=1,n120=0,n121=1,n122=1,n123=0,n124=1,n125=0,n126=1,n127=0,n128=1. At i129 b=n82=0 -> set x=1 n129=1 (t12 had n82=1 flip n128=1 ->0). So n129=1. i130 b=n27=1 -> flip x 1->0 n130=0 (t12 n130=1? t12 after n129=0, i130 flip ->1; here different). i131 b=n43=1 -> flip x 0->1 n131=1 (t12 n131=0). i132 n24=0 set ->1 n132=1; i133 n0=0 set1; i134 n32=0 set1; i135 n16=1 flip ->0 n135=0; i136 flip ->1; i137 n96=1 flip ->0; i138 n24=0 set1; i139 n131=1 flip n138=1 ->0 n139=0 (t12 n139=1); i140 n126=1 flip ->1 n140=1 (t12 n140=0); i141 n90=0 set1; i142 n116=1 flip ->0; i143 n75=1 flip ->1; i144 n44=1 flip ->0; i145 q2=0 set1; i146 n97=0 set1; i147 n143=1 flip ->0; i148 n33=1 flip ->1; i149 n99=0 set1; i150 n108=0 set1; i151 n90=0 set ->1 (q3 d); i152 n18=1 flip ->0 (q6 d); i153 n114=1 flip ->1 (q0 d); i154 n92=0 set1; i155 n135=0 set1 (q7 d); i156 n12=1 flip ->0; i157 n118=1 flip ->1; i158 q3=1 flip ->0; i159 n72=0 set1; i160 n53=0 set1; i161 n113=1 flip ->0; i162 n81=1 flip ->1; i163 n140=1 flip ->0 n163=0 (t12 n163=1); i164 n22=1 flip ->1 n164=1 (t12 n164=0); i165 n75=1 flip ->0; i166 n7=1 flip ->1; i167 n30=0 set1 (q1/q8 d=1); i168 n28=0 set1; i169 n146=1 flip ->0; i170 n19=1 flip ->1; i171 n169=0 set1; i172 n95=0 set1; i173 n121=1 flip ->0; i174 n35=0 set1; i175 n107=1 flip ->0; i176 n113=1 flip ->1; i177 n86=1 flip ->0 (q2 d=0); i178 n29=1 flip ->1; i179 n119=1 flip ->0; i180 n116=1 flip ->1; i181 n63=1 flip ->0; i182 n67=0 set1; i183 n113=1 flip ->0; i184 q4=1 flip ->1; i185 n16=1 flip ->0; i186 n90=0 set1; i187 n38=1 flip ->0; i188 in1=0 set1 (q4 d=1); i189 in1=0 set1; i190 n120=0 set1; i191 n169=0 set1; i192 n96=1 flip ->0; i193 n67=0 set1; i194 n49=1 flip ->0; i195 n192=0 set1 (q10 d=1); i196 n164=1 flip ->0; i197 n104=0 set1 (q9/q11 d=1); i198 n116=1 flip ->0; i199 n14=1 flip ->1. Output t13: n199=1,q5=1,q6=0,q8=1. State remains S (q0=1,q1=1,q2=0,q3=1,q4=1,q5=1,q6=0,q7=1,q8=1,q9=1,q10=1,q11=1). Interesting fixed state under these d's? It seems S maps to S for t10-t13 regardless inputs (with q2d=0,q6d=0, all others1). If state S is invariant for all inputs? Let's check: For state S, q2=0,q6=0, all others (including q0,q1,q3,q4,q5,q7,q8,q9,q10,q11) =1. We computed for several input combos (in0,in1,in2): t10 (1,0,1), t11(1,1,1), t12(0,0,1), t13(1,0,0) all produced d updates: q0=1,q1=1,q2=0,q3=1,q4=1,q5=1,q6=0,q7=1,q8=1,q9=1,q10=1,q11=1. Is S a fixed point independent of inputs? Likely yes! Let's verify for all input combinations maybe. If S is invariant, then from t10 onward state remains S forever. Outputs then q5=1,q6=0,q8=1 constant; n199 maybe depends on inputs? In t10-t13 n199=1 for all tried. If for state S, n14=1,n116=1,n197=1 independent of inputs, then n199=1 always. Let's prove/verify for remaining input combos. State S has q2=0 (resets n10,n19,n45,n145), q6 unused, all relevant q's except q2 are 1. Inputs only at in0 (n21,n27,n82), in1 (n188,n189), in2(n79). We need see if n199=1 for all 8 input combos and d's fixed. We tried (in0,in1,in2) = (1,0,1),(1,1,1),(0,0,1),(1,0,0). Remaining combos for cycles t14..t23 maybe: Let's list inputs t14..t23:
+t14: in0=0,in1=0,in2=1? From traces: index14 (0-based) in0=0,in1=0,in2=1. Yes (0,0,1) tried t12.
+t15: in0=0,in1=0,in2=1 (same)
+t16: in0=0,in1=1,in2=0 (0,1,0) not tried (t11 was1,1,1; t? )
+t17: in0=0,in1=1,in2=1 (0,1,1) not tried (in0=0)
+t18: in0=0,in1=0,in2=0 (0,0,0) not tried exactly? t4 state different; for S no.
+t19: in0=0,in1=1,in2=1 (0,1,1)
+t20: in0=0,in1=1,in2=0 (0,1,0)
+t21: in0=0,in1=1,in2=1 (0,1,1)
+t22: in0=1,in1=0,in2=0 (1,0,0) tried t13
+t23: in0=1,in1=1,in2=0 (1,1,0) not tried (in2=0,in1=1)
+Need ensure for combos with in0=0, n21/n27/n82=1 (set) as in t12; for in0=1, n21/n27 may be? For state S, before n21 x=n20. Let's compute generic S to confirm invariance and output.
+
+Generic state S: q0=1,q1=1,q2=0,q3=1,q4=1,q5=1,q6=0,q7=1,q8=1,q9=1,q10=1,q11=1. Inputs a=in0,b=in1,c=in2.
+Start n0=~(q5&q8)=0.
+Let's derive generically with parameters a,b,c.
+n1 = NAND(n0=0,q7=1)=1.
+n2 = NAND(n1=1,q8=1)=0.
+n3 = NAND(n2=0,q1=1)=1.
+n4 = NAND(n3=1,q11=1)=0.
+n5 = NAND(n4=0,q5=1)=1.
+n6 = NAND(n5=1,q8=1)=0.
+n7 = NAND(n6=0,q0=1)=1.
+n8 = NAND(n7=1,n5=1)=0.
+n9 = NAND(n8=0,q9=1)=1.
+n10 = NAND(n9=1,q2=0)=1 (reset).
+n11 = NAND(n10=1,q11=1)=0.
+n12 = NAND(n11=0,q8=1)=1.
+n13 = NAND(n12=1,q3=1)=0.
+n14 = NAND(n13=0,q3=1)=1. (constant)
+n15 = NAND(n14=1,q10=1)=0.
+n16 = NAND(n15=0,q7=1)=1.
+n17 = NAND(n16=1,n12=1)=0.
+n18 = NAND(n17=0,n1=1)=1.
+n19 = NAND(n18=1,q2=0)=1.
+n20 = NAND(n19=1,q5=1)=0.
+n21 = NAND(n20=0,a)=1 for any a (since a input first operand n20=0 -> output1). Good, independent.
+n22 = NAND(n21=1,n0=0)=1.
+n23 = NAND(n22=1,n17=0)=1.
+n24 = NAND(n23=1,q11=1)=0.
+n25 = NAND(n24=0,n18=1)=1.
+n26 = NAND(n25=1,n10=1)=0.
+n27 = NAND(n26=0,a)=1 independent.
+n28 = NAND(n27=1,q8=1)=0.
+n29 = NAND(n28=0,n11=0)=1 (NAND(0,0)=1) independent.
+n30 = NAND(n29=1,n14=1)=0.
+n31 = NAND(n30=0,n4=0)=1.
+n32 = NAND(n31=1,n3=1)=0.
+n33 = NAND(n32=0,n16=1)=1.
+n34 = NAND(n33=1,n15=0)=1.
+n35 = NAND(n34=1,n31=1)=0.
+n36 = NAND(n35=0,n1=1)=1.
+n37 = NAND(n36=1,n10=1)=0.
+n38 = NAND(n37=0,n24=0)=1.
+n39 = NAND(n38=1,n9=1)=0.
+n40 = NAND(n39=0,n35=0)=1.
+n41 = NAND(n40=1,q4=1)=0.
+n42 = NAND(n41=0,n14=1)=1.
+n43 = NAND(n42=1,n26=0)=1.
+n44 = NAND(n43=1,n32=0)=1.
+n45 = NAND(n44=1,q2=0)=1.
+n46 = NAND(n45=1,q3=1)=0.
+n47 = NAND(n46=0,q5=1)=1.
+n48 = NAND(n47=1,n27=1)=0.
+n49 = NAND(n48=0,n22=1)=1.
+n50 = NAND(n49=1,n42=1)=0.
+n51 = NAND(n50=0,q4=1)=1.
+n52 = NAND(n51=1,n24=0)=1.
+n53 = NAND(n52=1,n33=1)=0.
+n54 = NAND(n53=0,n10=1)=1.
+n55 = NAND(n54=1,n1=1)=0.
+n56 = NAND(n55=0,n33=1)=1.
+n57 = NAND(n56=1,n16=1)=0.
+n58 = NAND(n57=0,n27=1)=1.
+n59 = NAND(n58=1,n42=1)=0.
+n60 = NAND(n59=0,n32=0)=1.
+n61 = NAND(n60=1,n26=0)=1.
+n62 = NAND(n61=1,n61=1)=0.
+n63 = NAND(n62=0,n7=1)=1.
+n64 = NAND(n63=1,n30=0)=1.
+n65 = NAND(n64=1,n3=1)=0.
+n66 = NAND(n65=0,n50=0)=1 (NAND(0,0)=1) [earlier for S we had n66=1 yes]
+n67 = NAND(n66=1,n14=1)=0.
+n68 = NAND(n67=0,n43=1)=1.
+n69 = NAND(n68=1,n57=0)=1.
+n70 = NAND(n69=1,n22=1)=0.
+n71 = NAND(n70=0,n21=1)=1.
+n72 = NAND(n71=1,n68=1)=0.
+n73 = NAND(n72=0,n51=1)=1.
+n74 = NAND(n73=1,n22=1)=0.
+n75 = NAND(n74=0,n65=0)=1.
+n76 = NAND(n75=1,n33=1)=0.
+n77 = NAND(n76=0,q11=1)=1.
+n78 = NAND(n77=1,n27=1)=0.
+n79 = NAND(n78=0,c)=1 independent of c.
+n80 = NAND(n79=1,n59=0)=1.
+n81 = NAND(n80=1,n72=0)=1.
+n82 = NAND(n81=1,a)= ~a. Aha for state S, n82 = NOT in0, not always 1. In t10/t11/t13 with a=1, n82=0; in t12 with a=0, n82=1. Good. This may affect later but maybe not output/d's? Let's continue generic.
+n83 = NAND(n82=~a, n17=0) =1 (since n17=0) independent.
+n84 = NAND(n83=1,n79=1)=0.
+n85 = NAND(n84=0,n41=0)=1.
+n86 = NAND(n85=1,n30=0)=1.
+n87 = NAND(n86=1,n39=0)=1.
+n88 = NAND(n87=1,n43=1)=0.
+n89 = NAND(n88=0,n21=1)=1.
+n90 = NAND(n89=1,n29=1)=0.
+n91 = NAND(n90=0,n5=1)=1.
+n92 = NAND(n91=1,n5=1)=0.
+n93 = NAND(n92=0,n49=1)=1.
+n94 = NAND(n93=1,n30=0)=1.
+n95 = NAND(n94=1,n83=1)=0.
+n96 = NAND(n95=0,n43=1)=1.
+n97 = NAND(n96=1,n87=1)=0.
+n98 = NAND(n97=0,n41=0)=1.
+n99 = NAND(n98=1,n22=1)=0.
+n100= NAND(n99=0,n45=1)=1.
+n101= NAND(n100=1,n28=0)=1.
+n102= NAND(n101=1,q5=1)=0.
+n103= NAND(n102=0,n77=1)=1.
+n104= NAND(n103=1,n71=1)=0.
+n105= NAND(n104=0,n92=0)=1 (NAND(0,0)=1).
+n106= NAND(n105=1,n100=1)=0.
+n107= NAND(n106=0,n72=0)=1.
+n108= NAND(n107=1,n96=1)=0.
+n109= NAND(n108=0,n98=1)=1.
+n110= NAND(n109=1,n95=0)=1.
+n111= NAND(n110=1,n87=1)=0.
+n112= NAND(n111=0,n69=1)=1.
+n113= NAND(n112=1,n32=0)=1.
+n114= NAND(n113=1,n50=0)=1.
+n115= NAND(n114=1,n28=0)=1.
+n116= NAND(n115=1,n72=0)=1. (constant)
+n117= NAND(n116=1,q0=1)=0.
+n118= NAND(n117=0,n55=0)=1 (NAND(0,0)=1).
+n119= NAND(n118=1,n74=0)=1.
+n120= NAND(n119=1,n54=1)=0.
+n121= NAND(n120=0,n111=0)=1 (NAND(0,0)=1).
+n122= NAND(n121=1,n120=0)=1.
+n123= NAND(n122=1,n103=1)=0.
+n124= NAND(n123=0,n93=1)=1.
+n125= NAND(n124=1,q0=1)=0.
+n126= NAND(n125=0,n101=1)=1.
+n127= NAND(n126=1,n79=1)=0.
+n128= NAND(n127=0,n27=1)=1.
+n129= NAND(n128=1,n82=~a) = if ~a =0 (a=1) ->1; if ~a=1 (a=0)-> flip n128=1 ->0. So n129 = (a=1)?1:0 = a. Wait if a=1, n82=0 => n129=1. If a=0,n82=1=>n129=0. Thus n129=a. In t12 a=0 n129=0; t13 a=1 n129=1 yes.
+n130= NAND(n129=a, n27=1)= ~a. (t12 a0 ->1; t13 a1->0)
+n131= NAND(n130=~a, n43=1)= a. (t12 a0 ->0? Wait t12 n131 we computed 0 yes; t13 a1 ->1 yes)
+n132= NAND(n131=a, n24=0)=1.
+n133= NAND(n132=1,n0=0)=1.
+n134= NAND(n133=1,n32=0)=1.
+n135= NAND(n134=1,n16=1)=0.
+n136= NAND(n135=0,n16=1)=1.
+n137= NAND(n136=1,n96=1)=0.
+n138= NAND(n137=0,n24=0)=1.
+n139= NAND(n138=1,n131=a)= ~a. (t12 a0 n139=1; t13 a1 n139=0)
+n140= NAND(n139=~a,n126=1)= a. (t12 a0 n140=0; t13 a1 n140=1)
+n141= NAND(n140=a,n90=0)=1.
+n142= NAND(n141=1,n116=1)=0.
+n143= NAND(n142=0,n75=1)=1.
+n144= NAND(n143=1,n44=1)=0.
+n145= NAND(n144=0,q2=0)=1.
+n146= NAND(n145=1,n97=0)=1.
+n147= NAND(n146=1,n143=1)=0.
+n148= NAND(n147=0,n33=1)=1.
+n149= NAND(n148=1,n99=0)=1.
+n150= NAND(n149=1,n108=0)=1.
+n151= NAND(n150=1,n90=0)=1. (q3 d=1)
+n152= NAND(n151=1,n18=1)=0. (q6 d=0)
+n153= NAND(n152=0,n114=1)=1. (q0 d=1) [matches correction]
+n154= NAND(n153=1,n92=0)=1.
+n155= NAND(n154=1,n135=0)=1. (q7 d=1)
+n156= NAND(n155=1,n12=1)=0.
+n157= NAND(n156=0,n118=1)=1.
+n158= NAND(n157=1,q3=1)=0.
+n159= NAND(n158=0,n72=0)=1.
+n160= NAND(n159=1,n53=0)=1.
+n161= NAND(n160=1,n113=1)=0.
+n162= NAND(n161=0,n81=1)=1.
+n163= NAND(n162=1,n140=a)= ~a. (If a=0 ->1; a=1->0)
+n164= NAND(n163=~a,n22=1)= a. (t12 a0 n164=0; t13 a1 n164=1)
+n165= NAND(n164=a,n75=1)= ~a.
+n166= NAND(n165=~a,n7=1)= a.
+n167= NAND(n166=a,n30=0)=1. independent (q1/q8 d=1). Good.
+n168= NAND(n167=1,n28=0)=1.
+n169= NAND(n168=1,n146=1)=0.
+n170= NAND(n169=0,n19=1)=1.
+n171= NAND(n170=1,n169=0)=1.
+n172= NAND(n171=1,n95=0)=1.
+n173= NAND(n172=1,n121=1)=0.
+n174= NAND(n173=0,n35=0)=1.
+n175= NAND(n174=1,n107=1)=0.
+n176= NAND(n175=0,n113=1)=1.
+n177= NAND(n176=1,n86=1)=0. (q2 d=0)
+n178= NAND(n177=0,n29=1)=1.
+n179= NAND(n178=1,n119=1)=0.
+n180= NAND(n179=0,n116=1)=1.
+n181= NAND(n180=1,n63=1)=0.
+n182= NAND(n181=0,n67=0)=1 (NAND(0,0)=1).
+n183= NAND(n182=1,n113=1)=0.
+n184= NAND(n183=0,q4=1)=1.
+n185= NAND(n184=1,n16=1)=0.
+n186= NAND(n185=0,n90=0)=1 (NAND(0,0)=1).
+n187= NAND(n186=1,n38=1)=0.
+n188= NAND(n187=0,b)=1 independent of b (q4 d=1).
+n189= NAND(n188=1,b)= ~b. (if b=0 ->1; if b=1 ->0) Wait earlier for in1=1 state S t11 we said n189=n187=0. Here n187=0, n188=1 (because NAND(0,b)=1 for any b!), n189=NAND(1,b)=~b. Yes if b=1, n189=0; if b=0, n189=1. Good. I earlier generic in t10 with b=0 had n189=1; t11 b=1 n189=0. Good.
+n190= NAND(n189=~b,n120=0)=1 independent.
+n191= NAND(n190=1,n169=0)=1.
+n192= NAND(n191=1,n96=1)=0.
+n193= NAND(n192=0,n67=0)=1.
+n194= NAND(n193=1,n49=1)=0.
+n195= NAND(n194=0,n192=0)=1 (q10 d=1).
+n196= NAND(n195=1,n164=a)= ~a.
+n197= NAND(n196=~a,n104=0)=1 independent (q9/q11 d=1).
+n198= NAND(n197=1,n116=1)=0.
+n199= NAND(n198=0,n14=1)=1. Output constant 1. Great! State S is a fixed point for all inputs, and n199=1. Excellent. This dramatically simplifies remaining cycles t14-t23: state remains S, outputs n199=1,q5=1,q6=0,q8=1. Need ensure state S reached at t10 and remains through t23. We corrected t10 update to S; t11 S; t12 S; t13 S; generic proof for all inputs confirms for any input, next state S and output n199=1. Therefore cycles 10 through 23 all output n199=1,q5=1,q6=0,q8=1. Need check cycle9 output was n199=1,q5=1,q6=1,q8=1 and update to S? At t9 state [1,1,0,0,0,1,1,1,1,1,1,1], output q6=1 (current), update q6=n152=0, q0=1,q3=1,q4=1,q7=1,q10=1,q9/11=1,q1/q8=1,q2=0,q5=1 => S yes. Good. t10 onward q6=0. Great.
+
+Now need compile outputs for cycles 0..23. Let's list per cycle recorded (n199,q5,q6,q8):
+t0: n199=0, q5=0, q6=0, q8=1.
+t1: n199=1, q5=0, q6=0, q8=1.
+t2: n199=0, q5=1, q6=1, q8=0.
+t3: n199=1, q5=0, q6=0, q8=1.
+t4: n199=1, q5=1, q6=1, q8=1.
+t5: n199=1, q5=1, q6=1, q8=1.
+t6: n199=0, q5=1, q6=1, q8=0.
+t7: n199=1, q5=0, q6=0, q8=1.
+t8: n199=1, q5=1, q6=1, q8=1.
+t9: n199=1, q5=1, q6=1, q8=1.
+t10: n199=1, q5=1, q6=0, q8=1.
+t11: n199=1, q5=1, q6=0, q8=1.
+t12: n199=1, q5=1, q6=0, q8=1.
+t13: n199=1, q5=1, q6=0, q8=1.
+t14..t23 same as t10: n199=1,q5=1,q6=0,q8=1.
+Need verify t8/t9 current q6=1 yes. At t8 state [0,1,1,0,1,1,1,0,1,1,1,1]? Let's check t8 state before outputs: after t7 update we set q0=0,q1=1,q2=1,q3=0,q4=1,q5=1,q6=1,q7=0,q8=1,q9=1,q10=1,q11=1. Yes q6=1. t8 output q5=1,q6=1,q8=1. t9 state [1,1,0,0,0,1,1,1,1,1,1,1]? Wait t9 before outputs from t8 update: q0=1,q1=1,q2=0,q3=0,q4=0,q5=1,q6=1,q7=1,q8=1,q9=1,q10=1,q11=1. q6=1. Good. t10 q6=0.
+
+But need be absolutely certain cycles 0-9 computations are correct. This is critical. Let's audit early cycles and the transition into S. Because if any early output wrong, final wrong. We'll re-verify using maybe the generic fixed point and special formulas. Let's create a table of states and outputs, and re-derive each cycle with cross-checks.
+
+Initial state S0 = (q0..q11): [0,0,0,1,0,0,0,1,1,0,0,1]. We'll denote Q(t). Inputs I(t). We computed:
+Q0 [0,0,0,1,0,0,0,1,1,0,0,1], I0 (0,0,0) -> outputs (n199=0,q5=0,q6=0,q8=1), next Q1 [1,1,1,1,1,0,0,0,1,1,1,1]? Wait after cycle0 update we set q0=1,q1=1,q2=1,q3=1,q4=1,q5=0,q6=0,q7=0,q8=1,q9=1,q10=1,q11=1. Did we set q7=n155=0 yes. So Q1 = [1,1,1,1,1,0,0,0,1,1,1,1]. Earlier I wrote state t1: q0=1,q1=1,q2=1,q3=1,q4=1,q5=0,q6=0,q7=0,q8=1,q9=1,q10=1,q11=1. Correct. I in one place after cycle0 wrote q7=0; yes.
+Cycle1 output (1,0,0,1), next Q2 [0,0,1,1,0,1,1,1,0,1,1,1]? We set after cycle1: q0=n153=0; q1=0; q2=1; q3=1; q4=0; q5=1; q6=1; q7=1; q8=0; q9=1; q10=1; q11=1. Yes Q2 [0,0,1,1,0,1,1,1,0,1,1,1]. Good.
+Cycle2 (t2) output (0,1,1,0), next Q3 [1,1,1,1,1,0,0,1,1,0,0,0]? After t2 update: q0=1,q1=1,q2=1,q3=1,q4=1,q5=0,q6=0,q7=1,q8=1,q9=0,q10=0,q11=0. Yes Q3 [1,1,1,1,1,0,0,1,1,0,0,0]. Good.
+Cycle3 output (1,0,0,1), next Q4 [0,1,1,0,0,1,1,0,1,0,0,0]? After t3: q0=n153=0,q1=n167=1,q2=n177=1,q3=n151=0,q4=n188=0,q5=n199=1,q6=n152=1,q7=n155=0,q8=n167=1,q9=n197=0,q10=n195=0,q11=n197=0. Yes Q4 [0,1,1,0,0,1,1,0,1,0,0,0]. Good.
+Cycle4 output (1,1,1,1), next Q5 [1,1,1,1,1,1,1,1,1,1,0,1]? After t4: q0=1,q1=1,q2=1,q3=1,q4=1,q5=1,q6=1,q7=1,q8=1,q9=1,q10=0,q11=1. Yes Q5 [1,1,1,1,1,1,1,1,1,1,0,1]. Good.
+Cycle5 output (1,1,1,1), next Q6 [1,0,1,1,0,1,1,1,0,1,1,1]? After t5: q0=1,q1=0,q2=1,q3=1,q4=0,q5=1,q6=1,q7=1,q8=0,q9=1,q10=1,q11=1. Yes Q6 [1,0,1,1,0,1,1,1,0,1,1,1]. Good.
+Cycle6 output (0,1,1,0), next Q7 [1,1,0,1,1,0,0,1,1,0,0,0]? After t6: q0=n153=1,q1=n167=1,q2=n177=0,q3=n151=1,q4=n188=1,q5=n199=0,q6=n152=0,q7=n155=1,q8=n167=1,q9=n197=0,q10=n195=0,q11=n197=0. Yes Q7 [1,1,0,1,1,0,0,1,1,0,0,0]. Good.
+Cycle7 output (1,0,0,1), next Q8 [0,1,1,0,1,1,1,0,1,1,1,1]? After t7: q0=0,q1=1,q2=1,q3=0,q4=1,q5=1,q6=1,q7=0,q8=1,q9=1,q10=1,q11=1. Yes Q8 [0,1,1,0,1,1,1,0,1,1,1,1]. Good.
+Cycle8 output (1,1,1,1), next Q9 [1,1,0,0,0,1,1,1,1,1,1,1]? After t8: q0=1,q1=1,q2=0,q3=0,q4=0,q5=1,q6=1,q7=1,q8=1,q9=1,q10=1,q11=1. Yes Q9 [1,1,0,0,0,1,1,1,1,1,1,1]. Good.
+Cycle9 output (1,1,1,1), next Q10=S [1,1,0,1,1,1,0,1,1,1,1,1]. After t9: q0=1,q1=1,q2=0,q3=1,q4=1,q5=1,q6=0,q7=1,q8=1,q9=1,q10=1,q11=1. Yes.
+
+This sequence has some symmetry: Q3 and Q7 similar? Q3 [1,1,1,1,1,0,0,1,1,0,0,0], Q7 [1,1,0,1,1,0,0,1,1,0,0,0]. okay.
+
+Let's audit cycle0 with formulas. For Q0, n0=1. We computed n199=0 via formula n14=1,n197=1,n116=0. Let's cross-check n14 for Q0: q3=1, need n12. Early for Q0: n0=1; n1=NAND(1,q7=1)=0; n2=NAND(0,q8=1)=1; n3=NAND(1,q1=0)=1; n4=NAND(1,q11=1)=0; n5=NAND(0,q5=0)=1; n6=NAND(1,q8=1)=0; n7=NAND(0,q0=0)=1; n8=NAND(1,n5=1)=0; n9=NAND(0,q9=0)=1; n10=NAND(1,q2=0)=1; n11=NAND(1,q11=1)=0; n12=NAND(0,q8=1)=1; n13=NAND(1,q3=1)=0; n14=NAND(0,q3=1)=1. yes. n116=0 we computed; formula n199 = ~1 | (n197&0)=0. Good. DFF updates: q3d=n151=1, q6d=n152=0, q0d=n153=1, q7d=n155=0. Let's cross-check n151/n152/n153/n155 for cycle0 using some computed values: n150=0,n90=0 -> n151=1; n152=NAND(n151=1,n18=1)=0; n153=NAND(n152=0,n114=0)=1 (NAND(0,0)=1) yes; n154=NAND(n153=1,n92=0)=1; n155=NAND(n154=1,n135=1)=0. Good. q1/q8 d=n167=1; q2d=n177=1; q4d=n188=1; q10d=n195=1; q9/q11d=n197=1. Good.
+
+Cycle1 audit: Q1 [1,1,1,1,1,0,0,0,1,1,1,1], I (0,1,1). n0=~(q5=0&q8=1)=1. n14? q3=1, compute early: n1=NAND(n0=1,q7=0)=1; n2=NAND(1,q8=1)=0; n3=NAND(0,q1=1)=1; n4=NAND(1,q11=1)=0; n5=NAND(0,q5=0)=1; n6=NAND(1,q8=1)=0; n7=NAND(0,q0=1)=1; n8=NAND(1,n5=1)=0; n9=NAND(0,q9=1)=1; n10=NAND(1,q2=1)=0; n11=NAND(0,q11=1)=1; n12=NAND(1,q8=1)=0; n13=NAND(0,q3=1)=1; n14=NAND(1,q3=1)=0. So n199=1 regardless. Good output n199=1. Updates: n151? we computed1; n152=1? For cycle1, n152=NAND(n151=1,n18=0)=1; q6 next=1. n153=NAND(n152=1,n114=1)=0; q0 next0. n155=NAND(n154=1,n135=0)=1; q7 next1. n167=0; q1/q8 next0; n177=1; n188=0; q5 next n199=1; q9/q11=1,q10=1. So Q2 [0,0,1,1,0,1,1,1,0,1,1,1]. Good. Output q5 current0 q6 current0 q8 current1. yes.
+
+Cycle2 audit: Q2 [0,0,1,1,0,1,1,1,0,1,1,1], I(1,1,0). n0=~(q5=1&q8=0)=1. n14? q3=1, early: n1=NAND(1,q7=1)=0; n2=NAND(0,q8=0)=1; n3=NAND(1,q1=0)=1; n4=NAND(1,q11=1)=0; n5=NAND(0,q5=1)=1; n6=NAND(1,q8=0)=1; n7=NAND(1,q0=0)=1; n8=NAND(1,n5=1)=0; n9=NAND(0,q9=1)=1; n10=NAND(1,q2=1)=0; n11=NAND(0,q11=1)=1; n12=NAND(1,q8=0)=1; n13=NAND(1,q3=1)=0; n14=1. n116 we computed1, n197=0 -> n199=0. Good. Updates: n151=1,n152=0 (q6 next0), n153=1(q0), n155=1(q7), n167=1(q1/q8), n177=1(q2), n188=1(q4), n195=0(q10), n197=0(q9/q11), q5 next0. Q3 [1,1,1,1,1,0,0,1,1,0,0,0]. Output current q5=1,q6=1,q8=0. yes.
+
+Cycle3 audit: Q3 [1,1,1,1,1,0,0,1,1,0,0,0], I(1,1,0). n0=1. n14? q3=1, early with q11=0,q9=0,q10=0: n1=0 (q7=1 flip from1), n2=1(q8=1), n3=0(q1=1 flip from1? Wait recompute: n0=1; n1=NAND(1,q7=1)=0; n2=NAND(n1=0,q8=1)=1; n3=NAND(n2=1,q1=1)=0; n4=NAND(n3=0,q11=0)=1; n5=NAND(n4=1,q5=0)=1; n6=NAND(n5=1,q8=1)=0; n7=NAND(n6=0,q0=1)=1; n8=NAND(n7=1,n5=1)=0; n9=NAND(n8=0,q9=0)=1; n10=NAND(n9=1,q2=1)=0; n11=NAND(n10=0,q11=0)=1; n12=NAND(n11=1,q8=1)=0; n13=NAND(n12=0,q3=1)=1; n14=NAND(n13=1,q3=1)=0. So n199=1. Good. Updates: n151=0 (q3 next0), n152=1(q6 next1), n153=0(q0 next0), n155=0(q7 next0), n167=1(q1/q8 next1), n177=1(q2 next1), n188=0(q4 next0), n195=0(q10),n197=0(q9/q11), q5 next1. Q4 [0,1,1,0,0,1,1,0,1,0,0,0]. Output current q5=0,q6=0,q8=1. yes.
+
+Cycle4 audit: Q4 [0,1,1,0,0,1,1,0,1,0,0,0], I(0,0,0). n0=~(1&1)=0. n14? q3=0 => n13=1,n14=1. n199 = ~n14 | (n197&n116). We computed n197=1 (because n104=0) and n116=1, so n199=1. Cross-check n116 for cycle4 =1 due n72=0; n197=1 due n104=0; yes output1. Updates: n151=1,n152=1,n153=1,n155=1,n167=1,n177=1,n188=1,n195=0,n197=1. Q5 [1,1,1,1,1,1,1,1,1,1,0,1]. Wait q10d=n195=0, q9/q11=n197=1, yes. Output current q5=1,q6=1,q8=1. Good.
+
+Cycle5 audit: Q5 [1,1,1,1,1,1,1,1,1,1,0,1], I(0,1,1). q10=0 only. n0=0. n14? q3=1; early: n1=NAND(0,q7=1)=1; n2=0; n3=1; n4=NAND(1,q11=1)=0; n5=NAND(0,q5=1)=1; n6=0; n7=NAND(0,q0=1)=1; n8=0; n9=NAND(0,q9=1)=1; n10=NAND(1,q2=1)=0; n11=NAND(0,q11=1)=1; n12=NAND(1,q8=1)=0; n13=1;n14=0. So n199=1. Updates: n151=1,n152=1,n153=1,n155=1,n167=0,n177=1,n188=0,n195=1,n197=1. Q6 [1,0,1,1,0,1,1,1,0,1,1,1]. Output current all q5/q6/q8 =1 (q8=1) and n199=1. yes.
+
+Cycle6 audit: Q6 [1,0,1,1,0,1,1,1,0,1,1,1], I(1,1,1). q1=0,q4=0,q8=0. n0=~(1&0)=1. n14? q3=1; early: n1=NAND(1,q7=1)=0; n2=NAND(0,q8=0)=1; n3=NAND(1,q1=0)=1; n4=NAND(1,q11=1)=0; n5=NAND(0,q5=1)=1; n6=NAND(1,q8=0)=1; n7=NAND(1,q0=1)=0; n8=NAND(0,n5=1)=1; n9=NAND(1,q9=1)=0; n10=NAND(0,q2=1)=1; n11=NAND(1,q11=1)=0; n12=NAND(0,q8=0)=1; n13=NAND(1,q3=1)=0;n14=1. n197=0,n116=1 => n199=0. Good. Updates: n151=1,n152=0,n153=1,n155=1,n167=1,n177=0,n188=1,n195=0,n197=0. Q7 [1,1,0,1,1,0,0,1,1,0,0,0]. Output current q5=1,q6=1,q8=0. yes.
+
+Cycle7 audit: Q7 [1,1,0,1,1,0,0,1,1,0,0,0], I(0,0,0). n0=1 (q5=0). n14? q3=1,q11=0,q10=0,q9=0,q2=0: early n1=NAND(1,q7=1)=0; n2=NAND(0,q8=1)=1; n3=NAND(1,q1=1)=0; n4=NAND(0,q11=0)=1; n5=NAND(1,q5=0)=1; n6=NAND(1,q8=1)=0; n7=NAND(0,q0=1)=1; n8=NAND(1,n5=1)=0; n9=NAND(0,q9=0)=1; n10=NAND(1,q2=0)=1; n11=NAND(1,q11=0)=1; n12=NAND(1,q8=1)=0; n13=1;n14=0. n199=1. Updates: n151=0,n152=1,n153=0,n155=0,n167=1,n177=1,n188=1,n195=1,n197=1. Q8 [0,1,1,0,1,1,1,0,1,1,1,1]. Output current q5=0,q6=0,q8=1. yes.
+
+Cycle8 audit: Q8 [0,1,1,0,1,1,1,0,1,1,1,1], I(0,1,1). n0=~(q5=1&q8=1)=0. q3=0=>n14=1. n197? we computed n104=0 so n197=1; n116=1 (n72=0) so n199=1. Updates: n151=0,n152=1,n153=1,n155=1,n167=1,n177=0,n188=0,n195=1,n197=1. Q9 [1,1,0,0,0,1,1,1,1,1,1,1]. Output q5=1,q6=1,q8=1. yes.
+
+Cycle9 audit: Q9 [1,1,0,0,0,1,1,1,1,1,1,1], I(0,1,1). n0=0. q3=0=>n14=1. n197=1 (n104=0), n116=1 -> n199=1. Updates to S as verified. Output q5=1,q6=1,q8=1. Good.
+
+Then fixed point proof solid. Need ensure fixed point state S includes q6=0 which is not used in gates; output q6=0. Good.
+
+Let's also verify the generic fixed point proof for state S thoroughly because it covers cycles 10-23; if there is an algebraic mistake, outputs after t10 could wrong. We'll re-derive generic S with particular attention to n66, n82, n129-131, n163-167, n188-199. State S: q=[1,1,0,1,1,1,0,1,1,1,1,1]. Inputs a,b,c. We computed n0=0. Let's re-evaluate the first 70 using a second method (run reset parity) to ensure no hidden dependence on a before n82. Since q2=0 is the only zero among q's except q6; q6 unused. Inputs may be zero. Constants: side zeros: q2 at i10,19,45,145; input a if a=0 at i21,27,82; b if b=0 at i188,189; c if c=0 at i79. But in our generic derivation we found n21,n27,n79 are forced 1 because their first operand n20/n26/n78 =0, regardless of a/c. Good. n82 = NAND(n81=1,a)=~a; so if a=0, n82=1 (reset), if a=1,n82=0 (toggle? actually side bit 0 causes set at i82? Wait for gate n82: a input is n81 (previous), b=in0=a. If a=0, n82=1 (set). If a=1, n82=NOT n81 =0 because n81=1. So n82=~a. Correct. This is the only input dependence before n188 besides n189. n79 independent because n78=0. Good.
+
+Let's recompute generic S from n0 to n60 with a table and compare to t10/t12 (a=1 vs0) where n0..n81 same. We found n0..n81 independent of a,b,c. Let's verify critical ones:
+- n10 = NAND(n9,q2=0)=1, yes. Then n11=NAND(1,q11=1)=0; n12=NAND(0,q8=1)=1; n14=1. Good.
+- n17=NAND(n16,n12). Need n16: n15=NAND(n14=1,q10=1)=0; n16=NAND(n15=0,q7=1)=1; n17=NAND(1,1)=0. good. n18=NAND(n17=0,n1=1)=1. n20=NAND(n19=1,q5=1)=0. n21=NAND(n20=0,a)=1. n22=NAND(n21=1,n0=0)=1. n24=NAND(n23=1,q11=1)=0; n23=NAND(n22=1,n17=0)=1. good. n26=NAND(n25=1,n10=1)=0; n25=NAND(n24=0,n18=1)=1. n27=NAND(n26=0,a)=1. n28=NAND(n27=1,q8=1)=0; n29=NAND(n28=0,n11=0)=1; n30=NAND(n29=1,n14=1)=0. Good.
+- n31=NAND(n30=0,n4=0)=1; n32=NAND(n31=1,n3=1)=0; n33=NAND(n32=0,n16=1)=1; n34=NAND(n33=1,n15=0)=1; n35=NAND(n34=1,n31=1)=0; n36=NAND(n35=0,n1=1)=1; n37=NAND(n36=1,n10=1)=0; n38=NAND(n37=0,n24=0)=1; n39=NAND(n38=1,n9=1)=0; n40=NAND(n39=0,n35=0)=1; n41=NAND(n40=1,q4=1)=0; n42=NAND(n41=0,n14=1)=1; n43=NAND(n42=1,n26=0)=1; n44=NAND(n43=1,n32=0)=1; n45=NAND(n44=1,q2=0)=1; n46=NAND(n45=1,q3=1)=0; n47=NAND(n46=0,q5=1)=1; n48=NAND(n47=1,n27=1)=0; n49=NAND(n48=0,n22=1)=1; n50=NAND(n49=1,n42=1)=0; n51=NAND(n50=0,q4=1)=1; n52=NAND(n51=1,n24=0)=1; n53=NAND(n52=1,n33=1)=0; n54=NAND(n53=0,n10=1)=1; n55=NAND(n54=1,n1=1)=0; n56=NAND(n55=0,n33=1)=1; n57=NAND(n56=1,n16=1)=0; n58=NAND(n57=0,n27=1)=1; n59=NAND(n58=1,n42=1)=0; n60=NAND(n59=0,n32=0)=1; n61=NAND(n60=1,n26=0)=1; n62=0; n63=NAND(0,n7=1)=1; n64=NAND(1,n30=0)=1; n65=NAND(1,n3=1)=0; n66=NAND(n65=0,n50=0)=1; n67=NAND(n66=1,n14=1)=0; n68=NAND(n67=0,n43=1)=1; n69=NAND(n68=1,n57=0)=1; n70=NAND(n69=1,n22=1)=0; n71=NAND(n70=0,n21=1)=1; n72=NAND(n71=1,n68=1)=0. Good. n73=NAND(0,n51=1)=1; n74=NAND(1,n22=1)=0; n75=NAND(0,n65=0)=1; n76=NAND(1,n33=1)=0; n77=NAND(0,q11=1)=1; n78=NAND(1,n27=1)=0; n79=NAND(0,c)=1; n80=NAND(1,n59=0)=1; n81=NAND(1,n72=0)=1. Good.
+- n82=~a; n83=NAND(n82,n17=0)=1; n84=NAND(1,n79=1)=0; n85=NAND(0,n41=0)=1; n86=NAND(1,n30=0)=1; n87=NAND(1,n39=0)=1; n88=NAND(1,n43=1)=0; n89=NAND(0,n21=1)=1; n90=NAND(1,n29=1)=0; n91=NAND(0,n5=1)=1; n92=NAND(1,n5=1)=0; n93=NAND(0,n49=1)=1; n94=NAND(1,n30=0)=1; n95=NAND(1,n83=1)=0; n96=NAND(0,n43=1)=1; n97=NAND(1,n87=1)=0; n98=NAND(0,n41=0)=1; n99=NAND(1,n22=1)=0; n100=NAND(0,n45=1)=1; n101=NAND(1,n28=0)=1; n102=NAND(1,q5=1)=0; n103=NAND(0,n77=1)=1; n104=NAND(1,n71=1)=0; n105=NAND(0,n92=0)=1; n106=NAND(1,n100=1)=0; n107=NAND(0,n72=0)=1; n108=NAND(1,n96=1)=0; n109=NAND(0,n98=1)=1; n110=NAND(1,n95=0)=1; n111=NAND(1,n87=1)=0; n112=NAND(0,n69=1)=1; n113=NAND(1,n32=0)=1; n114=NAND(1,n50=0)=1; n115=NAND(1,n28=0)=1; n116=NAND(1,n72=0)=1. Good.
+- n117=NAND(1,q0=1)=0; n118=NAND(0,n55=0)=1; n119=NAND(1,n74=0)=1; n120=NAND(1,n54=1)=0; n121=NAND(0,n111=0)=1; n122=NAND(1,n120=0)=1; n123=NAND(1,n103=1)=0; n124=NAND(0,n93=1)=1; n125=NAND(1,q0=1)=0; n126=NAND(0,n101=1)=1; n127=NAND(1,n79=1)=0; n128=NAND(0,n27=1)=1; n129=NAND(1,n82=~a). If a=0 (n82=1) ->0; if a=1(n82=0)->1 =a. n130=NAND(n129=a,n27=1)=~a; n131=NAND(n130=~a,n43=1)=a. Good. n132=NAND(a,n24=0)=1; n133=NAND(1,n0=0)=1; n134=NAND(1,n32=0)=1; n135=NAND(1,n16=1)=0; n136=NAND(0,n16=1)=1; n137=NAND(1,n96=1)=0; n138=NAND(0,n24=0)=1; n139=NAND(1,n131=a)=~a; n140=NAND(~a,n126=1)=a; n141=NAND(a,n90=0)=1; n142=NAND(1,n116=1)=0; n143=NAND(0,n75=1)=1; n144=NAND(1,n44=1)=0; n145=NAND(0,q2=0)=1; n146=NAND(1,n97=0)=1; n147=NAND(1,n143=1)=0; n148=NAND(0,n33=1)=1; n149=NAND(1,n99=0)=1; n150=NAND(1,n108=0)=1; n151=NAND(1,n90=0)=1; n152=NAND(1,n18=1)=0; n153=NAND(0,n114=1)=1; n154=NAND(1,n92=0)=1; n155=NAND(1,n135=0)=1; n156=NAND(1,n12=1)=0; n157=NAND(0,n118=1)=1; n158=NAND(1,q3=1)=0; n159=NAND(0,n72=0)=1; n160=NAND(1,n53=0)=1; n161=NAND(1,n113=1)=0; n162=NAND(0,n81=1)=1; n163=NAND(1,n140=a)=~a; n164=NAND(~a,n22=1)=a; n165=NAND(a,n75=1)=~a; n166=NAND(~a,n7=1)=a; n167=NAND(a,n30=0)=1. Good. Even if a=0, n166=0, n167=NAND(0,0)=1. yes.
+- n168=NAND(1,n28=0)=1; n169=NAND(1,n146=1)=0; n170=NAND(0,n19=1)=1; n171=NAND(1,n169=0)=1; n172=NAND(1,n95=0)=1; n173=NAND(1,n121=1)=0; n174=NAND(0,n35=0)=1; n175=NAND(1,n107=1)=0; n176=NAND(0,n113=1)=1; n177=NAND(1,n86=1)=0. Good.
+- n178=NAND(0,n29=1)=1; n179=NAND(1,n119=1)=0; n180=NAND(0,n116=1)=1; n181=NAND(1,n63=1)=0; n182=NAND(0,n67=0)=1; n183=NAND(1,n113=1)=0; n184=NAND(0,q4=1)=1; n185=NAND(1,n16=1)=0; n186=NAND(0,n90=0)=1; n187=NAND(1,n38=1)=0; n188=NAND(0,b)=1; n189=NAND(1,b)=~b; n190=NAND(~b,n120=0)=1; n191=NAND(1,n169=0)=1; n192=NAND(1,n96=1)=0; n193=NAND(0,n67=0)=1; n194=NAND(1,n49=1)=0; n195=NAND(0,n192=0)=1; n196=NAND(1,n164=a)=~a; n197=NAND(~a,n104=0)=1; n198=NAND(1,n116=1)=0; n199=NAND(0,n14=1)=1. Perfect. So after cycle10, outputs constant.
+
+Now we need construct final JSON with lists length24. Let's assemble carefully.
+Output n199 by cycle t0..t23:
+t0 0
+t1 1
+t2 0
+t3 1
+t4 1
+t5 1
+t6 0
+t7 1
+t8 1
+t9 1
+t10 1
+t11 1
+t12 1
+t13 1
+t14 1
+t15 1
+t16 1
+t17 1
+t18 1
+t19 1
+t20 1
+t21 1
+t22 1
+t23 1
+So n199 = [0,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]. Count 24: positions: 0=0,1=1,2=0,3=1,4=1,5=1,6=0,7=1,8=1,9=1,10-23 fourteen? Let's count after t9: t10 through t23 inclusive =14 cycles, all 1. The list has first 10 values (t0-t9): [0,1,0,1,1,1,0,1,1,1] then 14 ones. Total 24. In the written list above after t9 there are? Let's count the full list: [0,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]. Count: indices 0 0;1 1;2 0;3 1;4 1;5 1;6 0;7 1;8 1;9 1;10 1;11 1;12 1;13 1;14 1;15 1;16 1;17 1;18 1;19 1;20 1;21 1;22 1;23 1. yes 24, with ones at all except 0,2,6. Good.
+
+q5 list = current q5 each cycle. Q(t) q5 values:
+t0 initial q5=0
+ t1 Q1 q5=0
+ t2 Q2 q5=1
+ t3 Q3 q5=0
+ t4 Q4 q5=1
+ t5 Q5 q5=1
+ t6 Q6 q5=1
+ t7 Q7 q5=0
+ t8 Q8 q5=1
+ t9 Q9 q5=1
+ t10 S q5=1
+ t11 S 1
+ ... t23 1.
+So q5 = [0,0,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]. Check t5 Q5 q5=1 yes; t6 q5=1; t7 q5=0; t8=1. Count 24. It equals n199? Not exactly: n199 [0,1,0,1,1,1,0,1,1,1,...], q5 [0,0,1,0,1,1,1,0,1,1,...]. q5(t) seems = n199(t-1) for t>=1? Since q5 next = n199. Check q5(t1)=0 = n199(t0)=0; q5(t2)=1=n199(t1)=1; q5(t3)=0=n199(t2)=0; yes. q5(t0)=init0. Good. Our q5 list should be [init0] + n199[0..22] = [0,0,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]. Compare n199[0..22]=[0,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]; prepend 0 -> [0,0,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]. yes. Good consistency check.
+
+q6 list = current q6. Initial q6=0; q6 next = n152. We have q6 values:
+t0 0 (init)
+t1 Q1 q6=0 (from n152 cycle0=0)
+t2 Q2 q6=1 (n152 cycle1=1)
+t3 Q3 q6=0 (n152 cycle2=0)
+t4 Q4 q6=1 (n152 cycle3=1)
+t5 Q5 q6=1 (n152 cycle4=1)
+t6 Q6 q6=1 (n152 cycle5=1)
+t7 Q7 q6=0 (n152 cycle6=0)
+t8 Q8 q6=1 (n152 cycle7=1)
+t9 Q9 q6=1 (n152 cycle8=1)
+t10 S q6=0 (n152 cycle9=0)
+t11 S q6=0 (fixed)
+... t23 0.
+So q6=[0,0,1,0,1,1,1,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0]. Let's verify q6(t) = n152(t-1): n152 values cycles0-9: c0 0,c1 1,c2 0,c3 1,c4 1,c5 1,c6 0,c7 1,c8 1,c9 0. Prepend init0 -> q6 t0=0,t1=0,t2=1,t3=0,t4=1,t5=1,t6=1,t7=0,t8=1,t9=1,t10=0. Matches. Good.
+
+q8 list = current q8. Initial q8=1; q8 next = n167 same as q1. Values:
+t0 init q8=1
+t1 Q1 q8=1 (n167 c0=1)
+t2 Q2 q8=0 (n167 c1=0)
+t3 Q3 q8=1 (n167 c2=1)
+t4 Q4 q8=1 (n167 c3=1)
+t5 Q5 q8=1 (n167 c4=1)
+t6 Q6 q8=0 (n167 c5=0)
+t7 Q7 q8=1 (n167 c6=1)
+t8 Q8 q8=1 (n167 c7=1)
+t9 Q9 q8=1 (n167 c8=1)
+t10 S q8=1 (n167 c9=1)
+t11..t23 1.
+So q8=[1,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]. Wait compare with n167 cycles0-9: c0=1,c1=0,c2=1,c3=1,c4=1,c5=0,c6=1,c7=1,c8=1,c9=1. Prepend init q8=1 -> t0=1,t1=1,t2=0,t3=1,t4=1,t5=1,t6=0,t7=1,t8=1,t9=1,t10=1. Yes. Note q8 list equals n199? n199 [0,1,0,1,1,1,0,1,1,1,...] vs q8 [1,1,0,1,1,1,0,1,1,1,...] differ at t0 only? q8 t0=1 vs n199 t0=0; after t1 same? q8 t1=1=n199 t1; t2=0; yes from t1 onward same as n199? q8(t)=n167(t-1), not necessarily. But list q8 = [1,1,0,1,1,1,0,1,1,1,1,...] = n199 with first bit flipped? n199 first bit0 -> q8 first bit1, rest same. Check t7 q8=1,n199=1; yes. Interesting. Not needed.
+
+Need ensure output order in JSON exactly as outputs array: ["n199","q5","q6","q8"]. The final object can map these. It says maps each output net name to list. Use exactly those keys. No extra text? The user: "End your reply with a single fenced json code block containing exactly one object... Put no other json code block after it." We can just output the fenced code block. No explanatory text to avoid violating? It says end your reply with a single fenced json code block; we can make the whole reply just that. Good.
+
+Before final, let's consider if there is any subtlety: DFF q takes d value just before edge; outputs recorded before edge. We did current q outputs and n199 settled; update after. Good. Nets driven exactly one; okay. Gate settle instantly; our topological order n0..n199 valid? Need verify every gate's a=n_{i-1}, b earlier n_j or q/in. Yes. n0 uses q5,q8 current. Good.
+
+Potential issue: Gate n62 has a=n61,b=n61; we treated as flip if n61=1, set if n61=0. NAND(x,x)=1-x. If n61=0 -> output1 (set), if1->0. Our rule with side b=n61: if b=0 set x=1 (from previous x=n61=0 ->1), if b=1 flip previous x (1->0). Works. For n171 with a=n170,b=n169, we used scan; generic proof okay.
+
+Potential issue in cycle1 correction around i93: We corrected t11 but did we also make similar i93 errors in t0-t9? Let's scan for places where n49 etc. We might have made mistakes. Let's audit cycles 0-9 more systematically using the relationship q5(t)=n199(t-1), q6/q8 and maybe fixed point. We can verify state transitions by checking for each cycle that q5(t+1)=recorded n199(t), q1/q8 etc. We already used. But if an intermediate n error led to wrong n199 but consistent q5? Need independent checks for n199 values cycles0-9 maybe via formula n199 = ~n14 | (n197&n116). We can compute n14 (easy), and maybe n116,n197 for each cycle to verify n199 without full scan. Let's do that for cycles0-9 as a cross-check.
+
+For each cycle, n14 = q3 ? n12 : 1 (since n13/n14 with q3). And n12 = q8 ? ~n11 : 1; n11=q11?~n10:1; n10=q2?~n9:1; n9=q9?~n8:1; n8=NAND(n7,n5). But easier we computed n14. Let's list n14 cycles0-9 from scans: c0=1,c1=0,c2=1,c3=0,c4=1,c5=0,c6=1,c7=0,c8=1,c9=1. If n14=0 then n199=1 automatically. Thus cycles1,3,5,7 n199=1. Our outputs have t1=1,t3=1,t5=1,t7=1. Good. For cycles with n14=1 (0,2,4,6,8,9), n199 = n197 & n116. We computed:
+c0 n197=1,n116=0 ->0. c2 n197=0,n116=1 ->0. c4 n197=1,n116=1 ->1. c6 n197=0,n116=1 ->0. c8 n197=1,n116=1 ->1. c9 n197=1,n116=1 ->1. So n199 pattern for n14=1 cycles: [0,0,1,0,1,1] for c0,c2,c4,c6,c8,c9. This matches outputs t0=0,t2=0,t4=1,t6=0,t8=1,t9=1. Good. Need verify n197&n116 for c4/c8/c9; c4 n197=1 because n104=0; c8 n197=1 because n104=0; c9 n197=1 because n104=0. In scans c4 n104=0, c8 n104=0,c9 n104=0 yes. n116=1 in c4,c8,c9 (n72=0 in all? c4 n72=0,c8 n72=0,c9 n72=0) yes. c0 n116=0 (n72=1), c2 n116=1 but n197=0, c6 n116=1,n197=0. Good. This strongly validates n199.
+
+Now validate q6 (n152) cycles0-9 via relation maybe n152 = NAND(n151,n18). If n18=0 then n152=1; if n18=1 then n152=~n151. n151=NAND(n150,n90): if n90=0 ->1 else ~n150. We can cross-check n152 values [0,1,0,1,1,1,0,1,1,0] for cycles0-9. n18 cycles: c0=1,c1=0,c2=1,c3=1,c4=0,c5=0,c6=1,c7=1,c8=0,c9=1? Wait from scans: n18 c0=1,c1=0,c2=1,c3=1,c4=0,c5=0,c6=1,c7=1,c8=0,c9=1. n151 cycles: [1,1,1,0,1,1,1,0,0,1]? From scans: c0 n151=1,c1=1,c2=1,c3=0,c4=1,c5=1,c6=1,c7=0,c8=0,c9=1. Then n152=NAND(n151,n18): c0 NAND(1,1)=0; c1 NAND(1,0)=1; c2 NAND(1,1)=0; c3 NAND(0,1)=1; c4 NAND(1,0)=1; c5 NAND(1,0)=1; c6 NAND(1,1)=0; c7 NAND(0,1)=1; c8 NAND(0,0)=1; c9 NAND(1,1)=0. Matches. Good. q6 list validated.
+
+Validate q8/q1 n167 cycles0-9 = [1,0,1,1,1,0,1,1,1,1]? We can use n167=NAND(n166,n30). If n30=0 ->1; else ~n166. n30 cycles: c0=0,c1=1,c2=0,c3=1,c4=0,c5=1,c6=0,c7=1,c8=0,c9=0? From scans n30: c0 0,c1 1,c2 0,c3 1,c4 0,c5 1,c6 0,c7 1,c8 0,c9 0. If n30=0 -> n167=1 for c0,c2,c4,c6,c8,c9. For c1 n30=1,n166=1? c1 n166=1 -> n167=0 yes. c3 n30=1,n166=0 -> n167=1. c5 n30=1,n166=1 -> n167=0. c7 n30=1,n166=0 -> n167=1. So n167 [1,0,1,1,1,0,1,1,1,1]. Matches. q8 list validated (prepend init1).
+
+Validate q0 maybe not output but affects transitions; however fixed point reached. If an error in q0 update before t10 could alter state; we audited n153 cycles maybe. Let's list n153 cycles0-9 from scans (corrected): c0=1,c1=0,c2=1,c3=0,c4=1,c5=1,c6=1,c7=0,c8=1,c9=1. Then q0 t1..t10 = [1,0,1,0,1,1,1,0,1,1]. Our states: Q1 q0=1,Q2 q0=0,Q3 q0=1,Q4 q0=0,Q5 q0=1,Q6 q0=1,Q7 q0=1,Q8 q0=0,Q9 q0=1,Q10 q0=1. Matches. Good. n153 = NAND(n152,n114); if n152=0 ->1; else ~n114. c1 n152=1,n114=1 ->0; c3 n152=1,n114=1 ->0; c7 n152=1,n114=1 ->0; others with n152=0 ->1 except c? c6 n152=0 ->1, yes. Good.
+
+q3 update n151 cycles0-9 [1,1,1,0,1,1,1,0,0,1]; states q3: init1,t1=1,t2=1,t3=1,t4=0,t5=1,t6=1,t7=1,t8=0,t9=0,t10=1. Matches. q7 n155 cycles0-9 [0,1,1,0,1,1,1,0,1,1]? Wait n155 list: c0=0,c1=1,c2=1,c3=0,c4=1,c5=1,c6=1,c7=0,c8=1,c9=1. q7 states: init1,t1=0,t2=1,t3=1,t4=0,t5=1,t6=1,t7=1,t8=0,t9=1,t10=1. Yes. q4 n188 cycles0-9 [1,0,1,0,1,0,1,1,0,1]? Let's list: c0 n188=1,c1=0,c2=1,c3=0,c4=1,c5=0,c6=1,c7=1,c8=0,c9=1. q4 states: init0,t1=1,t2=0,t3=1,t4=0,t5=1,t6=0,t7=1,t8=1,t9=0,t10=1. Matches. q2 n177 cycles0-9 [1,1,1,1,1,1,0,1,0,0]? Wait n177: c0=1,c1=1,c2=1,c3=1,c4=1,c5=1,c6=0,c7=1,c8=0,c9=0. q2 states: init0,t1=1,t2=1,t3=1,t4=1,t5=1,t6=1,t7=0,t8=1,t9=0,t10=0. Matches. q10 n195 cycles0-9 [1,1,0,0,0,1,0,1,1,1]? Let's list n195: c0=1,c1=1,c2=0,c3=0,c4=0,c5=1,c6=0,c7=1,c8=1,c9=1. q10 states: init0,t1=1,t2=1,t3=0,t4=0,t5=0,t6=1,t7=0,t8=1,t9=1,t10=1. Matches. q9/q11 n197 cycles0-9 [1,1,0,0,1,1,0,1,1,1]? n197: c0=1,c1=1,c2=0,c3=0,c4=1,c5=1,c6=0,c7=1,c8=1,c9=1. q9 states: init0,t1=1,t2=1,t3=0,t4=0,t5=1,t6=1,t7=0,t8=1,t9=1,t10=1. q11 init1,t1=1,t2=1,t3=0,t4=0,t5=1,t6=1,t7=0,t8=1,t9=1,t10=1. Matches. Good. The state trajectory is consistent.
+
+Let's maybe derive q5 list via n199 shift as final check. Since q5(t+1)=n199(t). Our n199 list N length24. q5 list should be [init q5=0] + N[0:23]. N[0:23] (exclude last t23) = [0,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1] (23 values). Prepend0 -> [0,0,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]. This is exactly q5. Good. q8 = [init1]+n167[0:23]. We don't have n167 after t9 but fixed =1, n167[0:23]=[1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]; prepend1 -> [1,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]. yes. q6=[init0]+n152[0:23], n152 after t9 fixed0; n152[0:23]=[0,1,0,1,1,1,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0]; prepend0 -> [0,0,1,0,1,1,1,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0]. yes.
+
+Let's consider if the output trace should record outputs in the order of the "outputs" array but JSON object order not significant. We'll use same order. Need ensure lists contain integers not booleans. Good.
+
+Could there be a requirement to include no markdown other than code block? It says end reply with single fenced json code block. We'll output only that. Good.
+
+Let's count q6 list length explicitly: [0,0,1,0,1,1,1,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+Indices:0 0;1 0;2 1;3 0;4 1;5 1;6 1;7 0;8 1;9 1;10 0;11 0;12 0;13 0;14 0;15 0;16 0;17 0;18 0;19 0;20 0;21 0;22 0;23 0. 24.
+
+n199 list count explicitly with groups maybe: [0,1,0, 1,1,1, 0,1,1, 1,1,1, 1,1,1, 1,1,1, 1,1,1, 1,1,1] groups of3: 010 111 011 111 111 111 111 111 = 8 groups =24. Pattern groups: t0-2 0,1,0; t3-5 1,1,1; t6-8 0,1,1; t9-11 1,1,1; t12-14 1,1,1; t15-17 1,1,1; t18-20 1,1,1; t21-23 1,1,1. Good.
+q5 groups of3: [0,0,1] [0,1,1] [1,0,1] [1,1,1] [1,1,1] [1,1,1] [1,1,1] [1,1,1] = 001 011 101 111 111 111 111 111. This matches shift. q8 groups: [1,1,0] [1,1,1] [0,1,1] [1,1,1] [1,1,1] [1,1,1] [1,1,1] [1,1,1] = 110 111 011 111... q6 groups: [0,0,1][0,1,1][1,0,1][1,0,0][0,0,0][0,0,0][0,0,0][0,0,0]? Let's group q6: indices0-2 0,0,1 =001; 3-5 0,1,1=011; 6-8 1,0,1=101; 9-11 1,0,0=100; 12-14 000;15-17 000;18-20 000;21-23 000. Our q6 list [0,0,1,0,1,1,1,0,1,1,0,0,0,...] groups: 001 011 101 100 000... yes. Good.
+
+Let's also verify q5 groups: [0,0,1]=001; [0,1,1]=011; [1,0,1]=101; [1,1,1]=111; rest111. List [0,0,1,0,1,1,1,0,1,1,1,1...] groups: 001 011 101 111 ... yes.
+
+Everything consistent. Now final code block only. Ensure no trailing text after code block. Use exactly one object. No comments. JSON booleans? Use integers. Good. Need include key "n199" etc. final. We'll keep code block. Done. 
+
+=== response ===
+```json
+{"n199": [0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], "q5": [0, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], "q6": [0, 0, 1, 0, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], "q8": [1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]}
+```

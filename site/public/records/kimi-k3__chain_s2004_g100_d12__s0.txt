@@ -1,0 +1,2637 @@
+model: moonshotai/kimi-k3
+circuit: chain_s2004_g100_d12
+score: {'status': 'ok', 'prefix_cycles': 24, 'pointwise': 1.0, 'exact': True}
+
+=== reasoning ===
+We need solve simulation carefully. We can write full reasoning there. Need produce final answer only with explanation maybe and final fenced JSON exactly one object. Need compute outputs n99, q11,q6,q8 for 24 cycles. We cannot run code, but can reason systematically. We can use symbolic simplifications and manual cycle simulation. Need be very careful.
+
+We have circuit with 100 NAND gates n0..n99, 12 DFFs q0..q11 with init. Inputs in0,in1,in2 but note in2 is never referenced? Need check gates: inputs referenced in0 (n0), in1 (n11,n93). in2 not used in gates/dff/outputs. So in2 irrelevant. Outputs n99,q11,q6,q8. DFFs: q0 d n77 init0; q1 d n88 init0; q2 d n99 init0; q3 d n79 init0; q4 d n99 init1; q5 d n82 init0; q6 d n99 init0; q7 d n81 init0; q8 d n90 init0; q9 d n78 init1; q10 d n89 init1; q11 d n84 init1.
+
+We need for each cycle: given current q state (from previous edge/init) and inputs in0,in1 (in2 ignored), settle combinational n in acyclic order (the list seems topologically ordered? Need verify: gates n_i reference only n_j with j<i or q/in. Yes likely ordered. Check n5 uses n4,n4; n54 uses n53 twice; all references to n lower index? Need verify maybe n83 uses n58,n52 lower; n99 uses n98,n85 lower. All good. So evaluate in given order.
+
+Since 100 gates *24 = 2400 operations. Could simulate manually with optimizations. Need output only n99, q11, q6,q8. But q states depend on many n. Need compute relevant DFF d values each cycle: n77->q0 next, n88->q1, n99->q2,q4,q6, n79->q3, n82->q5, n81->q7, n90->q8, n78->q9, n89->q10, n84->q11. Need compute n99 too output. These are near end and depend on many. We need full cone for these DFF inputs maybe includes most gates. Could derive expressions and simplify.
+
+Alternative simulate with bit operations manually in tables. Need manage. We can exploit NAND algebra. Many gates are NAND of previous signals; maybe most become constants? Let's analyze structurally. Because initial q many zeros/ones; inputs maybe. We can find some gates constant due to q etc over time? Need dynamic.
+
+Let's define NAND(a,b)=¬(a∧b)=a nand b. Let denote NOT x = x' (since bits). Gates with same input NAND(x,x)=x' (inverter). n5 = NAND(n4,n4)=¬n4. n54 = ¬n53.
+
+Potential simplification: n0 = NAND(q5,in0) = (q5 in0)'. n1 = NAND(n0,q3). n2 = NAND(n1,q8). n3 = NAND(n2,q0). n4 = NAND(n3,n1). n5 = ¬n4. Then n6=NAND(n5,q1), etc. This is like chain. Many later gates combine. Could compute per cycle with table of n needed. Because all n references lower, no cycles. We can compute only n that are needed for target DFF inputs and outputs. But targets near end depend on a large cone. Need identify exact dependency closure for outputs and next-state signals. Since outputs include q11,q6,q8 (current state) and n99. q11/q6/q8 are state, for recording current cycle need current q, for next states need d values. We need q state evolution for q0..q11. The next state functions are n77,n88,n99,n79,n82,n81,n90,n78,n89,n84. We can compute dependency cones for these 10 signals. They may cover many n but maybe not all. Let's determine which n are required.
+
+List gates with indices and inputs:
+0: (q5,in0)
+1: (n0,q3)
+2: (n1,q8)
+3: (n2,q0)
+4: (n3,n1)
+5: (n4,n4) -> not n4
+6: (n5,q1)
+7: (n6,q11)
+8: (n7,q2)
+9: (n8,q1)
+10: (n9,n1)
+11: (n10,in1)
+12: (n11,q9)
+13: (n12,n10)
+14: (n13,n2)
+15: (n14,n6)
+16: (n15,q8)
+17: (n16,n12)
+18: (n17,q7)
+19: (n18,n5)
+20: (n19,q0)
+21: (n20,n4)
+22: (n21,n14)
+23: (n22,n21)
+24: (n23,q3)
+25: (n24,n7)
+26: (n25,n9)
+27: (n26,q4)
+28: (n27,q1)
+29: (n28,q10)
+30: (n29,q4)
+31: (n30,n23)
+32: (n31,q7)
+33: (n32,n17)
+34: (n33,q0)
+35: (n34,n2)
+36: (n35,n24)
+37: (n36,n31)
+38: (n37,n6)
+39: (n38,n24)
+40: (n39,n20)
+41: (n40,q0)
+42: (n41,n32)
+43: (n42,n23)
+44: (n43,n4)
+45: (n44,n30)
+46: (n45,n19)
+47: (n46,n38)
+48: (n47,n12)
+49: (n48,q5)
+50: (n49,n28)
+51: (n50,n10)
+52: (n51,n24)
+53: (n52,n0)
+54: (n53,n53)
+55: (n54,n24)
+56: (n55,n48)
+57: (n56,q8)
+58: (n57,n32)
+59: (n58,n50)
+60: (n59,q3)
+61: (n60,n43)
+62: (n61,q6)
+63: (n62,n17)
+64: (n63,n56)
+65: (n64,n44)
+66: (n65,n63)
+67: (n66,n52)
+68: (n67,n9)
+69: (n68,n47)
+70: (n69,n66)
+71: (n70,n44)
+72: (n71,n21)
+73: (n72,n44)
+74: (n73,n28)
+75: (n74,q10)
+76: (n75,n46)
+77: (n76,n20)
+78: (n77,n36)
+79: (n78,n57)
+80: (n79,n10)
+81: (n80,n70)
+82: (n81,n34)
+83: (n82,n58)
+84: (n83,n52)
+85: (n84,n37)
+86: (n85,n64)
+87: (n86,n74)
+88: (n87,n44)
+89: (n88,n62)
+90: (n89,n40)
+91: (n90,n37)
+92: (n91,n68)
+93: (n92,in1)
+94: (n93,n10)
+95: (n94,n26)
+96: (n95,n88)
+97: (n96,n67)
+98: (n97,n32)
+99: (n98,n85)
+
+Indeed all references to n lower. Need target set T = {77,88,99,79,82,81,90,78,89,84, and output q states}. n99 depends on 98,85; n98->97,32; n97->96,67; n96->95,88; n95->94,26; n94->93,10; n93->92,in1; n92->91,68; n91->90,37; n90->89,40; n89->88,62; n88->87,44; n87->86,74; n86->85,64; n85->84,37; n84->83,52; n83->82,58; n82->81,34; n81->80,70; n80->79,10; n79->78,57; n78->77,36; n77->76,20; n76->75,46; n75->74,q10; n74->73,28; n73->72,44; n72->71,21; n71->70,44; n70->69,66; n69->68,47; n68->67,9; n67->66,52; n66->65,63; n65->64,44; n64->63,56; n63->62,17; n62->61,q6; n61->60,43; n60->59,q3; n59->58,50; n58->57,32; n57->56,q8; n56->55,48; n55->54,24; n54->53; n53->52,0; n52->51,24; n51->50,10; n50->49,28; n49->48,q5; n48->47,12; n47->46,38; n46->45,19; n45->44,30; n44->43,4; n43->42,23; n42->41,32; n41->40,q0; n40->39,20; n39->38,24; n38->37,6; n37->36,31; n36->35,24; n35->34,2; n34->33,q0; n33->32,17; n32->31,q7; n31->30,23; n30->29,q4; n29->28,q10; n28->27,q1; n27->26,q4; n26->25,9; n25->24,7; n24->23,q3; n23->22,21; n22->21,14; n21->20,4; n20->19,q0; n19->18,5; n18->17,q7; n17->16,12; n16->15,q8; n15->14,6; n14->13,2; n13->12,10; n12->11,q9; n11->10,in1; n10->9,1; n9->8,q1; n8->7,q2; n7->6,q11; n6->5,q1; n5->4; n4->3,1; n3->2,0; n2->1,q8; n1->0,q3; n0->q5,in0.
+
+Looks like all n0..n99 are in dependency closure (because chain covers all). So need compute all gates maybe. But can do cycle table. 24 cycles; maybe patterns and many signals can be simplified via Boolean functions to reduce. Since only two relevant inputs in0,in1 and 12 state bits. Could simulate state (12 bits) and compute next-state functions; but next-state functions are complex. However maybe the circuit is generated as a long chain of NANDs that often simplifies to just some function. We need exact values, no code. Need find efficient manual method.
+
+We can represent NAND operations and propagate using algebra. With only inputs a=in0, b=in1, and state q0..q11. Since n0..n99 are all combinational functions of a,b,q. We could derive expressions for target next-state functions in terms of q and inputs and perhaps simplify using NAND / De Morgan. But expressions for n99 likely huge. Yet because there are only 12 state bits and 2 inputs, the cycle sequence length 24 can be simulated by computing n values numerically. We can optimize numerical computation by noting many gates are NAND with one input maybe constant for stretches? State evolves.
+
+Manual computation of 100 gates per cycle is error-prone. Need create robust system. Since the gates are topologically ordered, we can compute n values for each cycle in order. We only have 24 cycles. Maybe use tables per cycle with columns. We can reduce work using Boolean identities and maybe compute only signals needed at the moment. But all signals needed. We can still compute all n values per cycle but use shortcuts: For each cycle, inputs a,b and q state. Many q bits maybe stable? Need see. q2,q4,q6 all load n99; q4 init1 q2/q6 init0. q11 loads n84 init1; q10 loads n89 init1; q9 loads n78 init1. Others load various. Could be chaotic.
+
+Maybe there is a hidden structure: name chain_s2004_g100_d12. It may be randomly generated chain. Inputs length 24. We need output trace. Need exact. We can still emulate code by hand with compact arithmetic. Need minimize mistakes.
+
+I can use a strategy: For each cycle, because all gates are NAND, represent each net value maybe as one of constants or simple expression. But state changes each cycle. We can compute next state from current state by evaluating formulas. Maybe derive each DFF d as Boolean function of current q and inputs and then use it for all cycles. Since inputs only two bits, for each cycle we can evaluate these functions quickly if simplified.
+
+Let's attempt to algebraically simplify the whole combinational network into expressions for the DFF input signals. We can use transformations. NAND is universal; long chain maybe simplifies. Need be systematic. We can assign variables:
+A = in0, B = in1. State variables q0..q11. Let use x0..x11 for q0..q11 to avoid confusion with n. Define NAND(u,v)= (uv)' = u' + v' (since NOT AND = OR of complements). In Boolean algebra with bits, NAND(u,v)= u' ∨ v'. Also AND = uv, OR = +.
+
+Maybe we can express each n as either complement of product etc. Long chain might be simplified via considering parity of inversions? Let's explore initial segment.
+
+n0 = (x5 A)' = x5' + A'.
+n1 = (n0 x3)' = n0' + x3' = (x5 A) + x3'. Because n0' = x5 A. So n1 = x5 A ∨ x3'. Nice.
+n2 = (n1 x8)' = n1' + x8' = (n1' ) + x8'. n1' = (x5 A ∨ x3')' = (x5 A)' ∧ x3 = n0 ∧ x3? Wait (x5 A)' = n0, so n1' = n0 x3. Yes n2 = n0 x3 + x8'. But also n2 = NAND(n1,x8).
+n3 = (n2 x0)' = n2' + x0' = (n1 x8) + x0'? Since n2' = n1 x8. So n3 = n1 x8 + x0'.
+n4 = (n3 n1)' = n3' + n1' = (n2 x0) + (n0 x3). Because n3'=n2 x0, n1'=n0 x3. So n4 = n2 x0 + n0 x3. Could expand but maybe keep.
+n5 = n4'.
+n6 = (n5 x1)' = n5' + x1' = n4 + x1' (since n5'=n4). So n6 = n4 + x1'. Nice.
+n7 = (n6 x11)' = n6' + x11' = (n5 x1) + x11' = n5 x1 + x11'. (because n6'=n5 x1)
+n8 = (n7 x2)' = n7' + x2' = (n6 x11) + x2'.
+n9 = (n8 x1)' = n8' + x1' = (n7 x2) + x1'.
+n10 = (n9 n1)' = n9' + n1' = (n8 x1) + (n0 x3). (since n9'=n8 x1)
+n11 = (n10 B)' = n10' + B' = (n9 n1)+B'. Wait n10' = n9 n1. Yes n11 = n9 n1 + B'. Actually NAND(n10,B)=n10' + B' = (n9 n1)+B'. Good.
+n12 = (n11 x9)' = n11' + x9' = (n10 B)+x9'.
+n13 = (n12 n10)' = n12' + n10' = (n11 x9)+(n9 n1).
+n14 = (n13 n2)' = n13' + n2' = (n12 n10)+(n1 x8). because n2'=n1 x8.
+n15 = (n14 n6)' = n14' + n6' = (n13 n2)+(n5 x1).
+n16 = (n15 x8)' = n15' + x8' = (n14 n6)+x8'.
+n17 = (n16 n12)' = n16' + n12' = (n15 x8)+(n11 x9).
+n18 = (n17 x7)' = n17' + x7' = (n16 n12)+x7'.
+n19 = (n18 n5)' = n18' + n5' = (n17 x7)+ n4. (n5'=n4)
+n20 = (n19 x0)' = n19' + x0' = (n18 n5)+x0'.
+n21 = (n20 n4)' = n20' + n4' = (n19 x0)+ n5. (n4'=n5)
+n22 = (n21 n14)' = n21' + n14' = (n20 n4)+(n13 n2).
+n23 = (n22 n21)' = n22' + n21' = (n21 n14)+(n20 n4)? Wait careful: NAND(n22,n21) = n22' + n21'. n22' = (n21 n14) (because n22 = NAND(n21,n14); complement = n21 n14). n21' = n20 n4 (because n21=NAND(n20,n4)). So n23 = n21 n14 + n20 n4. But n21 n14 = (n20' + n4') n14. Could keep. However note n22 = n21' + n14'; n23 = n22' + n21' = (n21 n14) + n21' = by absorption? (n21 n14) + n21' = n21' + n14 (since x y + x' = x' + y). Yes n23 = n21' + n14 = (n20 n4) + n14. Wait check: n22' = n21 n14. n23 = n21 n14 + n21' = n21' + n14 (absorption: X' + X Y = X' + Y with X=n21, Y=n14). Good. n21' = n20 n4. So n23 = n20 n4 + n14. Nice. Need be cautious: n21' = (NAND(n20,n4))' = n20 n4. Yes.
+
+We can simplify many pairs where a gate references previous and earlier. Need perhaps derive all n in compact forms. This could make cycle evaluation easier? Maybe expressions still large but many are OR of two terms; can evaluate with bits.
+
+Maybe there is an even better representation: Because NAND(u,v)=u'∨v'. If we track for each n a pair (p, r) such that n = p' ∨ r? Not general. But the generated network appears a chain with pattern: each n_i = NAND(prev, something), causing recurrence n_i = n_{i-1}' + c_i' where c_i is second input. Thus n_i' = n_{i-1} c_i. Many n_i can be represented via previous complement. Indeed for gates whose a input is previous n_{i-1}, n_i = n_{i-1}' + s_i' where s_i is second input. Therefore n_i' = n_{i-1} s_i. This recurrence yields alternating forms. If the second input s_i is often an earlier n or q. The network is a chain from n0 to n99 but with some jumps (a input often n_{i-1}, but sometimes not? Let's check gate i: For i>=1, a is n_{i-1} for almost all except maybe n4 a n3 b n1 (a previous n3 yes), n5 a n4 b n4, n10 a n9 b n1 (a prev), n13 a n12 b n10 (prev), n14 a n13 b n2 (prev), etc. Actually every gate i has a=n_{i-1} for i>=1? Check n22 a n21, b n14 yes. n23 a n22 b n21 (a prev). n53 a n52 b n0. n54 a n53 b n53. Yes all gates n_i for i=1..99 have a=n_{i-1}; second input b is some earlier n or q/input. n0 has a q5 b in0. Great! This is a single chain: n_i = NAND(n_{i-1}, s_i), with n_{-1}? We can define n0=NAND(x5,A). For i>=1, n_i = n_{i-1}' + s_i' where s_i is the b input. Equiv n_i' = n_{i-1} s_i. This is huge! Then we can derive a recurrence and maybe simplify.
+
+Let s_i = second input for gate i:
+For n0: could treat n_{-1}? Not needed. For i>=1, s_i list:
+1: q3 (x3)
+2: q8 (x8)
+3: q0 (x0)
+4: n1
+5: n4 (same as a? For n5, a=n4,b=n4 -> s5=n4; recurrence n5=n4'+n4' = n4'. OK s5=n4)
+6: q1 (x1)
+7: q11 (x11)
+8: q2 (x2)
+9: q1 (x1)
+10: n1
+11: B (in1)
+12: q9 (x9)
+13: n10
+14: n2
+15: n6
+16: q8
+17: n12
+18: q7
+19: n5
+20: q0
+21: n4
+22: n14
+23: n21
+24: q3
+25: n7
+26: n9
+27: q4
+28: q1
+29: q10
+30: q4
+31: n23
+32: q7
+33: n17
+34: q0
+35: n2
+36: n24
+37: n31
+38: n6
+39: n24
+40: n20
+41: q0
+42: n32
+43: n23
+44: n4
+45: n30
+46: n19
+47: n38
+48: n12
+49: q5
+50: n28
+51: n10
+52: n24
+53: n0
+54: n53 (a=n53,b=n53) self inverter; s54=n53. Note n54=NAND(n53,n53)=n53' (also recurrence with previous n53 and s=n53 gives n54=n53'+n53'=n53'; n54'=n53)
+55: n24
+56: n48
+57: q8
+58: n32
+59: n50
+60: q3
+61: n43
+62: q6
+63: n17
+64: n56
+65: n44
+66: n63
+67: n52
+68: n9
+69: n47
+70: n66
+71: n44
+72: n21
+73: n44
+74: n28
+75: q10
+76: n46
+77: n20
+78: n36
+79: n57
+80: n10
+81: n70
+82: n34
+83: n58
+84: n52
+85: n37
+86: n64
+87: n74
+88: n44
+89: n62
+90: n40
+91: n37
+92: n68
+93: B
+94: n10
+95: n26
+96: n88
+97: n67
+98: n32
+99: n85
+
+Since n_i = n_{i-1}' + s_i'. We can maybe compute two values per gate: n_i and maybe c_i = n_i' = n_{i-1} s_i. But for evaluating n_i we need n_{i-1} and s_i. If s_i is earlier n, known. Numerically this is easy: starting n0, for i=1..99: n_i = (n_{i-1} & s_i) XOR 1? Actually NAND. We can compute sequentially. That's 100 NANDs per cycle. But maybe we can compute complements m_i = n_i' with recurrence m_i = n_{i-1} s_i, and n_i = m_i'. For next gate, need n_i = 1-m_i and s_{i+1}. If s is n_j, we have n_j; if s is q/input known. So we can compute m_i (AND) and n_i=¬m_i. This may be simpler: m_i = n_{i-1} ∧ s_i; n_i = ¬m_i. For n5 self: m5 = n4∧n4 = n4; n5=¬n4. For n54: m54 = n53∧n53 = n53; n54=¬n53. Good.
+
+Still 100 per cycle. But maybe the recurrence can be compressed: n_i = ¬(n_{i-1} s_i). This is like an AND-NOT chain. There might be a direct expression: n_i = n_{i-1}' ∨ s_i'. If n_{i-1}=0 then n_i=1 regardless of s_i; if n_{i-1}=1 then n_i = s_i'. So the chain has reset behavior: if previous n is 0, current n=1; if previous n=1, current = NOT s. This can be computed sequentially; often once n_i=0, next n_{i+1}=1, etc. There may be patterns. But still need s_i values. However note if n_{i-1}=0, n_i=1 and we may not need s_i for that gate. But s_i might be needed later independently. Yet all s_i are earlier n/q; if we compute sequentially we have them. We can skip evaluating s_i? No, earlier n already computed.
+
+Maybe we can compute the sequence n_i using runs. If n_{i-1}=0 then n_i=1. Then for next gate, n_i=1, so n_{i+1}=s_{i+1}'. Thus a 0 in n causes next n=1 and following n= complement of s. There might be long stretches. But inputs/state random.
+
+Manual sequential computation of 100 bits for 24 cycles still possible with a table if we exploit the recurrence and only record m/n maybe. We can reduce by observing q outputs and DFF d target indices are high. But to compute high n, need all prior due chain. We can compute n_i sequentially per cycle. 2400 NAND evaluations. A human can do with a compact table, but risk. Need further optimize.
+
+Could derive next-state functions and maybe find a much smaller equivalent state machine. Because the chain recurrence with second inputs that are earlier signals may implement a simple function, perhaps due to generated random but maybe there are logical simplifications. Let's investigate algebraically. Since every gate i = NAND(n_{i-1}, s_i). If s_i itself is n_j for j<i-1 or q. We can express n_i in terms of n_{i-1} and s_i. There may be local simplifications when s_i equals n_{i-2} or related. For example n4=NAND(n3,n1); n5=¬n4; n6=NAND(n5,q1)=n4 + x1'. There may be cancellations.
+
+Maybe we can find for the specific target DFF inputs (n77,n78,etc.) expressions in terms of a subset of lower n and q. But due chain, still many.
+
+Alternative: Use finite-state input trace. We only need output for 24 cycles. Maybe simulate using a custom spreadsheet mentally. Could create for each cycle a row of 12 q bits and inputs, compute the needed DFF d signals by evaluating the recurrence. We can compute n values in order but maybe store only those needed as s_i later and targets. Since every n_i can be s for later gates; but we can compute and keep all n in a row. To reduce writing, use a bit string n0..n99 per cycle. That's 100 bits per cycle; 24 rows = 2400 bits. Manageable if careful but lengthy. We can maybe not write all, only compute in a structured worksheet. Need final exact. I as model can simulate internally and verify with multiple methods. We need be certain.
+
+Maybe I can derive a Boolean function for n99 and state updates and then evaluate with a smaller set. Let's explore algebraically using recurrence and possible absorption. We can define for each i an expression in terms of previous n and s. But since s_i are earlier n, expressions can be expanded. Maybe the long chain has a property: n_i as function of n_0 and the s_j for j<=i. Let's solve recurrence.
+
+Recurrence: n_i = n_{i-1}' + s_i'. Let m_i = n_i'. Then m_i = n_{i-1} s_i = (1-m_{i-1}) s_i = s_i - m_{i-1}s_i (Boolean). This is a linear recurrence over GF(2)? NOT is affine. Maybe represent n_i = 1 ⊕ (n_{i-1} s_i) (since NAND = NOT AND = 1 ⊕ (n_{i-1}s_i)). Over GF(2), AND is multiplication, XOR addition. n_i = 1 ⊕ n_{i-1} s_i. This is an affine bilinear recurrence. If s_i are functions of earlier n, not linear. But we can expand:
+n_i = 1 ⊕ s_i n_{i-1}.
+Substitute n_{i-1}=1 ⊕ s_{i-1} n_{i-2}: n_i = 1 ⊕ s_i ⊕ s_i s_{i-1} n_{i-2}. Continue: n_i = 1 ⊕ s_i ⊕ s_i s_{i-1} ⊕ s_i s_{i-1} s_{i-2} n_{i-3}? Need signs over GF(2): n_i = 1 ⊕ s_i(1 ⊕ s_{i-1} n_{i-2}) = 1 ⊕ s_i ⊕ s_i s_{i-1} n_{i-2}. Next =1⊕s_i⊕s_i s_{i-1} ⊕ s_i s_{i-1} s_{i-2} n_{i-3}. Eventually n_i = 1 ⊕ s_i ⊕ s_i s_{i-1} ⊕ ... ⊕ (s_i s_{i-1} ... s_1) n_0? Need include alternating? Let's derive: n_i = 1 ⊕ Σ? Because multiplication distributes. n_i = 1 ⊕ s_i ⊕ s_i s_{i-1} ⊕ s_i s_{i-1}s_{i-2} ⊕ ... ⊕ s_i...s_1 n_0? Test for i=1: formula 1⊕ s1 ⊕ s1 n0? But actual n1=1⊕ s1 n0. Extra s1 term wrong. Let's carefully derive.
+Recurrence n_i = 1 ⊕ s_i n_{i-1}. For i=1: n1=1⊕s1 n0. Formula should be 1 ⊕ s1 n0 (no s1 alone). For i=2: n2=1⊕s2 n1 =1⊕s2(1⊕s1 n0)=1⊕s2⊕s2 s1 n0. For i=3: =1⊕s3 n2=1⊕s3⊕s3 s2⊕s3 s2 s1 n0. So pattern: n_i = 1 ⊕ s_i ⊕ s_i s_{i-1} ⊕ ... ⊕ s_i s_{i-1}...s_2 ⊕ (s_i...s_1) n_0. For i=1, the sum includes products ending with s2? empty, and product s1 n0: n1=1⊕(s1 n0). Good. For i=2: 1⊕s2⊕s2s1 n0. Good.
+
+But s_j themselves depend on n_k for k<j, causing nonlinear terms. However note in expansion products s_i s_{i-1} ... and n0. If s_j = n_l (l<j), substitutions may lead to simplifications because n_l = 1⊕ s_l n_{l-1}; multiplying by s_l maybe: s_l n_l? Let's look for identities.
+
+When s_i = n_{i-1}? self? only n5 and n54. For s_i = some earlier n. There may be terms with n_j and n_{j+1} etc that simplify: n_j n_{j+1} = n_j (1⊕ s_{j+1} n_j)= n_j ⊕ s_{j+1} n_j = n_j (1⊕s_{j+1}) = n_j s_{j+1}' (since n_j∧n_j = n_j and n_j∧s_{j+1}n_j = s_{j+1} n_j). Over GF(2): n_j n_{j+1}= n_j ⊕ s_{j+1} n_j = n_j(1⊕s_{j+1}) = n_j s_{j+1}'. In Boolean (not GF) n_j ∧ n_{j+1} = n_j ∧ (n_j'∨ s_{j+1}') = n_j s_{j+1}'. Yes. Could simplify products of consecutive n.
+
+But expressions may still be huge. Maybe not.
+
+Maybe many second inputs are q bits, and q bits update from high n; state machine could have low depth (d12) maybe outputs depend on limited history. Name d12 maybe 12 DFF. There may be an intended algorithm but no code. We need compute.
+
+Maybe we can use actual reasoning with a virtual simulation but ensure accuracy by building tables and cross-checking with invariants. I can do manual bitwise evaluation. 24 cycles, 12 state bits; each cycle next state functions are specific n. Instead of computing all 100 n values each cycle from scratch, perhaps derive formulas for the 10 next-state signals in terms of current q and inputs by composing. Let's attempt symbolic simplification for those signals using the chain recurrence and Boolean algebra. Because target signals are at indices 77,78,79,81,82,84,88,89,90,99. They are high; maybe expressions can be simplified dramatically due to repeated second inputs. Let's see.
+
+Important: n_i = n_{i-1}' ∨ s_i'. When s_i is q or input, if that q=0 then s_i'=1 so n_i=1 regardless of previous. This creates resets. For a given cycle, many q bits are 0, causing n_i=1 at those gates. Then subsequent gate with previous=1 becomes complement of its s. We can exploit per cycle: if s_i=0, set n_i=1 (skip dependence on previous). Actually n_i=NAND(prev,0)=1. This is a reset to 1. If s_i=1, n_i=prev' (inverter of previous). If s_i is an n known, general.
+
+In a given cycle, q bits maybe many zeros. Gates with s_i=q_j and q_j=0 force n_i=1. Then next gate computes based on n_i=1: n_{i+1}=s_{i+1}'. This could create simple segments. We can compute sequentially with early resets.
+
+Maybe state bits settle into patterns where many q are 0/1. Let's start simulation and perhaps discover. Initial state: q0=0,q1=0,q2=0,q3=0,q4=1,q5=0,q6=0,q7=0,q8=0,q9=1,q10=1,q11=1. At cycle0 inputs A=0,B=0. Many q zero. We can compute n chain. Maybe after first edge state changes. Let's do cycle 0 in detail to get feel. But need all cycles. We can create a table for q state at each cycle (current before edge) and outputs. Then compute next state. Maybe we can compute next-state signals without full n row by using recursive evaluation with memo for each cycle. Let's attempt to build a reusable evaluator mentally: For given A,B,x0..x11, compute n0..n99 sequentially. Since s_i often q, if q=0 then n_i=1; if q=1 then n_i=¬n_{i-1}; if s_i is earlier n, use it. We can encode n_i as maybe a simple function of previous when s_i constant for that cycle. For each cycle, q inputs are constants; B/A constants. Then the chain becomes a deterministic sequence where each n_i is either constant 1 (if s_i=0), or ¬n_{i-1} (if s_i=1), or NAND(prev,n_j) if s_i=n_j. But n_j are computed. Still sequential but easier: for s_i=q/input constant, we can often propagate. For s_i = earlier n, need compute.
+
+Could we precompute for each cycle the values of s_i that are q/input (constant) and only handle n-valued s dynamically. Let's list for each i, type of s_i:
+1 q3;2 q8;3 q0;4 n1;5 n4;6 q1;7 q11;8 q2;9 q1;10 n1;11 B;12 q9;13 n10;14 n2;15 n6;16 q8;17 n12;18 q7;19 n5;20 q0;21 n4;22 n14;23 n21;24 q3;25 n7;26 n9;27 q4;28 q1;29 q10;30 q4;31 n23;32 q7;33 n17;34 q0;35 n2;36 n24;37 n31;38 n6;39 n24;40 n20;41 q0;42 n32;43 n23;44 n4;45 n30;46 n19;47 n38;48 n12;49 q5;50 n28;51 n10;52 n24;53 n0;54 n53;55 n24;56 n48;57 q8;58 n32;59 n50;60 q3;61 n43;62 q6;63 n17;64 n56;65 n44;66 n63;67 n52;68 n9;69 n47;70 n66;71 n44;72 n21;73 n44;74 n28;75 q10;76 n46;77 n20;78 n36;79 n57;80 n10;81 n70;82 n34;83 n58;84 n52;85 n37;86 n64;87 n74;88 n44;89 n62;90 n40;91 n37;92 n68;93 B;94 n10;95 n26;96 n88;97 n67;98 n32;99 n85.
+
+There are many s_i=n_{i-?} that create feedback in combinational chain (but acyclic). Maybe a lot of terms can be simplified using the recurrence relation for s_i=n_j. Specifically if s_i=n_j, then n_i = n_{i-1}' + n_j'. If j=i-1? only self inverters. If j<i-1. Not simple.
+
+Could use a SAT-like manual with bit vector. Perhaps better to just compute with a table. Need manage error risk by doing cycles in groups and verifying next state maybe with independent recomputation for outputs. We can also use parity/invariants to check.
+
+Let's consider using a more abstract numerical method: Because each n_i = 1 ⊕ (n_{i-1} ∧ s_i), we can compute n_i by rule:
+- If n_{i-1}=0 -> n_i=1.
+- If n_{i-1}=1 -> n_i = NOT s_i.
+Thus the value of s_i only matters when previous n=1. But s_i itself may be an earlier n; if previous=0, we can set n_i=1 without needing s_i at that moment. However s_i (earlier n) already computed if j<i. So no savings in computation order, but for gates with s_i=q/input constant zero, it's easy.
+
+Maybe there are long stretches where previous n=0/1 pattern. Let's simulate and see. Could be that n_i alternates often. We'll need exact high n. I'll create a compact per-cycle computation notation.
+
+Before diving, note input in2 unused. We can ignore. Trace A=in0 length24, B=in1 length24. Let's list cycles t=0..23 with A,B:
+t0: A0 B0
+t1: A1 B1
+t2: A0 B1
+t3: A0 B1
+t4: A0 B0
+t5: A0 B0
+t6: A0 B1
+t7: A0 B0
+t8: A1 B0
+t9: A0 B0
+t10: A0 B0
+t11: A1 B0
+t12: A0 B1
+t13: A1 B0
+t14: A1 B1
+t15: A1 B1
+t16: A1 B1
+t17: A1 B1
+t18: A1 B0
+t19: A0 B1
+t20: A1 B1
+t21: A0 B0
+t22: A0 B0
+t23: A0 B0
+Check trace in0: [0,1,0,0,0,0,0,0,1,0,0,1,0,1,1,1,1,1,1,0,1,0,0,0]. Yes t18=1, t19=0,t20=1. in1: [0,1,1,1,0,0,1,0,0,0,0,0,1,0,1,1,1,1,0,1,1,0,0,0]. Good.
+
+DFF update: At end of cycle t, q <- d (computed with current cycle inputs and current q). So q at cycle t+1 = d_t. Output q's recorded at cycle t are current q before update. We need output lists for q11,q6,q8: these are just state sequences q11_t,q6_t,q8_t for t=0..23. q6_t = q2_t = q4? Not exactly q2,q4,q6 all have d=n99; q4 init1, q2/q6 init0. After first edge, q2=q4=q6=n99_0; thereafter all three equal (same d) for t>=1. Actually q4_t for t>=1 equals n99_{t-1}; q2_t and q6_t also equal n99_{t-1}; so q2=q4=q6 for all t>=1. At t=0, q4=1 while q2=q6=0. Good. q6 output = [0, n99_0, n99_1, ..., n99_22] (since q6_{t}=n99_{t-1} for t>=1). q8 output = state x8_t with update n90_{t-1}. q11 output = state x11_t with update n84_{t-1}; init1. And n99 output list = n99_t for t=0..23. We need n99 all cycles anyway. Then q6 list can be derived from n99 shifted with initial 0. Nice! Also q2/q4 same but not outputs. q11 and q8 need n84 and n90 histories. q11_t init1 then n84_{t-1}; q8_t init0 then n90_{t-1}. q0 etc also needed for computation.
+
+Maybe we can derive n99_t and next states. Need simulate.
+
+Given complexity, maybe I should construct the full computation but with a table of only necessary signals for each cycle. However to compute n99_t, sequential chain requires all n. But we can compute row of n and immediately update state. Let's do it cycle by cycle. To manage, I will create for each cycle a table of n0..n99 maybe in groups of 10. I will compute using rule. Then extract DFF d. I must be meticulous. I can cross-check each cycle's next state by verifying some computations with alternate formulas. We'll proceed.
+
+Maybe we can reduce per-cycle work by computing n values symbolically in terms of a running "previous" p and s. I will do groups. Use notation: for gate i, p=n_{i-1}, s=s_i, n=NAND(p,s). If p=0 => n=1; if p=1 => n=¬s. I'll write rows as bits for n0..n99. Then next state. We can also compute complements c_i=¬n_i if needed? Not necessary.
+
+But the s_i values that are n_j require looking up n_j. With a row groups of 10, okay.
+
+Let's start cycle 0.
+State S0: x0=0,x1=0,x2=0,x3=0,x4=1,x5=0,x6=0,x7=0,x8=0,x9=1,x10=1,x11=1. Inputs A=0,B=0.
+
+Compute n0 = NAND(x5=0,A=0)=1.
+Now sequential:
+i1 s=x3=0,p=1 -> n1=1 (NAND(1,0)=1). Also since s=0 ->1.
+i2 s=x8=0 -> n2=1.
+i3 s=x0=0 -> n3=1.
+i4 s=n1=1,p=n3=1 -> n4=NAND(1,1)=0.
+i5 s=n4=0,p=n4=0 -> n5=NAND(0,0)=1 (or ¬n4=1).
+i6 s=x1=0 -> n6=1 (p=n5=1, NAND(1,0)=1).
+i7 s=x11=1,p=n6=1 -> n7=0.
+i8 s=x2=0 -> n8=1 (p=0? actually p=n7=0 -> n8=1 regardless; yes)
+i9 s=x1=0,p=n8=1 -> n9=1.
+i10 s=n1=1,p=n9=1 -> n10=0.
+i11 s=B=0,p=n10=0 -> n11=1 (p0 ->1; also s0)
+i12 s=x9=1,p=n11=1 -> n12=0.
+i13 s=n10=0,p=n12=0 -> n13=1 (p0; also s0)
+i14 s=n2=1,p=n13=1 -> n14=0.
+i15 s=n6=1,p=n14=0 -> n15=1.
+i16 s=x8=0,p=n15=1 -> n16=1.
+i17 s=n12=0,p=n16=1 -> n17=1 (NAND(1,0)=1).
+i18 s=x7=0,p=n17=1 -> n18=1.
+i19 s=n5=1,p=n18=1 -> n19=0.
+i20 s=x0=0,p=n19=0 -> n20=1.
+i21 s=n4=0,p=n20=1 -> n21=1.
+i22 s=n14=0,p=n21=1 -> n22=1.
+i23 s=n21=1,p=n22=1 -> n23=0.
+i24 s=x3=0,p=n23=0 -> n24=1.
+i25 s=n7=0,p=n24=1 -> n25=1 (s0).
+i26 s=n9=1,p=n25=1 -> n26=0.
+i27 s=x4=1,p=n26=0 -> n27=1.
+i28 s=x1=0,p=n27=1 -> n28=1.
+i29 s=x10=1,p=n28=1 -> n29=0.
+i30 s=x4=1,p=n29=0 -> n30=1.
+i31 s=n23=0,p=n30=1 -> n31=1.
+i32 s=x7=0,p=n31=1 -> n32=1.
+i33 s=n17=1,p=n32=1 -> n33=0.
+i34 s=x0=0,p=n33=0 -> n34=1.
+i35 s=n2=1,p=n34=1 -> n35=0.
+i36 s=n24=1,p=n35=0 -> n36=1.
+i37 s=n31=1,p=n36=1 -> n37=0.
+i38 s=n6=1,p=n37=0 -> n38=1.
+i39 s=n24=1,p=n38=1 -> n39=0.
+i40 s=n20=1,p=n39=0 -> n40=1.
+i41 s=x0=0,p=n40=1 -> n41=1.
+i42 s=n32=1,p=n41=1 -> n42=0.
+i43 s=n23=0,p=n42=0 -> n43=1.
+i44 s=n4=0,p=n43=1 -> n44=1.
+i45 s=n30=1,p=n44=1 -> n45=0.
+i46 s=n19=0,p=n45=0 -> n46=1.
+i47 s=n38=1,p=n46=1 -> n47=0.
+i48 s=n12=0,p=n47=0 -> n48=1.
+i49 s=x5=0,p=n48=1 -> n49=1.
+i50 s=n28=1,p=n49=1 -> n50=0.
+i51 s=n10=0,p=n50=0 -> n51=1.
+i52 s=n24=1,p=n51=1 -> n52=0.
+i53 s=n0=1,p=n52=0 -> n53=1.
+i54 s=n53=1,p=n53=1 -> n54=0.
+i55 s=n24=1,p=n54=0 -> n55=1.
+i56 s=n48=1,p=n55=1 -> n56=0.
+i57 s=x8=0,p=n56=0 -> n57=1.
+i58 s=n32=1,p=n57=1 -> n58=0.
+i59 s=n50=0,p=n58=0 -> n59=1.
+i60 s=x3=0,p=n59=1 -> n60=1.
+i61 s=n43=1,p=n60=1 -> n61=0.
+i62 s=x6=0,p=n61=0 -> n62=1.
+i63 s=n17=1,p=n62=1 -> n63=0.
+i64 s=n56=0,p=n63=0 -> n64=1.
+i65 s=n44=1,p=n64=1 -> n65=0.
+i66 s=n63=0,p=n65=0 -> n66=1.
+i67 s=n52=0,p=n66=1 -> n67=1.
+i68 s=n9=1,p=n67=1 -> n68=0.
+i69 s=n47=0,p=n68=0 -> n69=1.
+i70 s=n66=1,p=n69=1 -> n70=0.
+i71 s=n44=1,p=n70=0 -> n71=1.
+i72 s=n21=1,p=n71=1 -> n72=0.
+i73 s=n44=1,p=n72=0 -> n73=1.
+i74 s=n28=1,p=n73=1 -> n74=0.
+i75 s=x10=1,p=n74=0 -> n75=1.
+i76 s=n46=1,p=n75=1 -> n76=0.
+i77 s=n20=1,p=n76=0 -> n77=1.
+i78 s=n36=1,p=n77=1 -> n78=0.
+i79 s=n57=1,p=n78=0 -> n79=1.
+i80 s=n10=0,p=n79=1 -> n80=1.
+i81 s=n70=0,p=n80=1 -> n81=1.
+i82 s=n34=1,p=n81=1 -> n82=0.
+i83 s=n58=0,p=n82=0 -> n83=1.
+i84 s=n52=0,p=n83=1 -> n84=1.
+i85 s=n37=0,p=n84=1 -> n85=1.
+i86 s=n64=1,p=n85=1 -> n86=0.
+i87 s=n74=0,p=n86=0 -> n87=1.
+i88 s=n44=1,p=n87=1 -> n88=0.
+i89 s=n62=1,p=n88=0 -> n89=1.
+i90 s=n40=1,p=n89=1 -> n90=0.
+i91 s=n37=0,p=n90=0 -> n91=1.
+i92 s=n68=0,p=n91=1 -> n92=1.
+i93 s=B=0,p=n92=1 -> n93=1.
+i94 s=n10=0,p=n93=1 -> n94=1.
+i95 s=n26=0,p=n94=1 -> n95=1.
+i96 s=n88=0,p=n95=1 -> n96=1.
+i97 s=n67=1,p=n96=1 -> n97=0.
+i98 s=n32=1,p=n97=0 -> n98=1.
+i99 s=n85=1,p=n98=1 -> n99=0.
+So cycle0 outputs: n99=0, q11=1,q6=0,q8=0. Next state S1 = d values: q0=n77=1; q1=n88=0; q2=n99=0; q3=n79=1; q4=n99=0; q5=n82=0; q6=n99=0; q7=n81=1; q8=n90=0; q9=n78=0; q10=n89=1; q11=n84=1.
+So S1: x0=1,x1=0,x2=0,x3=1,x4=0,x5=0,x6=0,x7=1,x8=0,x9=0,x10=1,x11=1. Need verify cycle0 computations. We'll later cross-check. Note q9 init1 becomes n78=0; q4 init1 becomes n99=0. Good.
+
+Cycle1: S1 above; inputs A=1,B=1. Compute n row. State: x0 1, x1 0, x2 0, x3 1, x4 0, x5 0, x6 0, x7 1, x8 0, x9 0, x10 1, x11 1.
+ n0=NAND(x5=0,A=1)=1 (since x5 0). 
+1 s=x3=1,p=1 -> n1=0.
+2 s=x8=0,p=n1=0 -> n2=1.
+3 s=x0=1,p=n2=1 -> n3=0.
+4 s=n1=0,p=n3=0 -> n4=1 (NAND0,0=1).
+5 s=n4=1,p=n4=1 -> n5=0.
+6 s=x1=0,p=n5=0 -> n6=1.
+7 s=x11=1,p=n6=1 -> n7=0.
+8 s=x2=0,p=n7=0 -> n8=1.
+9 s=x1=0,p=n8=1 -> n9=1.
+10 s=n1=0,p=n9=1 -> n10=1.
+11 s=B=1,p=n10=1 -> n11=0.
+12 s=x9=0,p=n11=0 -> n12=1.
+13 s=n10=1,p=n12=1 -> n13=0.
+14 s=n2=1,p=n13=0 -> n14=1.
+15 s=n6=1,p=n14=1 -> n15=0.
+16 s=x8=0,p=n15=0 -> n16=1.
+17 s=n12=1,p=n16=1 -> n17=0.
+18 s=x7=1,p=n17=0 -> n18=1.
+19 s=n5=0,p=n18=1 -> n19=1 (s0 ->1).
+20 s=x0=1,p=n19=1 -> n20=0.
+21 s=n4=1,p=n20=0 -> n21=1.
+22 s=n14=1,p=n21=1 -> n22=0.
+23 s=n21=1,p=n22=0 -> n23=1.
+24 s=x3=1,p=n23=1 -> n24=0.
+25 s=n7=0,p=n24=0 -> n25=1.
+26 s=n9=1,p=n25=1 -> n26=0.
+27 s=x4=0,p=n26=0 -> n27=1.
+28 s=x1=0,p=n27=1 -> n28=1.
+29 s=x10=1,p=n28=1 -> n29=0.
+30 s=x4=0,p=n29=0 -> n30=1.
+31 s=n23=1,p=n30=1 -> n31=0.
+32 s=x7=1,p=n31=0 -> n32=1.
+33 s=n17=0,p=n32=1 -> n33=1.
+34 s=x0=1,p=n33=1 -> n34=0.
+35 s=n2=1,p=n34=0 -> n35=1.
+36 s=n24=0,p=n35=1 -> n36=1.
+37 s=n31=0,p=n36=1 -> n37=1.
+38 s=n6=1,p=n37=1 -> n38=0.
+39 s=n24=0,p=n38=0 -> n39=1.
+40 s=n20=0,p=n39=1 -> n40=1.
+41 s=x0=1,p=n40=1 -> n41=0.
+42 s=n32=1,p=n41=0 -> n42=1.
+43 s=n23=1,p=n42=1 -> n43=0.
+44 s=n4=1,p=n43=0 -> n44=1.
+45 s=n30=1,p=n44=1 -> n45=0.
+46 s=n19=1,p=n45=0 -> n46=1.
+47 s=n38=0,p=n46=1 -> n47=1.
+48 s=n12=1,p=n47=1 -> n48=0.
+49 s=x5=0,p=n48=0 -> n49=1.
+50 s=n28=1,p=n49=1 -> n50=0.
+51 s=n10=1,p=n50=0 -> n51=1.
+52 s=n24=0,p=n51=1 -> n52=1.
+53 s=n0=1,p=n52=1 -> n53=0.
+54 s=n53=0,p=n53=0 -> n54=1.
+55 s=n24=0,p=n54=1 -> n55=1.
+56 s=n48=0,p=n55=1 -> n56=1.
+57 s=x8=0,p=n56=1 -> n57=1.
+58 s=n32=1,p=n57=1 -> n58=0.
+59 s=n50=0,p=n58=0 -> n59=1.
+60 s=x3=1,p=n59=1 -> n60=0.
+61 s=n43=0,p=n60=0 -> n61=1.
+62 s=x6=0,p=n61=1 -> n62=1.
+63 s=n17=0,p=n62=1 -> n63=1.
+64 s=n56=1,p=n63=1 -> n64=0.
+65 s=n44=1,p=n64=0 -> n65=1.
+66 s=n63=1,p=n65=1 -> n66=0.
+67 s=n52=1,p=n66=0 -> n67=1.
+68 s=n9=1,p=n67=1 -> n68=0.
+69 s=n47=1,p=n68=0 -> n69=1.
+70 s=n66=0,p=n69=1 -> n70=1.
+71 s=n44=1,p=n70=1 -> n71=0.
+72 s=n21=1,p=n71=0 -> n72=1.
+73 s=n44=1,p=n72=1 -> n73=0.
+74 s=n28=1,p=n73=0 -> n74=1.
+75 s=x10=1,p=n74=1 -> n75=0.
+76 s=n46=1,p=n75=0 -> n76=1.
+77 s=n20=0,p=n76=1 -> n77=1.
+78 s=n36=1,p=n77=1 -> n78=0.
+79 s=n57=1,p=n78=0 -> n79=1.
+80 s=n10=1,p=n79=1 -> n80=0.
+81 s=n70=1,p=n80=0 -> n81=1.
+82 s=n34=0,p=n81=1 -> n82=1.
+83 s=n58=0,p=n82=1 -> n83=1.
+84 s=n52=1,p=n83=1 -> n84=0.
+85 s=n37=1,p=n84=0 -> n85=1.
+86 s=n64=0,p=n85=1 -> n86=1.
+87 s=n74=1,p=n86=1 -> n87=0.
+88 s=n44=1,p=n87=0 -> n88=1.
+89 s=n62=1,p=n88=1 -> n89=0.
+90 s=n40=1,p=n89=0 -> n90=1.
+91 s=n37=1,p=n90=1 -> n91=0.
+92 s=n68=0,p=n91=0 -> n92=1.
+93 s=B=1,p=n92=1 -> n93=0.
+94 s=n10=1,p=n93=0 -> n94=1.
+95 s=n26=0,p=n94=1 -> n95=1.
+96 s=n88=1,p=n95=1 -> n96=0.
+97 s=n67=1,p=n96=0 -> n97=1.
+98 s=n32=1,p=n97=1 -> n98=0.
+99 s=n85=1,p=n98=0 -> n99=1.
+Cycle1 n99=1. Outputs at t1: n99=1, q11=x11=1, q6=x6=0, q8=x8=0. Next S2 = d: q0=n77=1; q1=n88=1; q2=n99=1; q3=n79=1; q4=n99=1; q5=n82=1; q6=n99=1; q7=n81=1; q8=n90=1; q9=n78=0; q10=n89=0; q11=n84=0.
+S2: x0=1,x1=1,x2=1,x3=1,x4=1,x5=1,x6=1,x7=1,x8=1,x9=0,x10=0,x11=0. Interesting many ones except x9,x10,x11=0. Need verify. Because inputs A=B=1 and state S1, produced many ones. Could be correct.
+
+Cycle2: S2, inputs A=0 (in0 t2=0), B=1. State x0..x11: 1,1,1,1,1,1,1,1,1,0,0,0.
+Compute n0=NAND(x5=1,A=0)=1 (since A0). 
+1 s=x3=1,p=1 -> n1=0.
+2 s=x8=1,p=n1=0 -> n2=1 (p0 ->1). Wait if p=0 n2=1 regardless. yes.
+3 s=x0=1,p=n2=1 -> n3=0.
+4 s=n1=0,p=n3=0 -> n4=1.
+5 self n4=1 -> n5=0.
+6 s=x1=1,p=n5=0 -> n6=1.
+7 s=x11=0,p=n6=1 -> n7=1.
+8 s=x2=1,p=n7=1 -> n8=0.
+9 s=x1=1,p=n8=0 -> n9=1.
+10 s=n1=0,p=n9=1 -> n10=1.
+11 s=B=1,p=n10=1 -> n11=0.
+12 s=x9=0,p=n11=0 -> n12=1.
+13 s=n10=1,p=n12=1 -> n13=0.
+14 s=n2=1,p=n13=0 -> n14=1.
+15 s=n6=1,p=n14=1 -> n15=0.
+16 s=x8=1,p=n15=0 -> n16=1.
+17 s=n12=1,p=n16=1 -> n17=0.
+18 s=x7=1,p=n17=0 -> n18=1.
+19 s=n5=0,p=n18=1 -> n19=1.
+20 s=x0=1,p=n19=1 -> n20=0.
+21 s=n4=1,p=n20=0 -> n21=1.
+22 s=n14=1,p=n21=1 -> n22=0.
+23 s=n21=1,p=n22=0 -> n23=1.
+24 s=x3=1,p=n23=1 -> n24=0.
+25 s=n7=1,p=n24=0 -> n25=1 (p0 ->1). (even s1)
+26 s=n9=1,p=n25=1 -> n26=0.
+27 s=x4=1,p=n26=0 -> n27=1.
+28 s=x1=1,p=n27=1 -> n28=0.
+29 s=x10=0,p=n28=0 -> n29=1.
+30 s=x4=1,p=n29=1 -> n30=0.
+31 s=n23=1,p=n30=0 -> n31=1.
+32 s=x7=1,p=n31=1 -> n32=0.
+33 s=n17=0,p=n32=0 -> n33=1.
+34 s=x0=1,p=n33=1 -> n34=0.
+35 s=n2=1,p=n34=0 -> n35=1.
+36 s=n24=0,p=n35=1 -> n36=1.
+37 s=n31=1,p=n36=1 -> n37=0.
+38 s=n6=1,p=n37=0 -> n38=1.
+39 s=n24=0,p=n38=1 -> n39=1.
+40 s=n20=0,p=n39=1 -> n40=1.
+41 s=x0=1,p=n40=1 -> n41=0.
+42 s=n32=0,p=n41=0 -> n42=1.
+43 s=n23=1,p=n42=1 -> n43=0.
+44 s=n4=1,p=n43=0 -> n44=1.
+45 s=n30=0,p=n44=1 -> n45=1.
+46 s=n19=1,p=n45=1 -> n46=0.
+47 s=n38=1,p=n46=0 -> n47=1.
+48 s=n12=1,p=n47=1 -> n48=0.
+49 s=x5=1,p=n48=0 -> n49=1.
+50 s=n28=0,p=n49=1 -> n50=1.
+51 s=n10=1,p=n50=1 -> n51=0.
+52 s=n24=0,p=n51=0 -> n52=1.
+53 s=n0=1,p=n52=1 -> n53=0.
+54 self n53=0 -> n54=1.
+55 s=n24=0,p=n54=1 -> n55=1.
+56 s=n48=0,p=n55=1 -> n56=1.
+57 s=x8=1,p=n56=1 -> n57=0.
+58 s=n32=0,p=n57=0 -> n58=1.
+59 s=n50=1,p=n58=1 -> n59=0.
+60 s=x3=1,p=n59=0 -> n60=1.
+61 s=n43=0,p=n60=1 -> n61=1.
+62 s=x6=1,p=n61=1 -> n62=0.
+63 s=n17=0,p=n62=0 -> n63=1.
+64 s=n56=1,p=n63=1 -> n64=0.
+65 s=n44=1,p=n64=0 -> n65=1.
+66 s=n63=1,p=n65=1 -> n66=0.
+67 s=n52=1,p=n66=0 -> n67=1.
+68 s=n9=1,p=n67=1 -> n68=0.
+69 s=n47=1,p=n68=0 -> n69=1.
+70 s=n66=0,p=n69=1 -> n70=1.
+71 s=n44=1,p=n70=1 -> n71=0.
+72 s=n21=1,p=n71=0 -> n72=1.
+73 s=n44=1,p=n72=1 -> n73=0.
+74 s=n28=0,p=n73=0 -> n74=1.
+75 s=x10=0,p=n74=1 -> n75=1.
+76 s=n46=0,p=n75=1 -> n76=1.
+77 s=n20=0,p=n76=1 -> n77=1.
+78 s=n36=1,p=n77=1 -> n78=0.
+79 s=n57=0,p=n78=0 -> n79=1.
+80 s=n10=1,p=n79=1 -> n80=0.
+81 s=n70=1,p=n80=0 -> n81=1.
+82 s=n34=0,p=n81=1 -> n82=1.
+83 s=n58=1,p=n82=1 -> n83=0.
+84 s=n52=1,p=n83=0 -> n84=1.
+85 s=n37=0,p=n84=1 -> n85=1.
+86 s=n64=0,p=n85=1 -> n86=1.
+87 s=n74=1,p=n86=1 -> n87=0.
+88 s=n44=1,p=n87=0 -> n88=1.
+89 s=n62=0,p=n88=1 -> n89=1.
+90 s=n40=1,p=n89=1 -> n90=0.
+91 s=n37=0,p=n90=0 -> n91=1.
+92 s=n68=0,p=n91=1 -> n92=1.
+93 s=B=1,p=n92=1 -> n93=0.
+94 s=n10=1,p=n93=0 -> n94=1.
+95 s=n26=0,p=n94=1 -> n95=1.
+96 s=n88=1,p=n95=1 -> n96=0.
+97 s=n67=1,p=n96=0 -> n97=1.
+98 s=n32=0,p=n97=1 -> n98=1 (NAND1,0=1).
+99 s=n85=1,p=n98=1 -> n99=0.
+Cycle2 n99=0. Outputs t2: n99=0, q11=x11=0, q6=x6=1, q8=x8=1. Next S3: q0=n77=1; q1=n88=1; q2=n99=0; q3=n79=1; q4=n99=0; q5=n82=1; q6=n99=0; q7=n81=1; q8=n90=0; q9=n78=0; q10=n89=1; q11=n84=1.
+S3: x0=1,x1=1,x2=0,x3=1,x4=0,x5=1,x6=0,x7=1,x8=0,x9=0,x10=1,x11=1.
+
+Cycle3: S3; inputs A=0,B=1. State: 1,1,0,1,0,1,0,1,0,0,1,1.
+Compute n0=NAND(x5=1,A=0)=1.
+1 s=x3=1,p1 -> n1=0.
+2 s=x8=0,p=n1=0 -> n2=1.
+3 s=x0=1,p=n2=1 -> n3=0.
+4 s=n1=0,p=n3=0 -> n4=1.
+5 self -> n5=0.
+6 s=x1=1,p=n5=0 -> n6=1.
+7 s=x11=1,p=n6=1 -> n7=0.
+8 s=x2=0,p=n7=0 -> n8=1.
+9 s=x1=1,p=n8=1 -> n9=0.
+10 s=n1=0,p=n9=0 -> n10=1.
+11 s=B=1,p=n10=1 -> n11=0.
+12 s=x9=0,p=n11=0 -> n12=1.
+13 s=n10=1,p=n12=1 -> n13=0.
+14 s=n2=1,p=n13=0 -> n14=1.
+15 s=n6=1,p=n14=1 -> n15=0.
+16 s=x8=0,p=n15=0 -> n16=1.
+17 s=n12=1,p=n16=1 -> n17=0.
+18 s=x7=1,p=n17=0 -> n18=1.
+19 s=n5=0,p=n18=1 -> n19=1.
+20 s=x0=1,p=n19=1 -> n20=0.
+21 s=n4=1,p=n20=0 -> n21=1.
+22 s=n14=1,p=n21=1 -> n22=0.
+23 s=n21=1,p=n22=0 -> n23=1.
+24 s=x3=1,p=n23=1 -> n24=0.
+25 s=n7=0,p=n24=0 -> n25=1.
+26 s=n9=0,p=n25=1 -> n26=1 (NAND1,0=1). Note differs from cycle1/2 where n9=1.
+27 s=x4=0,p=n26=1 -> n27=1.
+28 s=x1=1,p=n27=1 -> n28=0.
+29 s=x10=1,p=n28=0 -> n29=1.
+30 s=x4=0,p=n29=1 -> n30=1.
+31 s=n23=1,p=n30=1 -> n31=0.
+32 s=x7=1,p=n31=0 -> n32=1.
+33 s=n17=0,p=n32=1 -> n33=1.
+34 s=x0=1,p=n33=1 -> n34=0.
+35 s=n2=1,p=n34=0 -> n35=1.
+36 s=n24=0,p=n35=1 -> n36=1.
+37 s=n31=0,p=n36=1 -> n37=1.
+38 s=n6=1,p=n37=1 -> n38=0.
+39 s=n24=0,p=n38=0 -> n39=1.
+40 s=n20=0,p=n39=1 -> n40=1.
+41 s=x0=1,p=n40=1 -> n41=0.
+42 s=n32=1,p=n41=0 -> n42=1.
+43 s=n23=1,p=n42=1 -> n43=0.
+44 s=n4=1,p=n43=0 -> n44=1.
+45 s=n30=1,p=n44=1 -> n45=0.
+46 s=n19=1,p=n45=0 -> n46=1.
+47 s=n38=0,p=n46=1 -> n47=1.
+48 s=n12=1,p=n47=1 -> n48=0.
+49 s=x5=1,p=n48=0 -> n49=1.
+50 s=n28=0,p=n49=1 -> n50=1.
+51 s=n10=1,p=n50=1 -> n51=0.
+52 s=n24=0,p=n51=0 -> n52=1.
+53 s=n0=1,p=n52=1 -> n53=0.
+54 self -> n54=1.
+55 s=n24=0,p=n54=1 -> n55=1.
+56 s=n48=0,p=n55=1 -> n56=1.
+57 s=x8=0,p=n56=1 -> n57=1.
+58 s=n32=1,p=n57=1 -> n58=0.
+59 s=n50=1,p=n58=0 -> n59=1.
+60 s=x3=1,p=n59=1 -> n60=0.
+61 s=n43=0,p=n60=0 -> n61=1.
+62 s=x6=0,p=n61=1 -> n62=1.
+63 s=n17=0,p=n62=1 -> n63=1.
+64 s=n56=1,p=n63=1 -> n64=0.
+65 s=n44=1,p=n64=0 -> n65=1.
+66 s=n63=1,p=n65=1 -> n66=0.
+67 s=n52=1,p=n66=0 -> n67=1.
+68 s=n9=0,p=n67=1 -> n68=1.
+69 s=n47=1,p=n68=1 -> n69=0.
+70 s=n66=0,p=n69=0 -> n70=1.
+71 s=n44=1,p=n70=1 -> n71=0.
+72 s=n21=1,p=n71=0 -> n72=1.
+73 s=n44=1,p=n72=1 -> n73=0.
+74 s=n28=0,p=n73=0 -> n74=1.
+75 s=x10=1,p=n74=1 -> n75=0.
+76 s=n46=1,p=n75=0 -> n76=1.
+77 s=n20=0,p=n76=1 -> n77=1.
+78 s=n36=1,p=n77=1 -> n78=0.
+79 s=n57=1,p=n78=0 -> n79=1.
+80 s=n10=1,p=n79=1 -> n80=0.
+81 s=n70=1,p=n80=0 -> n81=1.
+82 s=n34=0,p=n81=1 -> n82=1.
+83 s=n58=0,p=n82=1 -> n83=1.
+84 s=n52=1,p=n83=1 -> n84=0.
+85 s=n37=1,p=n84=0 -> n85=1.
+86 s=n64=0,p=n85=1 -> n86=1.
+87 s=n74=1,p=n86=1 -> n87=0.
+88 s=n44=1,p=n87=0 -> n88=1.
+89 s=n62=1,p=n88=1 -> n89=0.
+90 s=n40=1,p=n89=0 -> n90=1.
+91 s=n37=1,p=n90=1 -> n91=0.
+92 s=n68=1,p=n91=0 -> n92=1.
+93 s=B=1,p=n92=1 -> n93=0.
+94 s=n10=1,p=n93=0 -> n94=1.
+95 s=n26=1,p=n94=1 -> n95=0.
+96 s=n88=1,p=n95=0 -> n96=1.
+97 s=n67=1,p=n96=1 -> n97=0.
+98 s=n32=1,p=n97=0 -> n98=1.
+99 s=n85=1,p=n98=1 -> n99=0.
+Cycle3 n99=0. Outputs t3: n99=0,q11=1,q6=0,q8=0. Next S4: q0=n77=1; q1=n88=1; q2=n99=0; q3=n79=1; q4=0; q5=n82=1; q6=0; q7=n81=1; q8=n90=1; q9=n78=0; q10=n89=0; q11=n84=0.
+S4: x0=1,x1=1,x2=0,x3=1,x4=0,x5=1,x6=0,x7=1,x8=1,x9=0,x10=0,x11=0.
+
+Cycle4: S4; inputs A=0,B=0. State [1,1,0,1,0,1,0,1,1,0,0,0].
+n0=NAND(x5=1,A=0)=1.
+1 s=x3=1,p1 -> n1=0.
+2 s=x8=1,p=n1=0 -> n2=1.
+3 s=x0=1,p=n2=1 -> n3=0.
+4 s=n1=0,p=n3=0 -> n4=1.
+5 -> n5=0.
+6 s=x1=1,p=0 -> n6=1.
+7 s=x11=0,p=n6=1 -> n7=1.
+8 s=x2=0,p=n7=1 -> n8=1 (s0).
+9 s=x1=1,p=n8=1 -> n9=0.
+10 s=n1=0,p=n9=0 -> n10=1.
+11 s=B=0,p=n10=1 -> n11=1 (s0; actually NAND1,0=1).
+12 s=x9=0,p=n11=1 -> n12=1.
+13 s=n10=1,p=n12=1 -> n13=0.
+14 s=n2=1,p=n13=0 -> n14=1.
+15 s=n6=1,p=n14=1 -> n15=0.
+16 s=x8=1,p=n15=0 -> n16=1.
+17 s=n12=1,p=n16=1 -> n17=0.
+18 s=x7=1,p=n17=0 -> n18=1.
+19 s=n5=0,p=n18=1 -> n19=1.
+20 s=x0=1,p=n19=1 -> n20=0.
+21 s=n4=1,p=n20=0 -> n21=1.
+22 s=n14=1,p=n21=1 -> n22=0.
+23 s=n21=1,p=n22=0 -> n23=1.
+24 s=x3=1,p=n23=1 -> n24=0.
+25 s=n7=1,p=n24=0 -> n25=1.
+26 s=n9=0,p=n25=1 -> n26=1.
+27 s=x4=0,p=n26=1 -> n27=1.
+28 s=x1=1,p=n27=1 -> n28=0.
+29 s=x10=0,p=n28=0 -> n29=1.
+30 s=x4=0,p=n29=1 -> n30=1.
+31 s=n23=1,p=n30=1 -> n31=0.
+32 s=x7=1,p=n31=0 -> n32=1.
+33 s=n17=0,p=n32=1 -> n33=1.
+34 s=x0=1,p=n33=1 -> n34=0.
+35 s=n2=1,p=n34=0 -> n35=1.
+36 s=n24=0,p=n35=1 -> n36=1.
+37 s=n31=0,p=n36=1 -> n37=1.
+38 s=n6=1,p=n37=1 -> n38=0.
+39 s=n24=0,p=n38=0 -> n39=1.
+40 s=n20=0,p=n39=1 -> n40=1.
+41 s=x0=1,p=n40=1 -> n41=0.
+42 s=n32=1,p=n41=0 -> n42=1.
+43 s=n23=1,p=n42=1 -> n43=0.
+44 s=n4=1,p=n43=0 -> n44=1.
+45 s=n30=1,p=n44=1 -> n45=0.
+46 s=n19=1,p=n45=0 -> n46=1.
+47 s=n38=0,p=n46=1 -> n47=1.
+48 s=n12=1,p=n47=1 -> n48=0.
+49 s=x5=1,p=n48=0 -> n49=1.
+50 s=n28=0,p=n49=1 -> n50=1.
+51 s=n10=1,p=n50=1 -> n51=0.
+52 s=n24=0,p=n51=0 -> n52=1.
+53 s=n0=1,p=n52=1 -> n53=0.
+54 -> n54=1.
+55 s=n24=0,p=n54=1 -> n55=1.
+56 s=n48=0,p=n55=1 -> n56=1.
+57 s=x8=1,p=n56=1 -> n57=0.
+58 s=n32=1,p=n57=0 -> n58=1.
+59 s=n50=1,p=n58=1 -> n59=0.
+60 s=x3=1,p=n59=0 -> n60=1.
+61 s=n43=0,p=n60=1 -> n61=1.
+62 s=x6=0,p=n61=1 -> n62=1.
+63 s=n17=0,p=n62=1 -> n63=1.
+64 s=n56=1,p=n63=1 -> n64=0.
+65 s=n44=1,p=n64=0 -> n65=1.
+66 s=n63=1,p=n65=1 -> n66=0.
+67 s=n52=1,p=n66=0 -> n67=1.
+68 s=n9=0,p=n67=1 -> n68=1.
+69 s=n47=1,p=n68=1 -> n69=0.
+70 s=n66=0,p=n69=0 -> n70=1.
+71 s=n44=1,p=n70=1 -> n71=0.
+72 s=n21=1,p=n71=0 -> n72=1.
+73 s=n44=1,p=n72=1 -> n73=0.
+74 s=n28=0,p=n73=0 -> n74=1.
+75 s=x10=0,p=n74=1 -> n75=1.
+76 s=n46=1,p=n75=1 -> n76=0.
+77 s=n20=0,p=n76=0 -> n77=1.
+78 s=n36=1,p=n77=1 -> n78=0.
+79 s=n57=0,p=n78=0 -> n79=1.
+80 s=n10=1,p=n79=1 -> n80=0.
+81 s=n70=1,p=n80=0 -> n81=1.
+82 s=n34=0,p=n81=1 -> n82=1.
+83 s=n58=1,p=n82=1 -> n83=0.
+84 s=n52=1,p=n83=0 -> n84=1.
+85 s=n37=1,p=n84=1 -> n85=0.
+86 s=n64=0,p=n85=0 -> n86=1.
+87 s=n74=1,p=n86=1 -> n87=0.
+88 s=n44=1,p=n87=0 -> n88=1.
+89 s=n62=1,p=n88=1 -> n89=0.
+90 s=n40=1,p=n89=0 -> n90=1.
+91 s=n37=1,p=n90=1 -> n91=0.
+92 s=n68=1,p=n91=0 -> n92=1.
+93 s=B=0,p=n92=1 -> n93=1.
+94 s=n10=1,p=n93=1 -> n94=0.
+95 s=n26=1,p=n94=0 -> n95=1.
+96 s=n88=1,p=n95=1 -> n96=0.
+97 s=n67=1,p=n96=0 -> n97=1.
+98 s=n32=1,p=n97=1 -> n98=0.
+99 s=n85=0,p=n98=0 -> n99=1.
+Cycle4 n99=1. Outputs t4: n99=1,q11=0,q6=0,q8=1. Next S5: q0=n77=1; q1=n88=1; q2=n99=1; q3=n79=1; q4=1; q5=n82=1; q6=1; q7=n81=1; q8=n90=1; q9=n78=0; q10=n89=0; q11=n84=1.
+S5: [1,1,1,1,1,1,1,1,1,0,0,1]. Note x11=1, x9=0,x10=0.
+
+Cycle5: S5; inputs A=0,B=0. State same as S2 except x11=1 instead of 0? S2 was [1,1,1,1,1,1,1,1,1,0,0,0]. S5 = [1,1,1,1,1,1,1,1,1,0,0,1]. Inputs A0 B0 (S2 had A0 B1). Need compute. This state many ones. Let's compute carefully.
+x0=1,x1=1,x2=1,x3=1,x4=1,x5=1,x6=1,x7=1,x8=1,x9=0,x10=0,x11=1; A=0,B=0.
+n0=NAND(x5=1,A=0)=1.
+1 s=x3=1 -> n1=0.
+2 s=x8=1,p=n1=0 -> n2=1.
+3 s=x0=1,p=n2=1 -> n3=0.
+4 s=n1=0,p=n3=0 -> n4=1.
+5 -> n5=0.
+6 s=x1=1,p=0 -> n6=1.
+7 s=x11=1,p=n6=1 -> n7=0.
+8 s=x2=1,p=n7=0 -> n8=1.
+9 s=x1=1,p=n8=1 -> n9=0.
+10 s=n1=0,p=n9=0 -> n10=1.
+11 s=B=0,p=n10=1 -> n11=1.
+12 s=x9=0,p=n11=1 -> n12=1.
+13 s=n10=1,p=n12=1 -> n13=0.
+14 s=n2=1,p=n13=0 -> n14=1.
+15 s=n6=1,p=n14=1 -> n15=0.
+16 s=x8=1,p=n15=0 -> n16=1.
+17 s=n12=1,p=n16=1 -> n17=0.
+18 s=x7=1,p=n17=0 -> n18=1.
+19 s=n5=0,p=n18=1 -> n19=1.
+20 s=x0=1,p=n19=1 -> n20=0.
+21 s=n4=1,p=n20=0 -> n21=1.
+22 s=n14=1,p=n21=1 -> n22=0.
+23 s=n21=1,p=n22=0 -> n23=1.
+24 s=x3=1,p=n23=1 -> n24=0.
+25 s=n7=0,p=n24=0 -> n25=1.
+26 s=n9=0,p=n25=1 -> n26=1.
+27 s=x4=1,p=n26=1 -> n27=0.
+28 s=x1=1,p=n27=0 -> n28=1.
+29 s=x10=0,p=n28=1 -> n29=1.
+30 s=x4=1,p=n29=1 -> n30=0.
+31 s=n23=1,p=n30=0 -> n31=1.
+32 s=x7=1,p=n31=1 -> n32=0.
+33 s=n17=0,p=n32=0 -> n33=1.
+34 s=x0=1,p=n33=1 -> n34=0.
+35 s=n2=1,p=n34=0 -> n35=1.
+36 s=n24=0,p=n35=1 -> n36=1.
+37 s=n31=1,p=n36=1 -> n37=0.
+38 s=n6=1,p=n37=0 -> n38=1.
+39 s=n24=0,p=n38=1 -> n39=1.
+40 s=n20=0,p=n39=1 -> n40=1.
+41 s=x0=1,p=n40=1 -> n41=0.
+42 s=n32=0,p=n41=0 -> n42=1.
+43 s=n23=1,p=n42=1 -> n43=0.
+44 s=n4=1,p=n43=0 -> n44=1.
+45 s=n30=0,p=n44=1 -> n45=1.
+46 s=n19=1,p=n45=1 -> n46=0.
+47 s=n38=1,p=n46=0 -> n47=1.
+48 s=n12=1,p=n47=1 -> n48=0.
+49 s=x5=1,p=n48=0 -> n49=1.
+50 s=n28=1,p=n49=1 -> n50=0.
+51 s=n10=1,p=n50=0 -> n51=1.
+52 s=n24=0,p=n51=1 -> n52=1.
+53 s=n0=1,p=n52=1 -> n53=0.
+54 -> n54=1.
+55 s=n24=0,p=n54=1 -> n55=1.
+56 s=n48=0,p=n55=1 -> n56=1.
+57 s=x8=1,p=n56=1 -> n57=0.
+58 s=n32=0,p=n57=0 -> n58=1.
+59 s=n50=0,p=n58=1 -> n59=1.
+60 s=x3=1,p=n59=1 -> n60=0.
+61 s=n43=0,p=n60=0 -> n61=1.
+62 s=x6=1,p=n61=1 -> n62=0.
+63 s=n17=0,p=n62=0 -> n63=1.
+64 s=n56=1,p=n63=1 -> n64=0.
+65 s=n44=1,p=n64=0 -> n65=1.
+66 s=n63=1,p=n65=1 -> n66=0.
+67 s=n52=1,p=n66=0 -> n67=1.
+68 s=n9=0,p=n67=1 -> n68=1.
+69 s=n47=1,p=n68=1 -> n69=0.
+70 s=n66=0,p=n69=0 -> n70=1.
+71 s=n44=1,p=n70=1 -> n71=0.
+72 s=n21=1,p=n71=0 -> n72=1.
+73 s=n44=1,p=n72=1 -> n73=0.
+74 s=n28=1,p=n73=0 -> n74=1.
+75 s=x10=0,p=n74=1 -> n75=1.
+76 s=n46=0,p=n75=1 -> n76=1.
+77 s=n20=0,p=n76=1 -> n77=1.
+78 s=n36=1,p=n77=1 -> n78=0.
+79 s=n57=0,p=n78=0 -> n79=1.
+80 s=n10=1,p=n79=1 -> n80=0.
+81 s=n70=1,p=n80=0 -> n81=1.
+82 s=n34=0,p=n81=1 -> n82=1.
+83 s=n58=1,p=n82=1 -> n83=0.
+84 s=n52=1,p=n83=0 -> n84=1.
+85 s=n37=0,p=n84=1 -> n85=1.
+86 s=n64=0,p=n85=1 -> n86=1.
+87 s=n74=1,p=n86=1 -> n87=0.
+88 s=n44=1,p=n87=0 -> n88=1.
+89 s=n62=0,p=n88=1 -> n89=1.
+90 s=n40=1,p=n89=1 -> n90=0.
+91 s=n37=0,p=n90=0 -> n91=1.
+92 s=n68=1,p=n91=1 -> n92=0.
+93 s=B=0,p=n92=0 -> n93=1.
+94 s=n10=1,p=n93=1 -> n94=0.
+95 s=n26=1,p=n94=0 -> n95=1.
+96 s=n88=1,p=n95=1 -> n96=0.
+97 s=n67=1,p=n96=0 -> n97=1.
+98 s=n32=0,p=n97=1 -> n98=1.
+99 s=n85=1,p=n98=1 -> n99=0.
+Cycle5 n99=0. Outputs t5: n99=0,q11=x11=1,q6=x6=1,q8=x8=1. Next S6: q0=n77=1; q1=n88=1; q2=n99=0; q3=n79=1; q4=0; q5=n82=1; q6=0; q7=n81=1; q8=n90=0; q9=n78=0; q10=n89=1; q11=n84=1.
+S6: [1,1,0,1,0,1,0,1,0,0,1,1]. This equals S3? S3 was [1,1,0,1,0,1,0,1,0,0,1,1]. Yes S6 = S3 exactly. Interesting. Inputs at t6 A=0,B=1 same as cycle3 (A0 B1). If state same and inputs same as cycle3, then cycle6 should reproduce cycle3's n row and next state S7 = S4. Let's check: S6 = S3, input t6 = A0,B1 = same as t3. Therefore n row at t6 = n row at t3, n99_6 = n99_3 = 0, and S7 = S4. Good! This can save. But note t3 inputs A=0,B=1 yes. Great. So cycle6 = cycle3. Outputs t6: n99=0, q11=state x11 of S6 =1, q6=x6=0, q8=x8=0. Next S7=S4 = [1,1,0,1,0,1,0,1,1,0,0,0]. Wait S4 had x8=1,x11=0,x10=0. Yes.
+
+Cycle7: S7=S4; inputs t7 A=0,B=0, same as cycle4. S4 + A0B0 produced n99=1 and S5. So cycle7 = cycle4. Outputs t7: n99=1, q11=state S4 x11=0, q6=x6=0, q8=x8=1. Next S8=S5 = [1,1,1,1,1,1,1,1,1,0,0,1]. Need check t7 input A0 B0 yes. Good.
+
+Cycle8: S8=S5; inputs t8 A=1,B=0. Cycle5 used S5 with A0B0; now same state but A=1,B=0. Need compute (cannot reuse). State S5 [1,1,1,1,1,1,1,1,1,0,0,1], A=1,B=0.
+Compute n0=NAND(x5=1,A=1)=0 (important; previously A=0 so n0=1). Now n0=0.
+1 s=x3=1,p=n0=0 -> n1=1.
+2 s=x8=1,p=n1=1 -> n2=0.
+3 s=x0=1,p=n2=0 -> n3=1.
+4 s=n1=1,p=n3=1 -> n4=0.
+5 self n4=0 -> n5=1.
+6 s=x1=1,p=n5=1 -> n6=0.
+7 s=x11=1,p=n6=0 -> n7=1.
+8 s=x2=1,p=n7=1 -> n8=0.
+9 s=x1=1,p=n8=0 -> n9=1.
+10 s=n1=1,p=n9=1 -> n10=0.
+11 s=B=0,p=n10=0 -> n11=1.
+12 s=x9=0,p=n11=1 -> n12=1.
+13 s=n10=0,p=n12=1 -> n13=1.
+14 s=n2=0,p=n13=1 -> n14=1.
+15 s=n6=0,p=n14=1 -> n15=1.
+16 s=x8=1,p=n15=1 -> n16=0.
+17 s=n12=1,p=n16=0 -> n17=1.
+18 s=x7=1,p=n17=1 -> n18=0.
+19 s=n5=1,p=n18=0 -> n19=1.
+20 s=x0=1,p=n19=1 -> n20=0.
+21 s=n4=0,p=n20=0 -> n21=1.
+22 s=n14=1,p=n21=1 -> n22=0.
+23 s=n21=1,p=n22=0 -> n23=1.
+24 s=x3=1,p=n23=1 -> n24=0.
+25 s=n7=1,p=n24=0 -> n25=1.
+26 s=n9=1,p=n25=1 -> n26=0.
+27 s=x4=1,p=n26=0 -> n27=1.
+28 s=x1=1,p=n27=1 -> n28=0.
+29 s=x10=0,p=n28=0 -> n29=1.
+30 s=x4=1,p=n29=1 -> n30=0.
+31 s=n23=1,p=n30=0 -> n31=1.
+32 s=x7=1,p=n31=1 -> n32=0.
+33 s=n17=1,p=n32=0 -> n33=1.
+34 s=x0=1,p=n33=1 -> n34=0.
+35 s=n2=0,p=n34=0 -> n35=1.
+36 s=n24=0,p=n35=1 -> n36=1.
+37 s=n31=1,p=n36=1 -> n37=0.
+38 s=n6=0,p=n37=0 -> n38=1.
+39 s=n24=0,p=n38=1 -> n39=1.
+40 s=n20=0,p=n39=1 -> n40=1.
+41 s=x0=1,p=n40=1 -> n41=0.
+42 s=n32=0,p=n41=0 -> n42=1.
+43 s=n23=1,p=n42=1 -> n43=0.
+44 s=n4=0,p=n43=0 -> n44=1.
+45 s=n30=0,p=n44=1 -> n45=1.
+46 s=n19=1,p=n45=1 -> n46=0.
+47 s=n38=1,p=n46=0 -> n47=1.
+48 s=n12=1,p=n47=1 -> n48=0.
+49 s=x5=1,p=n48=0 -> n49=1.
+50 s=n28=0,p=n49=1 -> n50=1.
+51 s=n10=0,p=n50=1 -> n51=1.
+52 s=n24=0,p=n51=1 -> n52=1.
+53 s=n0=0,p=n52=1 -> n53=1.
+54 self n53=1 -> n54=0.
+55 s=n24=0,p=n54=0 -> n55=1.
+56 s=n48=0,p=n55=1 -> n56=1.
+57 s=x8=1,p=n56=1 -> n57=0.
+58 s=n32=0,p=n57=0 -> n58=1.
+59 s=n50=1,p=n58=1 -> n59=0.
+60 s=x3=1,p=n59=0 -> n60=1.
+61 s=n43=0,p=n60=1 -> n61=1.
+62 s=x6=1,p=n61=1 -> n62=0.
+63 s=n17=1,p=n62=0 -> n63=1.
+64 s=n56=1,p=n63=1 -> n64=0.
+65 s=n44=1,p=n64=0 -> n65=1.
+66 s=n63=1,p=n65=1 -> n66=0.
+67 s=n52=1,p=n66=0 -> n67=1.
+68 s=n9=1,p=n67=1 -> n68=0.
+69 s=n47=1,p=n68=0 -> n69=1.
+70 s=n66=0,p=n69=1 -> n70=1.
+71 s=n44=1,p=n70=1 -> n71=0.
+72 s=n21=1,p=n71=0 -> n72=1.
+73 s=n44=1,p=n72=1 -> n73=0.
+74 s=n28=0,p=n73=0 -> n74=1.
+75 s=x10=0,p=n74=1 -> n75=1.
+76 s=n46=0,p=n75=1 -> n76=1.
+77 s=n20=0,p=n76=1 -> n77=1.
+78 s=n36=1,p=n77=1 -> n78=0.
+79 s=n57=0,p=n78=0 -> n79=1.
+80 s=n10=0,p=n79=1 -> n80=1.
+81 s=n70=1,p=n80=1 -> n81=0.
+82 s=n34=0,p=n81=0 -> n82=1.
+83 s=n58=1,p=n82=1 -> n83=0.
+84 s=n52=1,p=n83=0 -> n84=1.
+85 s=n37=0,p=n84=1 -> n85=1.
+86 s=n64=0,p=n85=1 -> n86=1.
+87 s=n74=1,p=n86=1 -> n87=0.
+88 s=n44=1,p=n87=0 -> n88=1.
+89 s=n62=0,p=n88=1 -> n89=1.
+90 s=n40=1,p=n89=1 -> n90=0.
+91 s=n37=0,p=n90=0 -> n91=1.
+92 s=n68=0,p=n91=1 -> n92=1.
+93 s=B=0,p=n92=1 -> n93=1.
+94 s=n10=0,p=n93=1 -> n94=1.
+95 s=n26=0,p=n94=1 -> n95=1.
+96 s=n88=1,p=n95=1 -> n96=0.
+97 s=n67=1,p=n96=0 -> n97=1.
+98 s=n32=0,p=n97=1 -> n98=1.
+99 s=n85=1,p=n98=1 -> n99=0.
+Cycle8 n99=0. Outputs t8: n99=0,q11=x11=1,q6=x6=1,q8=x8=1. Next S9: q0=n77=1; q1=n88=1; q2=n99=0; q3=n79=1; q4=0; q5=n82=1; q6=0; q7=n81=0; q8=n90=0; q9=n78=0; q10=n89=1; q11=n84=1.
+S9: [1,1,0,1,0,1,0,0,0,0,1,1]. Compare S3 [1,1,0,1,0,1,0,1,0,0,1,1]; only x7 differs (0 vs1). Good.
+
+Cycle9: S9; inputs A=0,B=0. State [1,1,0,1,0,1,0,0,0,0,1,1]. Compute.
+n0=NAND(x5=1,A=0)=1.
+1 s=x3=1,p1 -> n1=0.
+2 s=x8=0,p=0 -> n2=1.
+3 s=x0=1,p=n2=1 -> n3=0.
+4 s=n1=0,p=0 -> n4=1.
+5 n5=0.
+6 s=x1=1,p0 -> n6=1.
+7 s=x11=1,p=n6=1 -> n7=0.
+8 s=x2=0,p=n7=0 -> n8=1.
+9 s=x1=1,p=n8=1 -> n9=0.
+10 s=n1=0,p=n9=0 -> n10=1.
+11 s=B=0,p=n10=1 -> n11=1.
+12 s=x9=0,p=n11=1 -> n12=1.
+13 s=n10=1,p=n12=1 -> n13=0.
+14 s=n2=1,p=n13=0 -> n14=1.
+15 s=n6=1,p=n14=1 -> n15=0.
+16 s=x8=0,p=n15=0 -> n16=1.
+17 s=n12=1,p=n16=1 -> n17=0.
+18 s=x7=0,p=n17=0 -> n18=1.
+19 s=n5=0,p=n18=1 -> n19=1.
+20 s=x0=1,p=n19=1 -> n20=0.
+21 s=n4=1,p=n20=0 -> n21=1.
+22 s=n14=1,p=n21=1 -> n22=0.
+23 s=n21=1,p=n22=0 -> n23=1.
+24 s=x3=1,p=n23=1 -> n24=0.
+25 s=n7=0,p=n24=0 -> n25=1.
+26 s=n9=0,p=n25=1 -> n26=1.
+27 s=x4=0,p=n26=1 -> n27=1.
+28 s=x1=1,p=n27=1 -> n28=0.
+29 s=x10=1,p=n28=0 -> n29=1.
+30 s=x4=0,p=n29=1 -> n30=1.
+31 s=n23=1,p=n30=1 -> n31=0.
+32 s=x7=0,p=n31=0 -> n32=1.
+33 s=n17=0,p=n32=1 -> n33=1.
+34 s=x0=1,p=n33=1 -> n34=0.
+35 s=n2=1,p=n34=0 -> n35=1.
+36 s=n24=0,p=n35=1 -> n36=1.
+37 s=n31=0,p=n36=1 -> n37=1.
+38 s=n6=1,p=n37=1 -> n38=0.
+39 s=n24=0,p=n38=0 -> n39=1.
+40 s=n20=0,p=n39=1 -> n40=1.
+41 s=x0=1,p=n40=1 -> n41=0.
+42 s=n32=1,p=n41=0 -> n42=1.
+43 s=n23=1,p=n42=1 -> n43=0.
+44 s=n4=1,p=n43=0 -> n44=1.
+45 s=n30=1,p=n44=1 -> n45=0.
+46 s=n19=1,p=n45=0 -> n46=1.
+47 s=n38=0,p=n46=1 -> n47=1.
+48 s=n12=1,p=n47=1 -> n48=0.
+49 s=x5=1,p=n48=0 -> n49=1.
+50 s=n28=0,p=n49=1 -> n50=1.
+51 s=n10=1,p=n50=1 -> n51=0.
+52 s=n24=0,p=n51=0 -> n52=1.
+53 s=n0=1,p=n52=1 -> n53=0.
+54 n54=1.
+55 s=n24=0,p=n54=1 -> n55=1.
+56 s=n48=0,p=n55=1 -> n56=1.
+57 s=x8=0,p=n56=1 -> n57=1.
+58 s=n32=1,p=n57=1 -> n58=0.
+59 s=n50=1,p=n58=0 -> n59=1.
+60 s=x3=1,p=n59=1 -> n60=0.
+61 s=n43=0,p=n60=0 -> n61=1.
+62 s=x6=0,p=n61=1 -> n62=1.
+63 s=n17=0,p=n62=1 -> n63=1.
+64 s=n56=1,p=n63=1 -> n64=0.
+65 s=n44=1,p=n64=0 -> n65=1.
+66 s=n63=1,p=n65=1 -> n66=0.
+67 s=n52=1,p=n66=0 -> n67=1.
+68 s=n9=0,p=n67=1 -> n68=1.
+69 s=n47=1,p=n68=1 -> n69=0.
+70 s=n66=0,p=n69=0 -> n70=1.
+71 s=n44=1,p=n70=1 -> n71=0.
+72 s=n21=1,p=n71=0 -> n72=1.
+73 s=n44=1,p=n72=1 -> n73=0.
+74 s=n28=0,p=n73=0 -> n74=1.
+75 s=x10=1,p=n74=1 -> n75=0.
+76 s=n46=1,p=n75=0 -> n76=1.
+77 s=n20=0,p=n76=1 -> n77=1.
+78 s=n36=1,p=n77=1 -> n78=0.
+79 s=n57=1,p=n78=0 -> n79=1.
+80 s=n10=1,p=n79=1 -> n80=0.
+81 s=n70=1,p=n80=0 -> n81=1.
+82 s=n34=0,p=n81=1 -> n82=1.
+83 s=n58=0,p=n82=1 -> n83=1.
+84 s=n52=1,p=n83=1 -> n84=0.
+85 s=n37=1,p=n84=0 -> n85=1.
+86 s=n64=0,p=n85=1 -> n86=1.
+87 s=n74=1,p=n86=1 -> n87=0.
+88 s=n44=1,p=n87=0 -> n88=1.
+89 s=n62=1,p=n88=1 -> n89=0.
+90 s=n40=1,p=n89=0 -> n90=1.
+91 s=n37=1,p=n90=1 -> n91=0.
+92 s=n68=1,p=n91=0 -> n92=1.
+93 s=B=0,p=n92=1 -> n93=1.
+94 s=n10=1,p=n93=1 -> n94=0.
+95 s=n26=1,p=n94=0 -> n95=1.
+96 s=n88=1,p=n95=1 -> n96=0.
+97 s=n67=1,p=n96=0 -> n97=1.
+98 s=n32=1,p=n97=1 -> n98=0.
+99 s=n85=1,p=n98=0 -> n99=1.
+Cycle9 n99=1. Outputs t9: n99=1,q11=1,q6=0,q8=0. Next S10: q0=1; q1=n88=1; q2=n99=1; q3=n79=1; q4=1; q5=n82=1; q6=1; q7=n81=1; q8=n90=1; q9=n78=0; q10=n89=0; q11=n84=0.
+S10: [1,1,1,1,1,1,1,1,1,0,0,0]. This equals S2? S2 [1,1,1,1,1,1,1,1,1,0,0,0]. Yes S10=S2. Inputs t10 A=0,B=0, whereas cycle2 with S2 had A=0,B=1. Not same. Cycle10 need compute with S2 state but B=0. We partly have cycle4/5 with similar states. S10 = S2 (x11=0) and A0B0. Compare cycle4 S4 [1,1,0,1,0,1,0,1,1,0,0,0] no. Cycle? S2 with A0B1 was cycle2; with A0B0 not yet (S5 had x11=1). Need compute cycle10.
+
+Cycle10: S=[1,1,1,1,1,1,1,1,1,0,0,0], A=0,B=0.
+This is same state as cycle2 but B=0 instead of B=1. Cycle2 row can be reused except where B affects n11 and n93 and downstream. Let's recompute fully.
+n0=NAND(x5=1,A=0)=1.
+1 s=x3=1 -> n1=0.
+2 s=x8=1,p=n1=0 -> n2=1.
+3 s=x0=1,p=1 -> n3=0.
+4 s=n1=0,p0 -> n4=1.
+5 n5=0.
+6 s=x1=1,p0 -> n6=1.
+7 s=x11=0,p=n6=1 -> n7=1. (x11=0)
+8 s=x2=1,p=n7=1 -> n8=0.
+9 s=x1=1,p=n8=0 -> n9=1.
+10 s=n1=0,p=n9=1 -> n10=1.
+11 s=B=0,p=n10=1 -> n11=1. (If B=1 in cycle2 n11=0; here 1)
+12 s=x9=0,p=n11=1 -> n12=1.
+13 s=n10=1,p=n12=1 -> n13=0.
+14 s=n2=1,p=n13=0 -> n14=1.
+15 s=n6=1,p=n14=1 -> n15=0.
+16 s=x8=1,p=n15=0 -> n16=1.
+17 s=n12=1,p=n16=1 -> n17=0.
+18 s=x7=1,p=n17=0 -> n18=1.
+19 s=n5=0,p=n18=1 -> n19=1.
+20 s=x0=1,p=n19=1 -> n20=0.
+21 s=n4=1,p=n20=0 -> n21=1.
+22 s=n14=1,p=n21=1 -> n22=0.
+23 s=n21=1,p=n22=0 -> n23=1.
+24 s=x3=1,p=n23=1 -> n24=0.
+25 s=n7=1,p=n24=0 -> n25=1.
+26 s=n9=1,p=n25=1 -> n26=0.
+27 s=x4=1,p=n26=0 -> n27=1.
+28 s=x1=1,p=n27=1 -> n28=0.
+29 s=x10=0,p=n28=0 -> n29=1.
+30 s=x4=1,p=n29=1 -> n30=0.
+31 s=n23=1,p=n30=0 -> n31=1.
+32 s=x7=1,p=n31=1 -> n32=0.
+33 s=n17=0,p=n32=0 -> n33=1.
+34 s=x0=1,p=n33=1 -> n34=0.
+35 s=n2=1,p=n34=0 -> n35=1.
+36 s=n24=0,p=n35=1 -> n36=1.
+37 s=n31=1,p=n36=1 -> n37=0.
+38 s=n6=1,p=n37=0 -> n38=1.
+39 s=n24=0,p=n38=1 -> n39=1.
+40 s=n20=0,p=n39=1 -> n40=1.
+41 s=x0=1,p=n40=1 -> n41=0.
+42 s=n32=0,p=n41=0 -> n42=1.
+43 s=n23=1,p=n42=1 -> n43=0.
+44 s=n4=1,p=n43=0 -> n44=1.
+45 s=n30=0,p=n44=1 -> n45=1.
+46 s=n19=1,p=n45=1 -> n46=0.
+47 s=n38=1,p=n46=0 -> n47=1.
+48 s=n12=1,p=n47=1 -> n48=0.
+49 s=x5=1,p=n48=0 -> n49=1.
+50 s=n28=0,p=n49=1 -> n50=1.
+51 s=n10=1,p=n50=1 -> n51=0.
+52 s=n24=0,p=n51=0 -> n52=1.
+53 s=n0=1,p=n52=1 -> n53=0.
+54 n54=1.
+55 s=n24=0,p=n54=1 -> n55=1.
+56 s=n48=0,p=n55=1 -> n56=1.
+57 s=x8=1,p=n56=1 -> n57=0.
+58 s=n32=0,p=n57=0 -> n58=1.
+59 s=n50=1,p=n58=1 -> n59=0.
+60 s=x3=1,p=n59=0 -> n60=1.
+61 s=n43=0,p=n60=1 -> n61=1.
+62 s=x6=1,p=n61=1 -> n62=0.
+63 s=n17=0,p=n62=0 -> n63=1.
+64 s=n56=1,p=n63=1 -> n64=0.
+65 s=n44=1,p=n64=0 -> n65=1.
+66 s=n63=1,p=n65=1 -> n66=0.
+67 s=n52=1,p=n66=0 -> n67=1.
+68 s=n9=1,p=n67=1 -> n68=0.
+69 s=n47=1,p=n68=0 -> n69=1.
+70 s=n66=0,p=n69=1 -> n70=1.
+71 s=n44=1,p=n70=1 -> n71=0.
+72 s=n21=1,p=n71=0 -> n72=1.
+73 s=n44=1,p=n72=1 -> n73=0.
+74 s=n28=0,p=n73=0 -> n74=1.
+75 s=x10=0,p=n74=1 -> n75=1.
+76 s=n46=0,p=n75=1 -> n76=1.
+77 s=n20=0,p=n76=1 -> n77=1.
+78 s=n36=1,p=n77=1 -> n78=0.
+79 s=n57=0,p=n78=0 -> n79=1.
+80 s=n10=1,p=n79=1 -> n80=0.
+81 s=n70=1,p=n80=0 -> n81=1.
+82 s=n34=0,p=n81=1 -> n82=1.
+83 s=n58=1,p=n82=1 -> n83=0.
+84 s=n52=1,p=n83=0 -> n84=1.
+85 s=n37=0,p=n84=1 -> n85=1.
+86 s=n64=0,p=n85=1 -> n86=1.
+87 s=n74=1,p=n86=1 -> n87=0.
+88 s=n44=1,p=n87=0 -> n88=1.
+89 s=n62=0,p=n88=1 -> n89=1.
+90 s=n40=1,p=n89=1 -> n90=0.
+91 s=n37=0,p=n90=0 -> n91=1.
+92 s=n68=0,p=n91=1 -> n92=1.
+93 s=B=0,p=n92=1 -> n93=1.
+94 s=n10=1,p=n93=1 -> n94=0.
+95 s=n26=0,p=n94=0 -> n95=1.
+96 s=n88=1,p=n95=1 -> n96=0.
+97 s=n67=1,p=n96=0 -> n97=1.
+98 s=n32=0,p=n97=1 -> n98=1.
+99 s=n85=1,p=n98=1 -> n99=0.
+Cycle10 n99=0. Outputs t10: n99=0,q11=x11=0,q6=x6=1,q8=x8=1. Next S11: q0=1; q1=n88=1; q2=n99=0; q3=n79=1; q4=0; q5=n82=1; q6=0; q7=n81=1; q8=n90=0; q9=n78=0; q10=n89=1; q11=n84=1. This equals S3? [1,1,0,1,0,1,0,1,0,0,1,1]. Yes S11=S3. Good.
+
+Cycle11: S11=S3; inputs A=1,B=0. S3 with A0B1 was cycle3; with A1B0 new. State S3 [1,1,0,1,0,1,0,1,0,0,1,1], A=1,B=0.
+Compute n0=NAND(x5=1,A=1)=0.
+1 s=x3=1,p=n0=0 -> n1=1.
+2 s=x8=0,p=n1=1 -> n2=1 (s0 ->1). Note p1 but s0.
+3 s=x0=1,p=n2=1 -> n3=0.
+4 s=n1=1,p=n3=0 -> n4=1.
+5 self n4=1 -> n5=0.
+6 s=x1=1,p=n5=0 -> n6=1.
+7 s=x11=1,p=n6=1 -> n7=0.
+8 s=x2=0,p=n7=0 -> n8=1.
+9 s=x1=1,p=n8=1 -> n9=0.
+10 s=n1=1,p=n9=0 -> n10=1.
+11 s=B=0,p=n10=1 -> n11=1.
+12 s=x9=0,p=n11=1 -> n12=1.
+13 s=n10=1,p=n12=1 -> n13=0.
+14 s=n2=1,p=n13=0 -> n14=1.
+15 s=n6=1,p=n14=1 -> n15=0.
+16 s=x8=0,p=n15=0 -> n16=1.
+17 s=n12=1,p=n16=1 -> n17=0.
+18 s=x7=1,p=n17=0 -> n18=1.
+19 s=n5=0,p=n18=1 -> n19=1.
+20 s=x0=1,p=n19=1 -> n20=0.
+21 s=n4=1,p=n20=0 -> n21=1.
+22 s=n14=1,p=n21=1 -> n22=0.
+23 s=n21=1,p=n22=0 -> n23=1.
+24 s=x3=1,p=n23=1 -> n24=0.
+25 s=n7=0,p=n24=0 -> n25=1.
+26 s=n9=0,p=n25=1 -> n26=1.
+27 s=x4=0,p=n26=1 -> n27=1.
+28 s=x1=1,p=n27=1 -> n28=0.
+29 s=x10=1,p=n28=0 -> n29=1.
+30 s=x4=0,p=n29=1 -> n30=1.
+31 s=n23=1,p=n30=1 -> n31=0.
+32 s=x7=1,p=n31=0 -> n32=1.
+33 s=n17=0,p=n32=1 -> n33=1.
+34 s=x0=1,p=n33=1 -> n34=0.
+35 s=n2=1,p=n34=0 -> n35=1.
+36 s=n24=0,p=n35=1 -> n36=1.
+37 s=n31=0,p=n36=1 -> n37=1.
+38 s=n6=1,p=n37=1 -> n38=0.
+39 s=n24=0,p=n38=0 -> n39=1.
+40 s=n20=0,p=n39=1 -> n40=1.
+41 s=x0=1,p=n40=1 -> n41=0.
+42 s=n32=1,p=n41=0 -> n42=1.
+43 s=n23=1,p=n42=1 -> n43=0.
+44 s=n4=1,p=n43=0 -> n44=1.
+45 s=n30=1,p=n44=1 -> n45=0.
+46 s=n19=1,p=n45=0 -> n46=1.
+47 s=n38=0,p=n46=1 -> n47=1.
+48 s=n12=1,p=n47=1 -> n48=0.
+49 s=x5=1,p=n48=0 -> n49=1.
+50 s=n28=0,p=n49=1 -> n50=1.
+51 s=n10=1,p=n50=1 -> n51=0.
+52 s=n24=0,p=n51=0 -> n52=1.
+53 s=n0=0,p=n52=1 -> n53=1.
+54 self n53=1 -> n54=0.
+55 s=n24=0,p=n54=0 -> n55=1.
+56 s=n48=0,p=n55=1 -> n56=1.
+57 s=x8=0,p=n56=1 -> n57=1.
+58 s=n32=1,p=n57=1 -> n58=0.
+59 s=n50=1,p=n58=0 -> n59=1.
+60 s=x3=1,p=n59=1 -> n60=0.
+61 s=n43=0,p=n60=0 -> n61=1.
+62 s=x6=0,p=n61=1 -> n62=1.
+63 s=n17=0,p=n62=1 -> n63=1.
+64 s=n56=1,p=n63=1 -> n64=0.
+65 s=n44=1,p=n64=0 -> n65=1.
+66 s=n63=1,p=n65=1 -> n66=0.
+67 s=n52=1,p=n66=0 -> n67=1.
+68 s=n9=0,p=n67=1 -> n68=1.
+69 s=n47=1,p=n68=1 -> n69=0.
+70 s=n66=0,p=n69=0 -> n70=1.
+71 s=n44=1,p=n70=1 -> n71=0.
+72 s=n21=1,p=n71=0 -> n72=1.
+73 s=n44=1,p=n72=1 -> n73=0.
+74 s=n28=0,p=n73=0 -> n74=1.
+75 s=x10=1,p=n74=1 -> n75=0.
+76 s=n46=1,p=n75=0 -> n76=1.
+77 s=n20=0,p=n76=1 -> n77=1.
+78 s=n36=1,p=n77=1 -> n78=0.
+79 s=n57=1,p=n78=0 -> n79=1.
+80 s=n10=1,p=n79=1 -> n80=0.
+81 s=n70=1,p=n80=0 -> n81=1.
+82 s=n34=0,p=n81=1 -> n82=1.
+83 s=n58=0,p=n82=1 -> n83=1.
+84 s=n52=1,p=n83=1 -> n84=0.
+85 s=n37=1,p=n84=0 -> n85=1.
+86 s=n64=0,p=n85=1 -> n86=1.
+87 s=n74=1,p=n86=1 -> n87=0.
+88 s=n44=1,p=n87=0 -> n88=1.
+89 s=n62=1,p=n88=1 -> n89=0.
+90 s=n40=1,p=n89=0 -> n90=1.
+91 s=n37=1,p=n90=1 -> n91=0.
+92 s=n68=1,p=n91=0 -> n92=1.
+93 s=B=0,p=n92=1 -> n93=1.
+94 s=n10=1,p=n93=1 -> n94=0.
+95 s=n26=1,p=n94=0 -> n95=1.
+96 s=n88=1,p=n95=1 -> n96=0.
+97 s=n67=1,p=n96=0 -> n97=1.
+98 s=n32=1,p=n97=1 -> n98=0.
+99 s=n85=1,p=n98=0 -> n99=1.
+Cycle11 n99=1. Outputs t11: n99=1,q11=state S3 x11=1,q6=x6=0,q8=x8=0. Next S12: q0=1;q1=n88=1;q2=n99=1;q3=n79=1;q4=1;q5=n82=1;q6=1;q7=n81=1;q8=n90=1;q9=n78=0;q10=n89=0;q11=n84=0.
+S12: [1,1,1,1,1,1,1,1,1,0,0,0] = S10 (same as S2). Inputs t12 A=0,B=1. S2 with A0B1 was cycle2. So cycle12 should equal cycle2 exactly (state S2, input A0B1) -> n99=0, next S13=S3. Let's verify S12=S2 yes [1,1,1,1,1,1,1,1,1,0,0,0]. input t12 in0=0,in1=1. cycle2 same. Great. Outputs t12: n99=0,q11=x11=0,q6=x6=1,q8=x8=1. Next S13=S3 [1,1,0,1,0,1,0,1,0,0,1,1].
+
+Cycle13: S13=S3; inputs A=1,B=0. This is same as cycle11 (S3,A1B0)! Cycle11 next S12. So cycle13 = cycle11: n99=1; outputs q11=S3 x11=1,q6=x6=0,q8=x8=0; next S14=S12=S2. Wait cycle11 input A=1,B=0 and S3 produced S12. Yes. So t13 outputs n99=1,q11=1,q6=0,q8=0. Next S14=S2 [1,1,1,1,1,1,1,1,1,0,0,0].
+
+Cycle14: S14=S2; inputs A=1,B=1. S2 with A0B1 was cycle2, with A1B1 new. Need compute. State all ones except x9=0,x10=0,x11=0. A=1,B=1.
+n0=NAND(x5=1,A=1)=0.
+1 s=x3=1,p0 -> n1=1.
+2 s=x8=1,p=n1=1 -> n2=0.
+3 s=x0=1,p=n2=0 -> n3=1.
+4 s=n1=1,p=n3=1 -> n4=0.
+5 self -> n5=1.
+6 s=x1=1,p=n5=1 -> n6=0.
+7 s=x11=0,p=n6=0 -> n7=1.
+8 s=x2=1,p=n7=1 -> n8=0.
+9 s=x1=1,p=n8=0 -> n9=1.
+10 s=n1=1,p=n9=1 -> n10=0.
+11 s=B=1,p=n10=0 -> n11=1 (p0 ->1; NAND0,1=1).
+12 s=x9=0,p=n11=1 -> n12=1.
+13 s=n10=0,p=n12=1 -> n13=1.
+14 s=n2=0,p=n13=1 -> n14=1.
+15 s=n6=0,p=n14=1 -> n15=1.
+16 s=x8=1,p=n15=1 -> n16=0.
+17 s=n12=1,p=n16=0 -> n17=1.
+18 s=x7=1,p=n17=1 -> n18=0.
+19 s=n5=1,p=n18=0 -> n19=1.
+20 s=x0=1,p=n19=1 -> n20=0.
+21 s=n4=0,p=n20=0 -> n21=1.
+22 s=n14=1,p=n21=1 -> n22=0.
+23 s=n21=1,p=n22=0 -> n23=1.
+24 s=x3=1,p=n23=1 -> n24=0.
+25 s=n7=1,p=n24=0 -> n25=1.
+26 s=n9=1,p=n25=1 -> n26=0.
+27 s=x4=1,p=n26=0 -> n27=1.
+28 s=x1=1,p=n27=1 -> n28=0.
+29 s=x10=0,p=n28=0 -> n29=1.
+30 s=x4=1,p=n29=1 -> n30=0.
+31 s=n23=1,p=n30=0 -> n31=1.
+32 s=x7=1,p=n31=1 -> n32=0.
+33 s=n17=1,p=n32=0 -> n33=1.
+34 s=x0=1,p=n33=1 -> n34=0.
+35 s=n2=0,p=n34=0 -> n35=1.
+36 s=n24=0,p=n35=1 -> n36=1.
+37 s=n31=1,p=n36=1 -> n37=0.
+38 s=n6=0,p=n37=0 -> n38=1.
+39 s=n24=0,p=n38=1 -> n39=1.
+40 s=n20=0,p=n39=1 -> n40=1.
+41 s=x0=1,p=n40=1 -> n41=0.
+42 s=n32=0,p=n41=0 -> n42=1.
+43 s=n23=1,p=n42=1 -> n43=0.
+44 s=n4=0,p=n43=0 -> n44=1.
+45 s=n30=0,p=n44=1 -> n45=1.
+46 s=n19=1,p=n45=1 -> n46=0.
+47 s=n38=1,p=n46=0 -> n47=1.
+48 s=n12=1,p=n47=1 -> n48=0.
+49 s=x5=1,p=n48=0 -> n49=1.
+50 s=n28=0,p=n49=1 -> n50=1.
+51 s=n10=0,p=n50=1 -> n51=1.
+52 s=n24=0,p=n51=1 -> n52=1.
+53 s=n0=0,p=n52=1 -> n53=1.
+54 self -> n54=0.
+55 s=n24=0,p=n54=0 -> n55=1.
+56 s=n48=0,p=n55=1 -> n56=1.
+57 s=x8=1,p=n56=1 -> n57=0.
+58 s=n32=0,p=n57=0 -> n58=1.
+59 s=n50=1,p=n58=1 -> n59=0.
+60 s=x3=1,p=n59=0 -> n60=1.
+61 s=n43=0,p=n60=1 -> n61=1.
+62 s=x6=1,p=n61=1 -> n62=0.
+63 s=n17=1,p=n62=0 -> n63=1.
+64 s=n56=1,p=n63=1 -> n64=0.
+65 s=n44=1,p=n64=0 -> n65=1.
+66 s=n63=1,p=n65=1 -> n66=0.
+67 s=n52=1,p=n66=0 -> n67=1.
+68 s=n9=1,p=n67=1 -> n68=0.
+69 s=n47=1,p=n68=0 -> n69=1.
+70 s=n66=0,p=n69=1 -> n70=1.
+71 s=n44=1,p=n70=1 -> n71=0.
+72 s=n21=1,p=n71=0 -> n72=1.
+73 s=n44=1,p=n72=1 -> n73=0.
+74 s=n28=0,p=n73=0 -> n74=1.
+75 s=x10=0,p=n74=1 -> n75=1.
+76 s=n46=0,p=n75=1 -> n76=1.
+77 s=n20=0,p=n76=1 -> n77=1.
+78 s=n36=1,p=n77=1 -> n78=0.
+79 s=n57=0,p=n78=0 -> n79=1.
+80 s=n10=0,p=n79=1 -> n80=1.
+81 s=n70=1,p=n80=1 -> n81=0.
+82 s=n34=0,p=n81=0 -> n82=1.
+83 s=n58=1,p=n82=1 -> n83=0.
+84 s=n52=1,p=n83=0 -> n84=1.
+85 s=n37=0,p=n84=1 -> n85=1.
+86 s=n64=0,p=n85=1 -> n86=1.
+87 s=n74=1,p=n86=1 -> n87=0.
+88 s=n44=1,p=n87=0 -> n88=1.
+89 s=n62=0,p=n88=1 -> n89=1.
+90 s=n40=1,p=n89=1 -> n90=0.
+91 s=n37=0,p=n90=0 -> n91=1.
+92 s=n68=0,p=n91=1 -> n92=1.
+93 s=B=1,p=n92=1 -> n93=0.
+94 s=n10=0,p=n93=0 -> n94=1.
+95 s=n26=0,p=n94=1 -> n95=1.
+96 s=n88=1,p=n95=1 -> n96=0.
+97 s=n67=1,p=n96=0 -> n97=1.
+98 s=n32=0,p=n97=1 -> n98=1.
+99 s=n85=1,p=n98=1 -> n99=0.
+Cycle14 n99=0. Outputs t14: n99=0,q11=x11=0,q6=x6=1,q8=x8=1. Next S15: q0=1;q1=1;q2=0;q3=1;q4=0;q5=n82=1;q6=0;q7=n81=0;q8=n90=0;q9=n78=0;q10=n89=1;q11=n84=1.
+S15: [1,1,0,1,0,1,0,0,0,0,1,1]. This equals S9. Inputs t15 A=1,B=1. Cycle9 used S9 with A0B0; new A1B1. Need compute cycle15.
+
+Cycle15: S=S9 [1,1,0,1,0,1,0,0,0,0,1,1], A=1,B=1.
+n0=NAND(x5=1,A=1)=0.
+1 s=x3=1,p0 -> n1=1.
+2 s=x8=0,p=n1=1 -> n2=1 (s0).
+3 s=x0=1,p=n2=1 -> n3=0.
+4 s=n1=1,p=n3=0 -> n4=1.
+5 n5=0.
+6 s=x1=1,p0 -> n6=1.
+7 s=x11=1,p=n6=1 -> n7=0.
+8 s=x2=0,p=n7=0 -> n8=1.
+9 s=x1=1,p=n8=1 -> n9=0.
+10 s=n1=1,p=n9=0 -> n10=1.
+11 s=B=1,p=n10=1 -> n11=0.
+12 s=x9=0,p=n11=0 -> n12=1.
+13 s=n10=1,p=n12=1 -> n13=0.
+14 s=n2=1,p=n13=0 -> n14=1.
+15 s=n6=1,p=n14=1 -> n15=0.
+16 s=x8=0,p=n15=0 -> n16=1.
+17 s=n12=1,p=n16=1 -> n17=0.
+18 s=x7=0,p=n17=0 -> n18=1.
+19 s=n5=0,p=n18=1 -> n19=1.
+20 s=x0=1,p=n19=1 -> n20=0.
+21 s=n4=1,p=n20=0 -> n21=1.
+22 s=n14=1,p=n21=1 -> n22=0.
+23 s=n21=1,p=n22=0 -> n23=1.
+24 s=x3=1,p=n23=1 -> n24=0.
+25 s=n7=0,p=n24=0 -> n25=1.
+26 s=n9=0,p=n25=1 -> n26=1.
+27 s=x4=0,p=n26=1 -> n27=1.
+28 s=x1=1,p=n27=1 -> n28=0.
+29 s=x10=1,p=n28=0 -> n29=1.
+30 s=x4=0,p=n29=1 -> n30=1.
+31 s=n23=1,p=n30=1 -> n31=0.
+32 s=x7=0,p=n31=0 -> n32=1.
+33 s=n17=0,p=n32=1 -> n33=1.
+34 s=x0=1,p=n33=1 -> n34=0.
+35 s=n2=1,p=n34=0 -> n35=1.
+36 s=n24=0,p=n35=1 -> n36=1.
+37 s=n31=0,p=n36=1 -> n37=1.
+38 s=n6=1,p=n37=1 -> n38=0.
+39 s=n24=0,p=n38=0 -> n39=1.
+40 s=n20=0,p=n39=1 -> n40=1.
+41 s=x0=1,p=n40=1 -> n41=0.
+42 s=n32=1,p=n41=0 -> n42=1.
+43 s=n23=1,p=n42=1 -> n43=0.
+44 s=n4=1,p=n43=0 -> n44=1.
+45 s=n30=1,p=n44=1 -> n45=0.
+46 s=n19=1,p=n45=0 -> n46=1.
+47 s=n38=0,p=n46=1 -> n47=1.
+48 s=n12=1,p=n47=1 -> n48=0.
+49 s=x5=1,p=n48=0 -> n49=1.
+50 s=n28=0,p=n49=1 -> n50=1.
+51 s=n10=1,p=n50=1 -> n51=0.
+52 s=n24=0,p=n51=0 -> n52=1.
+53 s=n0=0,p=n52=1 -> n53=1.
+54 self n53=1 -> n54=0.
+55 s=n24=0,p=n54=0 -> n55=1.
+56 s=n48=0,p=n55=1 -> n56=1.
+57 s=x8=0,p=n56=1 -> n57=1.
+58 s=n32=1,p=n57=1 -> n58=0.
+59 s=n50=1,p=n58=0 -> n59=1.
+60 s=x3=1,p=n59=1 -> n60=0.
+61 s=n43=0,p=n60=0 -> n61=1.
+62 s=x6=0,p=n61=1 -> n62=1.
+63 s=n17=0,p=n62=1 -> n63=1.
+64 s=n56=1,p=n63=1 -> n64=0.
+65 s=n44=1,p=n64=0 -> n65=1.
+66 s=n63=1,p=n65=1 -> n66=0.
+67 s=n52=1,p=n66=0 -> n67=1.
+68 s=n9=0,p=n67=1 -> n68=1.
+69 s=n47=1,p=n68=1 -> n69=0.
+70 s=n66=0,p=n69=0 -> n70=1.
+71 s=n44=1,p=n70=1 -> n71=0.
+72 s=n21=1,p=n71=0 -> n72=1.
+73 s=n44=1,p=n72=1 -> n73=0.
+74 s=n28=0,p=n73=0 -> n74=1.
+75 s=x10=1,p=n74=1 -> n75=0.
+76 s=n46=1,p=n75=0 -> n76=1.
+77 s=n20=0,p=n76=1 -> n77=1.
+78 s=n36=1,p=n77=1 -> n78=0.
+79 s=n57=1,p=n78=0 -> n79=1.
+80 s=n10=1,p=n79=1 -> n80=0.
+81 s=n70=1,p=n80=0 -> n81=1.
+82 s=n34=0,p=n81=1 -> n82=1.
+83 s=n58=0,p=n82=1 -> n83=1.
+84 s=n52=1,p=n83=1 -> n84=0.
+85 s=n37=1,p=n84=0 -> n85=1.
+86 s=n64=0,p=n85=1 -> n86=1.
+87 s=n74=1,p=n86=1 -> n87=0.
+88 s=n44=1,p=n87=0 -> n88=1.
+89 s=n62=1,p=n88=1 -> n89=0.
+90 s=n40=1,p=n89=0 -> n90=1.
+91 s=n37=1,p=n90=1 -> n91=0.
+92 s=n68=1,p=n91=0 -> n92=1.
+93 s=B=1,p=n92=1 -> n93=0.
+94 s=n10=1,p=n93=0 -> n94=1.
+95 s=n26=1,p=n94=1 -> n95=0.
+96 s=n88=1,p=n95=0 -> n96=1.
+97 s=n67=1,p=n96=1 -> n97=0.
+98 s=n32=1,p=n97=0 -> n98=1.
+99 s=n85=1,p=n98=1 -> n99=0.
+Cycle15 n99=0. Outputs t15: n99=0,q11=state S9 x11=1,q6=x6=0,q8=x8=0. Next S16: q0=1;q1=1;q2=0;q3=1;q4=0;q5=1;q6=0;q7=n81=1;q8=n90=1;q9=n78=0;q10=n89=0;q11=n84=0.
+S16: [1,1,0,1,0,1,0,1,1,0,0,0] = S4? S4 [1,1,0,1,0,1,0,1,1,0,0,0]. Yes S16=S4. Inputs t16 A=1,B=1. S4 with A0B0 was cycle4; new A1B1. Need compute cycle16.
+
+Cycle16: S=S4 [1,1,0,1,0,1,0,1,1,0,0,0], A=1,B=1.
+n0=NAND(x5=1,A=1)=0.
+1 s=x3=1,p0 -> n1=1.
+2 s=x8=1,p=n1=1 -> n2=0.
+3 s=x0=1,p=n2=0 -> n3=1.
+4 s=n1=1,p=n3=1 -> n4=0.
+5 n5=1.
+6 s=x1=1,p=n5=1 -> n6=0.
+7 s=x11=0,p=n6=0 -> n7=1.
+8 s=x2=0,p=n7=1 -> n8=1 (s0).
+9 s=x1=1,p=n8=1 -> n9=0.
+10 s=n1=1,p=n9=0 -> n10=1.
+11 s=B=1,p=n10=1 -> n11=0.
+12 s=x9=0,p=n11=0 -> n12=1.
+13 s=n10=1,p=n12=1 -> n13=0.
+14 s=n2=0,p=n13=0 -> n14=1.
+15 s=n6=0,p=n14=1 -> n15=1.
+16 s=x8=1,p=n15=1 -> n16=0.
+17 s=n12=1,p=n16=0 -> n17=1.
+18 s=x7=1,p=n17=1 -> n18=0.
+19 s=n5=1,p=n18=0 -> n19=1.
+20 s=x0=1,p=n19=1 -> n20=0.
+21 s=n4=0,p=n20=0 -> n21=1.
+22 s=n14=1,p=n21=1 -> n22=0.
+23 s=n21=1,p=n22=0 -> n23=1.
+24 s=x3=1,p=n23=1 -> n24=0.
+25 s=n7=1,p=n24=0 -> n25=1.
+26 s=n9=0,p=n25=1 -> n26=1.
+27 s=x4=0,p=n26=1 -> n27=1.
+28 s=x1=1,p=n27=1 -> n28=0.
+29 s=x10=0,p=n28=0 -> n29=1.
+30 s=x4=0,p=n29=1 -> n30=1.
+31 s=n23=1,p=n30=1 -> n31=0.
+32 s=x7=1,p=n31=0 -> n32=1.
+33 s=n17=1,p=n32=1 -> n33=0.
+34 s=x0=1,p=n33=0 -> n34=1.
+35 s=n2=0,p=n34=1 -> n35=1.
+36 s=n24=0,p=n35=1 -> n36=1.
+37 s=n31=0,p=n36=1 -> n37=1.
+38 s=n6=0,p=n37=1 -> n38=1.
+39 s=n24=0,p=n38=1 -> n39=1.
+40 s=n20=0,p=n39=1 -> n40=1.
+41 s=x0=1,p=n40=1 -> n41=0.
+42 s=n32=1,p=n41=0 -> n42=1.
+43 s=n23=1,p=n42=1 -> n43=0.
+44 s=n4=0,p=n43=0 -> n44=1.
+45 s=n30=1,p=n44=1 -> n45=0.
+46 s=n19=1,p=n45=0 -> n46=1.
+47 s=n38=1,p=n46=1 -> n47=0.
+48 s=n12=1,p=n47=0 -> n48=1.
+49 s=x5=1,p=n48=1 -> n49=0.
+50 s=n28=0,p=n49=0 -> n50=1.
+51 s=n10=1,p=n50=1 -> n51=0.
+52 s=n24=0,p=n51=0 -> n52=1.
+53 s=n0=0,p=n52=1 -> n53=1.
+54 self n53=1 -> n54=0.
+55 s=n24=0,p=n54=0 -> n55=1.
+56 s=n48=1,p=n55=1 -> n56=0.
+57 s=x8=1,p=n56=0 -> n57=1.
+58 s=n32=1,p=n57=1 -> n58=0.
+59 s=n50=1,p=n58=0 -> n59=1.
+60 s=x3=1,p=n59=1 -> n60=0.
+61 s=n43=0,p=n60=0 -> n61=1.
+62 s=x6=0,p=n61=1 -> n62=1.
+63 s=n17=1,p=n62=1 -> n63=0.
+64 s=n56=0,p=n63=0 -> n64=1.
+65 s=n44=1,p=n64=1 -> n65=0.
+66 s=n63=0,p=n65=0 -> n66=1.
+67 s=n52=1,p=n66=1 -> n67=0.
+68 s=n9=0,p=n67=0 -> n68=1.
+69 s=n47=0,p=n68=1 -> n69=1.
+70 s=n66=1,p=n69=1 -> n70=0.
+71 s=n44=1,p=n70=0 -> n71=1.
+72 s=n21=1,p=n71=1 -> n72=0.
+73 s=n44=1,p=n72=0 -> n73=1.
+74 s=n28=0,p=n73=1 -> n74=1.
+75 s=x10=0,p=n74=1 -> n75=1.
+76 s=n46=1,p=n75=1 -> n76=0.
+77 s=n20=0,p=n76=0 -> n77=1.
+78 s=n36=1,p=n77=1 -> n78=0.
+79 s=n57=1,p=n78=0 -> n79=1.
+80 s=n10=1,p=n79=1 -> n80=0.
+81 s=n70=0,p=n80=0 -> n81=1.
+82 s=n34=1,p=n81=1 -> n82=0.
+83 s=n58=0,p=n82=0 -> n83=1.
+84 s=n52=1,p=n83=1 -> n84=0.
+85 s=n37=1,p=n84=0 -> n85=1.
+86 s=n64=1,p=n85=1 -> n86=0.
+87 s=n74=1,p=n86=0 -> n87=1.
+88 s=n44=1,p=n87=1 -> n88=0.
+89 s=n62=1,p=n88=0 -> n89=1.
+90 s=n40=1,p=n89=1 -> n90=0.
+91 s=n37=1,p=n90=0 -> n91=1.
+92 s=n68=1,p=n91=1 -> n92=0.
+93 s=B=1,p=n92=0 -> n93=1.
+94 s=n10=1,p=n93=1 -> n94=0.
+95 s=n26=1,p=n94=0 -> n95=1.
+96 s=n88=0,p=n95=1 -> n96=1.
+97 s=n67=0,p=n96=1 -> n97=1.
+98 s=n32=1,p=n97=1 -> n98=0.
+99 s=n85=1,p=n98=0 -> n99=1.
+Cycle16 n99=1. Outputs t16: n99=1,q11=state S4 x11=0,q6=x6=0,q8=x8=1. Next S17: q0=n77=1;q1=n88=0;q2=n99=1;q3=n79=1;q4=1;q5=n82=0;q6=1;q7=n81=1;q8=n90=0;q9=n78=0;q10=n89=1;q11=n84=0.
+S17: [1,0,1,1,1,0,1,1,0,0,1,0]. Need check q1=n88=0, q5=n82=0. Good. New state.
+
+Cycle17: S17 [x0=1,x1=0,x2=1,x3=1,x4=1,x5=0,x6=1,x7=1,x8=0,x9=0,x10=1,x11=0], inputs A=1,B=1.
+Compute carefully (state differs: x1=0,x5=0,x8=0,x11=0,x10=1).
+n0=NAND(x5=0,A=1)=1.
+1 s=x3=1,p1 -> n1=0.
+2 s=x8=0,p=n1=0 -> n2=1.
+3 s=x0=1,p=n2=1 -> n3=0.
+4 s=n1=0,p=n3=0 -> n4=1.
+5 n5=0.
+6 s=x1=0,p=n5=0 -> n6=1 (NAND0,0=1).
+7 s=x11=0,p=n6=1 -> n7=1 (s0).
+8 s=x2=1,p=n7=1 -> n8=0.
+9 s=x1=0,p=n8=0 -> n9=1.
+10 s=n1=0,p=n9=1 -> n10=1.
+11 s=B=1,p=n10=1 -> n11=0.
+12 s=x9=0,p=n11=0 -> n12=1.
+13 s=n10=1,p=n12=1 -> n13=0.
+14 s=n2=1,p=n13=0 -> n14=1.
+15 s=n6=1,p=n14=1 -> n15=0.
+16 s=x8=0,p=n15=0 -> n16=1.
+17 s=n12=1,p=n16=1 -> n17=0.
+18 s=x7=1,p=n17=0 -> n18=1.
+19 s=n5=0,p=n18=1 -> n19=1.
+20 s=x0=1,p=n19=1 -> n20=0.
+21 s=n4=1,p=n20=0 -> n21=1.
+22 s=n14=1,p=n21=1 -> n22=0.
+23 s=n21=1,p=n22=0 -> n23=1.
+24 s=x3=1,p=n23=1 -> n24=0.
+25 s=n7=1,p=n24=0 -> n25=1.
+26 s=n9=1,p=n25=1 -> n26=0.
+27 s=x4=1,p=n26=0 -> n27=1.
+28 s=x1=0,p=n27=1 -> n28=1.
+29 s=x10=1,p=n28=1 -> n29=0.
+30 s=x4=1,p=n29=0 -> n30=1.
+31 s=n23=1,p=n30=1 -> n31=0.
+32 s=x7=1,p=n31=0 -> n32=1.
+33 s=n17=0,p=n32=1 -> n33=1.
+34 s=x0=1,p=n33=1 -> n34=0.
+35 s=n2=1,p=n34=0 -> n35=1.
+36 s=n24=0,p=n35=1 -> n36=1.
+37 s=n31=0,p=n36=1 -> n37=1.
+38 s=n6=1,p=n37=1 -> n38=0.
+39 s=n24=0,p=n38=0 -> n39=1.
+40 s=n20=0,p=n39=1 -> n40=1.
+41 s=x0=1,p=n40=1 -> n41=0.
+42 s=n32=1,p=n41=0 -> n42=1.
+43 s=n23=1,p=n42=1 -> n43=0.
+44 s=n4=1,p=n43=0 -> n44=1.
+45 s=n30=1,p=n44=1 -> n45=0.
+46 s=n19=1,p=n45=0 -> n46=1.
+47 s=n38=0,p=n46=1 -> n47=1.
+48 s=n12=1,p=n47=1 -> n48=0.
+49 s=x5=0,p=n48=0 -> n49=1.
+50 s=n28=1,p=n49=1 -> n50=0.
+51 s=n10=1,p=n50=0 -> n51=1.
+52 s=n24=0,p=n51=1 -> n52=1.
+53 s=n0=1,p=n52=1 -> n53=0.
+54 self n53=0 -> n54=1.
+55 s=n24=0,p=n54=1 -> n55=1.
+56 s=n48=0,p=n55=1 -> n56=1.
+57 s=x8=0,p=n56=1 -> n57=1.
+58 s=n32=1,p=n57=1 -> n58=0.
+59 s=n50=0,p=n58=0 -> n59=1.
+60 s=x3=1,p=n59=1 -> n60=0.
+61 s=n43=0,p=n60=0 -> n61=1.
+62 s=x6=1,p=n61=1 -> n62=0.
+63 s=n17=0,p=n62=0 -> n63=1.
+64 s=n56=1,p=n63=1 -> n64=0.
+65 s=n44=1,p=n64=0 -> n65=1.
+66 s=n63=1,p=n65=1 -> n66=0.
+67 s=n52=1,p=n66=0 -> n67=1.
+68 s=n9=1,p=n67=1 -> n68=0.
+69 s=n47=1,p=n68=0 -> n69=1.
+70 s=n66=0,p=n69=1 -> n70=1.
+71 s=n44=1,p=n70=1 -> n71=0.
+72 s=n21=1,p=n71=0 -> n72=1.
+73 s=n44=1,p=n72=1 -> n73=0.
+74 s=n28=1,p=n73=0 -> n74=1.
+75 s=x10=1,p=n74=1 -> n75=0.
+76 s=n46=1,p=n75=0 -> n76=1.
+77 s=n20=0,p=n76=1 -> n77=1.
+78 s=n36=1,p=n77=1 -> n78=0.
+79 s=n57=1,p=n78=0 -> n79=1.
+80 s=n10=1,p=n79=1 -> n80=0.
+81 s=n70=1,p=n80=0 -> n81=1.
+82 s=n34=0,p=n81=1 -> n82=1.
+83 s=n58=0,p=n82=1 -> n83=1.
+84 s=n52=1,p=n83=1 -> n84=0.
+85 s=n37=1,p=n84=0 -> n85=1.
+86 s=n64=0,p=n85=1 -> n86=1.
+87 s=n74=1,p=n86=1 -> n87=0.
+88 s=n44=1,p=n87=0 -> n88=1.
+89 s=n62=0,p=n88=1 -> n89=1.
+90 s=n40=1,p=n89=1 -> n90=0.
+91 s=n37=1,p=n90=0 -> n91=1.
+92 s=n68=0,p=n91=1 -> n92=1.
+93 s=B=1,p=n92=1 -> n93=0.
+94 s=n10=1,p=n93=0 -> n94=1.
+95 s=n26=0,p=n94=1 -> n95=1.
+96 s=n88=1,p=n95=1 -> n96=0.
+97 s=n67=1,p=n96=0 -> n97=1.
+98 s=n32=1,p=n97=1 -> n98=0.
+99 s=n85=1,p=n98=0 -> n99=1.
+Cycle17 n99=1. Outputs t17: n99=1,q11=x11=0,q6=x6=1,q8=x8=0. Next S18: q0=1;q1=n88=1;q2=n99=1;q3=n79=1;q4=1;q5=n82=1;q6=1;q7=n81=1;q8=n90=0;q9=n78=0;q10=n89=1;q11=n84=0.
+S18: [1,1,1,1,1,1,1,1,0,0,1,0]. (x8=0,x11=0,x9=0,x10=1)
+
+Cycle18: S18; inputs A=1,B=0 (t18 in0=1,in1=0). State [1,1,1,1,1,1,1,1,0,0,1,0]. Compute.
+n0=NAND(x5=1,A=1)=0.
+1 s=x3=1,p0 -> n1=1.
+2 s=x8=0,p=n1=1 -> n2=1 (s0).
+3 s=x0=1,p=n2=1 -> n3=0.
+4 s=n1=1,p=n3=0 -> n4=1.
+5 n5=0.
+6 s=x1=1,p0 -> n6=1.
+7 s=x11=0,p=n6=1 -> n7=1.
+8 s=x2=1,p=n7=1 -> n8=0.
+9 s=x1=1,p=n8=0 -> n9=1.
+10 s=n1=1,p=n9=1 -> n10=0.
+11 s=B=0,p=n10=0 -> n11=1.
+12 s=x9=0,p=n11=1 -> n12=1.
+13 s=n10=0,p=n12=1 -> n13=1.
+14 s=n2=1,p=n13=1 -> n14=0.
+15 s=n6=1,p=n14=0 -> n15=1.
+16 s=x8=0,p=n15=1 -> n16=1.
+17 s=n12=1,p=n16=1 -> n17=0.
+18 s=x7=1,p=n17=0 -> n18=1.
+19 s=n5=0,p=n18=1 -> n19=1.
+20 s=x0=1,p=n19=1 -> n20=0.
+21 s=n4=1,p=n20=0 -> n21=1.
+22 s=n14=0,p=n21=1 -> n22=1.
+23 s=n21=1,p=n22=1 -> n23=0.
+24 s=x3=1,p=n23=0 -> n24=1.
+25 s=n7=1,p=n24=1 -> n25=0.
+26 s=n9=1,p=n25=0 -> n26=1.
+27 s=x4=1,p=n26=1 -> n27=0.
+28 s=x1=1,p=n27=0 -> n28=1.
+29 s=x10=1,p=n28=1 -> n29=0.
+30 s=x4=1,p=n29=0 -> n30=1.
+31 s=n23=0,p=n30=1 -> n31=1.
+32 s=x7=1,p=n31=1 -> n32=0.
+33 s=n17=0,p=n32=0 -> n33=1.
+34 s=x0=1,p=n33=1 -> n34=0.
+35 s=n2=1,p=n34=0 -> n35=1.
+36 s=n24=1,p=n35=1 -> n36=0.
+37 s=n31=1,p=n36=0 -> n37=1.
+38 s=n6=1,p=n37=1 -> n38=0.
+39 s=n24=1,p=n38=0 -> n39=1.
+40 s=n20=0,p=n39=1 -> n40=1.
+41 s=x0=1,p=n40=1 -> n41=0.
+42 s=n32=0,p=n41=0 -> n42=1.
+43 s=n23=0,p=n42=1 -> n43=1.
+44 s=n4=1,p=n43=1 -> n44=0.
+45 s=n30=1,p=n44=0 -> n45=1.
+46 s=n19=1,p=n45=1 -> n46=0.
+47 s=n38=0,p=n46=0 -> n47=1.
+48 s=n12=1,p=n47=1 -> n48=0.
+49 s=x5=1,p=n48=0 -> n49=1.
+50 s=n28=1,p=n49=1 -> n50=0.
+51 s=n10=0,p=n50=0 -> n51=1.
+52 s=n24=1,p=n51=1 -> n52=0.
+53 s=n0=0,p=n52=0 -> n53=1.
+54 self n53=1 -> n54=0.
+55 s=n24=1,p=n54=0 -> n55=1.
+56 s=n48=0,p=n55=1 -> n56=1.
+57 s=x8=0,p=n56=1 -> n57=1.
+58 s=n32=0,p=n57=1 -> n58=1.
+59 s=n50=0,p=n58=1 -> n59=1.
+60 s=x3=1,p=n59=1 -> n60=0.
+61 s=n43=1,p=n60=0 -> n61=1.
+62 s=x6=1,p=n61=1 -> n62=0.
+63 s=n17=0,p=n62=0 -> n63=1.
+64 s=n56=1,p=n63=1 -> n64=0.
+65 s=n44=0,p=n64=0 -> n65=1.
+66 s=n63=1,p=n65=1 -> n66=0.
+67 s=n52=0,p=n66=0 -> n67=1.
+68 s=n9=1,p=n67=1 -> n68=0.
+69 s=n47=1,p=n68=0 -> n69=1.
+70 s=n66=0,p=n69=1 -> n70=1.
+71 s=n44=0,p=n70=1 -> n71=1.
+72 s=n21=1,p=n71=1 -> n72=0.
+73 s=n44=0,p=n72=0 -> n73=1.
+74 s=n28=1,p=n73=1 -> n74=0.
+75 s=x10=1,p=n74=0 -> n75=1.
+76 s=n46=0,p=n75=1 -> n76=1.
+77 s=n20=0,p=n76=1 -> n77=1.
+78 s=n36=0,p=n77=1 -> n78=1.
+79 s=n57=1,p=n78=1 -> n79=0.
+80 s=n10=0,p=n79=0 -> n80=1.
+81 s=n70=1,p=n80=1 -> n81=0.
+82 s=n34=0,p=n81=0 -> n82=1.
+83 s=n58=1,p=n82=1 -> n83=0.
+84 s=n52=0,p=n83=0 -> n84=1.
+85 s=n37=1,p=n84=1 -> n85=0.
+86 s=n64=0,p=n85=0 -> n86=1.
+87 s=n74=0,p=n86=1 -> n87=1.
+88 s=n44=0,p=n87=1 -> n88=1.
+89 s=n62=0,p=n88=1 -> n89=1.
+90 s=n40=1,p=n89=1 -> n90=0.
+91 s=n37=1,p=n90=0 -> n91=1.
+92 s=n68=0,p=n91=1 -> n92=1.
+93 s=B=0,p=n92=1 -> n93=1.
+94 s=n10=0,p=n93=1 -> n94=1.
+95 s=n26=1,p=n94=1 -> n95=0.
+96 s=n88=1,p=n95=0 -> n96=1.
+97 s=n67=1,p=n96=1 -> n97=0.
+98 s=n32=0,p=n97=0 -> n98=1.
+99 s=n85=0,p=n98=1 -> n99=1.
+Cycle18 n99=1. Outputs t18: n99=1,q11=x11=0,q6=x6=1,q8=x8=0. Next S19: q0=n77=1;q1=n88=1;q2=n99=1;q3=n79=0;q4=1;q5=n82=1;q6=1;q7=n81=0;q8=n90=0;q9=n78=1;q10=n89=1;q11=n84=1.
+S19: [1,1,1,0,1,1,1,0,0,1,1,1]. Note q3 becomes 0 (n79=0), q9=1, q11=1. New.
+
+Cycle19: S19 [x0=1,x1=1,x2=1,x3=0,x4=1,x5=1,x6=1,x7=0,x8=0,x9=1,x10=1,x11=1], inputs A=0,B=1 (t19 in0=0,in1=1). Compute carefully.
+n0=NAND(x5=1,A=0)=1.
+1 s=x3=0,p=1 -> n1=1 (s0).
+2 s=x8=0,p=n1=1 -> n2=1.
+3 s=x0=1,p=n2=1 -> n3=0.
+4 s=n1=1,p=n3=0 -> n4=1.
+5 n5=0.
+6 s=x1=1,p0 -> n6=1.
+7 s=x11=1,p=n6=1 -> n7=0.
+8 s=x2=1,p=n7=0 -> n8=1.
+9 s=x1=1,p=n8=1 -> n9=0.
+10 s=n1=1,p=n9=0 -> n10=1.
+11 s=B=1,p=n10=1 -> n11=0.
+12 s=x9=1,p=n11=0 -> n12=1.
+13 s=n10=1,p=n12=1 -> n13=0.
+14 s=n2=1,p=n13=0 -> n14=1.
+15 s=n6=1,p=n14=1 -> n15=0.
+16 s=x8=0,p=n15=0 -> n16=1.
+17 s=n12=1,p=n16=1 -> n17=0.
+18 s=x7=0,p=n17=0 -> n18=1.
+19 s=n5=0,p=n18=1 -> n19=1.
+20 s=x0=1,p=n19=1 -> n20=0.
+21 s=n4=1,p=n20=0 -> n21=1.
+22 s=n14=1,p=n21=1 -> n22=0.
+23 s=n21=1,p=n22=0 -> n23=1.
+24 s=x3=0,p=n23=1 -> n24=1.
+25 s=n7=0,p=n24=1 -> n25=1.
+26 s=n9=0,p=n25=1 -> n26=1.
+27 s=x4=1,p=n26=1 -> n27=0.
+28 s=x1=1,p=n27=0 -> n28=1.
+29 s=x10=1,p=n28=1 -> n29=0.
+30 s=x4=1,p=n29=0 -> n30=1.
+31 s=n23=1,p=n30=1 -> n31=0.
+32 s=x7=0,p=n31=0 -> n32=1.
+33 s=n17=0,p=n32=1 -> n33=1.
+34 s=x0=1,p=n33=1 -> n34=0.
+35 s=n2=1,p=n34=0 -> n35=1.
+36 s=n24=1,p=n35=1 -> n36=0.
+37 s=n31=0,p=n36=0 -> n37=1.
+38 s=n6=1,p=n37=1 -> n38=0.
+39 s=n24=1,p=n38=0 -> n39=1.
+40 s=n20=0,p=n39=1 -> n40=1.
+41 s=x0=1,p=n40=1 -> n41=0.
+42 s=n32=1,p=n41=0 -> n42=1.
+43 s=n23=1,p=n42=1 -> n43=0.
+44 s=n4=1,p=n43=0 -> n44=1.
+45 s=n30=1,p=n44=1 -> n45=0.
+46 s=n19=1,p=n45=0 -> n46=1.
+47 s=n38=0,p=n46=1 -> n47=1.
+48 s=n12=1,p=n47=1 -> n48=0.
+49 s=x5=1,p=n48=0 -> n49=1.
+50 s=n28=1,p=n49=1 -> n50=0.
+51 s=n10=1,p=n50=0 -> n51=1.
+52 s=n24=1,p=n51=1 -> n52=0.
+53 s=n0=1,p=n52=0 -> n53=1.
+54 self n53=1 -> n54=0.
+55 s=n24=1,p=n54=0 -> n55=1.
+56 s=n48=0,p=n55=1 -> n56=1.
+57 s=x8=0,p=n56=1 -> n57=1.
+58 s=n32=1,p=n57=1 -> n58=0.
+59 s=n50=0,p=n58=0 -> n59=1.
+60 s=x3=0,p=n59=1 -> n60=1.
+61 s=n43=0,p=n60=1 -> n61=1.
+62 s=x6=1,p=n61=1 -> n62=0.
+63 s=n17=0,p=n62=0 -> n63=1.
+64 s=n56=1,p=n63=1 -> n64=0.
+65 s=n44=1,p=n64=0 -> n65=1.
+66 s=n63=1,p=n65=1 -> n66=0.
+67 s=n52=0,p=n66=0 -> n67=1.
+68 s=n9=0,p=n67=1 -> n68=1.
+69 s=n47=1,p=n68=1 -> n69=0.
+70 s=n66=0,p=n69=0 -> n70=1.
+71 s=n44=1,p=n70=1 -> n71=0.
+72 s=n21=1,p=n71=0 -> n72=1.
+73 s=n44=1,p=n72=1 -> n73=0.
+74 s=n28=1,p=n73=0 -> n74=1.
+75 s=x10=1,p=n74=1 -> n75=0.
+76 s=n46=1,p=n75=0 -> n76=1.
+77 s=n20=0,p=n76=1 -> n77=1.
+78 s=n36=0,p=n77=1 -> n78=1.
+79 s=n57=1,p=n78=1 -> n79=0.
+80 s=n10=1,p=n79=0 -> n80=1.
+81 s=n70=1,p=n80=1 -> n81=0.
+82 s=n34=0,p=n81=0 -> n82=1.
+83 s=n58=0,p=n82=1 -> n83=1.
+84 s=n52=0,p=n83=1 -> n84=1.
+85 s=n37=1,p=n84=1 -> n85=0.
+86 s=n64=0,p=n85=0 -> n86=1.
+87 s=n74=1,p=n86=1 -> n87=0.
+88 s=n44=1,p=n87=0 -> n88=1.
+89 s=n62=0,p=n88=1 -> n89=1.
+90 s=n40=1,p=n89=1 -> n90=0.
+91 s=n37=1,p=n90=0 -> n91=1.
+92 s=n68=1,p=n91=1 -> n92=0.
+93 s=B=1,p=n92=0 -> n93=1.
+94 s=n10=1,p=n93=1 -> n94=0.
+95 s=n26=1,p=n94=0 -> n95=1.
+96 s=n88=1,p=n95=1 -> n96=0.
+97 s=n67=1,p=n96=0 -> n97=1.
+98 s=n32=1,p=n97=1 -> n98=0.
+99 s=n85=0,p=n98=0 -> n99=1.
+Cycle19 n99=1. Outputs t19: n99=1,q11=x11=1,q6=x6=1,q8=x8=0. Next S20: q0=1;q1=n88=1;q2=n99=1;q3=n79=0;q4=1;q5=n82=1;q6=1;q7=n81=0;q8=n90=0;q9=n78=1;q10=n89=1;q11=n84=1.
+S20: [1,1,1,0,1,1,1,0,0,1,1,1]. This is same as S19! Interesting fixed point for inputs A0B1? S19 with A0B1 produced same S20. Check S19 -> S20 identical yes. If inputs at t20 are A=1,B=1 (not same), so not persistent. But state S20=S19.
+
+Cycle20: S20=S19 [1,1,1,0,1,1,1,0,0,1,1,1], inputs A=1,B=1. Compute. Similar to cycle19 but A=1 makes n0=0; B=1 same. Let's compute.
+n0=NAND(x5=1,A=1)=0.
+1 s=x3=0,p=n0=0 -> n1=1 (p0; also s0). Actually NAND(0,0)=1.
+2 s=x8=0,p=n1=1 -> n2=1.
+3 s=x0=1,p=n2=1 -> n3=0.
+4 s=n1=1,p=n3=0 -> n4=1.
+5 n5=0.
+6 s=x1=1,p0 -> n6=1.
+7 s=x11=1,p=n6=1 -> n7=0.
+8 s=x2=1,p=n7=0 -> n8=1.
+9 s=x1=1,p=n8=1 -> n9=0.
+10 s=n1=1,p=n9=0 -> n10=1.
+11 s=B=1,p=n10=1 -> n11=0.
+12 s=x9=1,p=n11=0 -> n12=1.
+13 s=n10=1,p=n12=1 -> n13=0.
+14 s=n2=1,p=n13=0 -> n14=1.
+15 s=n6=1,p=n14=1 -> n15=0.
+16 s=x8=0,p=n15=0 -> n16=1.
+17 s=n12=1,p=n16=1 -> n17=0.
+18 s=x7=0,p=n17=0 -> n18=1.
+19 s=n5=0,p=n18=1 -> n19=1.
+20 s=x0=1,p=n19=1 -> n20=0.
+21 s=n4=1,p=n20=0 -> n21=1.
+22 s=n14=1,p=n21=1 -> n22=0.
+23 s=n21=1,p=n22=0 -> n23=1.
+24 s=x3=0,p=n23=1 -> n24=1.
+25 s=n7=0,p=n24=1 -> n25=1.
+26 s=n9=0,p=n25=1 -> n26=1.
+27 s=x4=1,p=n26=1 -> n27=0.
+28 s=x1=1,p=n27=0 -> n28=1.
+29 s=x10=1,p=n28=1 -> n29=0.
+30 s=x4=1,p=n29=0 -> n30=1.
+31 s=n23=1,p=n30=1 -> n31=0.
+32 s=x7=0,p=n31=0 -> n32=1.
+33 s=n17=0,p=n32=1 -> n33=1.
+34 s=x0=1,p=n33=1 -> n34=0.
+35 s=n2=1,p=n34=0 -> n35=1.
+36 s=n24=1,p=n35=1 -> n36=0.
+37 s=n31=0,p=n36=0 -> n37=1.
+38 s=n6=1,p=n37=1 -> n38=0.
+39 s=n24=1,p=n38=0 -> n39=1.
+40 s=n20=0,p=n39=1 -> n40=1.
+41 s=x0=1,p=n40=1 -> n41=0.
+42 s=n32=1,p=n41=0 -> n42=1.
+43 s=n23=1,p=n42=1 -> n43=0.
+44 s=n4=1,p=n43=0 -> n44=1.
+45 s=n30=1,p=n44=1 -> n45=0.
+46 s=n19=1,p=n45=0 -> n46=1.
+47 s=n38=0,p=n46=1 -> n47=1.
+48 s=n12=1,p=n47=1 -> n48=0.
+49 s=x5=1,p=n48=0 -> n49=1.
+50 s=n28=1,p=n49=1 -> n50=0.
+51 s=n10=1,p=n50=0 -> n51=1.
+52 s=n24=1,p=n51=1 -> n52=0.
+53 s=n0=0,p=n52=0 -> n53=1.
+54 self n53=1 -> n54=0.
+55 s=n24=1,p=n54=0 -> n55=1.
+56 s=n48=0,p=n55=1 -> n56=1.
+57 s=x8=0,p=n56=1 -> n57=1.
+58 s=n32=1,p=n57=1 -> n58=0.
+59 s=n50=0,p=n58=0 -> n59=1.
+60 s=x3=0,p=n59=1 -> n60=1.
+61 s=n43=0,p=n60=1 -> n61=1.
+62 s=x6=1,p=n61=1 -> n62=0.
+63 s=n17=0,p=n62=0 -> n63=1.
+64 s=n56=1,p=n63=1 -> n64=0.
+65 s=n44=1,p=n64=0 -> n65=1.
+66 s=n63=1,p=n65=1 -> n66=0.
+67 s=n52=0,p=n66=0 -> n67=1.
+68 s=n9=0,p=n67=1 -> n68=1.
+69 s=n47=1,p=n68=1 -> n69=0.
+70 s=n66=0,p=n69=0 -> n70=1.
+71 s=n44=1,p=n70=1 -> n71=0.
+72 s=n21=1,p=n71=0 -> n72=1.
+73 s=n44=1,p=n72=1 -> n73=0.
+74 s=n28=1,p=n73=0 -> n74=1.
+75 s=x10=1,p=n74=1 -> n75=0.
+76 s=n46=1,p=n75=0 -> n76=1.
+77 s=n20=0,p=n76=1 -> n77=1.
+78 s=n36=0,p=n77=1 -> n78=1.
+79 s=n57=1,p=n78=1 -> n79=0.
+80 s=n10=1,p=n79=0 -> n80=1.
+81 s=n70=1,p=n80=1 -> n81=0.
+82 s=n34=0,p=n81=0 -> n82=1.
+83 s=n58=0,p=n82=1 -> n83=1.
+84 s=n52=0,p=n83=1 -> n84=1.
+85 s=n37=1,p=n84=1 -> n85=0.
+86 s=n64=0,p=n85=0 -> n86=1.
+87 s=n74=1,p=n86=1 -> n87=0.
+88 s=n44=1,p=n87=0 -> n88=1.
+89 s=n62=0,p=n88=1 -> n89=1.
+90 s=n40=1,p=n89=1 -> n90=0.
+91 s=n37=1,p=n90=0 -> n91=1.
+92 s=n68=1,p=n91=1 -> n92=0.
+93 s=B=1,p=n92=0 -> n93=1.
+94 s=n10=1,p=n93=1 -> n94=0.
+95 s=n26=1,p=n94=0 -> n95=1.
+96 s=n88=1,p=n95=1 -> n96=0.
+97 s=n67=1,p=n96=0 -> n97=1.
+98 s=n32=1,p=n97=1 -> n98=0.
+99 s=n85=0,p=n98=0 -> n99=1.
+Cycle20 n99=1. It appears same as cycle19 except n0,n1,n53 maybe; n99 same and next state? Next S21: q0=n77=1;q1=n88=1;q2=n99=1;q3=n79=0;q4=1;q5=n82=1;q6=1;q7=n81=0;q8=n90=0;q9=n78=1;q10=n89=1;q11=n84=1. Same as S20! So S21 = S19 again. Wait n1 same (1), n0 differs but n53 maybe still1; next state same. Yes S21=[1,1,1,0,1,1,1,0,0,1,1,1]. Outputs t20: n99=1,q11=1,q6=1,q8=0.
+
+Cycle21: S21=S19; inputs A=0,B=0 (t21 in0=0,in1=0). Need compute (state fixed S19, input 00). Cycle19 was A0B1; now B=0. Compute carefully.
+State [1,1,1,0,1,1,1,0,0,1,1,1], A=0,B=0.
+n0=NAND(x5=1,A=0)=1.
+1 s=x3=0,p1 -> n1=1.
+2 s=x8=0,p=n1=1 -> n2=1.
+3 s=x0=1,p=n2=1 -> n3=0.
+4 s=n1=1,p=n3=0 -> n4=1.
+5 n5=0.
+6 s=x1=1,p0 -> n6=1.
+7 s=x11=1,p=n6=1 -> n7=0.
+8 s=x2=1,p=n7=0 -> n8=1.
+9 s=x1=1,p=n8=1 -> n9=0.
+10 s=n1=1,p=n9=0 -> n10=1.
+11 s=B=0,p=n10=1 -> n11=1.
+12 s=x9=1,p=n11=1 -> n12=0. (diff from B=1 where n11=0,n12=1)
+13 s=n10=1,p=n12=0 -> n13=1.
+14 s=n2=1,p=n13=1 -> n14=0.
+15 s=n6=1,p=n14=0 -> n15=1.
+16 s=x8=0,p=n15=1 -> n16=1.
+17 s=n12=0,p=n16=1 -> n17=1.
+18 s=x7=0,p=n17=1 -> n18=1.
+19 s=n5=0,p=n18=1 -> n19=1.
+20 s=x0=1,p=n19=1 -> n20=0.
+21 s=n4=1,p=n20=0 -> n21=1.
+22 s=n14=0,p=n21=1 -> n22=1.
+23 s=n21=1,p=n22=1 -> n23=0.
+24 s=x3=0,p=n23=0 -> n24=1.
+25 s=n7=0,p=n24=1 -> n25=1.
+26 s=n9=0,p=n25=1 -> n26=1.
+27 s=x4=1,p=n26=1 -> n27=0.
+28 s=x1=1,p=n27=0 -> n28=1.
+29 s=x10=1,p=n28=1 -> n29=0.
+30 s=x4=1,p=n29=0 -> n30=1.
+31 s=n23=0,p=n30=1 -> n31=1.
+32 s=x7=0,p=n31=1 -> n32=1 (s x7=0 -> NAND(1,0)=1) [careful: p=n31=1, s=0 => n32=1, not invert]
+33 s=n17=1,p=n32=1 -> n33=0.
+34 s=x0=1,p=n33=0 -> n34=1.
+35 s=n2=1,p=n34=1 -> n35=0.
+36 s=n24=1,p=n35=0 -> n36=1.
+37 s=n31=1,p=n36=1 -> n37=0.
+38 s=n6=1,p=n37=0 -> n38=1.
+39 s=n24=1,p=n38=1 -> n39=0.
+40 s=n20=0,p=n39=0 -> n40=1.
+41 s=x0=1,p=n40=1 -> n41=0.
+42 s=n32=1,p=n41=0 -> n42=1.
+43 s=n23=0,p=n42=1 -> n43=1.
+44 s=n4=1,p=n43=1 -> n44=0.
+45 s=n30=1,p=n44=0 -> n45=1.
+46 s=n19=1,p=n45=1 -> n46=0.
+47 s=n38=1,p=n46=0 -> n47=1.
+48 s=n12=0,p=n47=1 -> n48=1.
+49 s=x5=1,p=n48=1 -> n49=0.
+50 s=n28=1,p=n49=0 -> n50=1.
+51 s=n10=1,p=n50=1 -> n51=0.
+52 s=n24=1,p=n51=0 -> n52=1.
+53 s=n0=1,p=n52=1 -> n53=0.
+54 self n53=0 -> n54=1.
+55 s=n24=1,p=n54=1 -> n55=0.
+56 s=n48=1,p=n55=0 -> n56=1.
+57 s=x8=0,p=n56=1 -> n57=1.
+58 s=n32=1,p=n57=1 -> n58=0.
+59 s=n50=1,p=n58=0 -> n59=1.
+60 s=x3=0,p=n59=1 -> n60=1.
+61 s=n43=1,p=n60=1 -> n61=0.
+62 s=x6=1,p=n61=0 -> n62=1.
+63 s=n17=1,p=n62=1 -> n63=0.
+64 s=n56=1,p=n63=0 -> n64=1.
+65 s=n44=0,p=n64=1 -> n65=1.
+66 s=n63=0,p=n65=1 -> n66=1.
+67 s=n52=1,p=n66=1 -> n67=0.
+68 s=n9=0,p=n67=0 -> n68=1.
+69 s=n47=1,p=n68=1 -> n69=0.
+70 s=n66=1,p=n69=0 -> n70=1.
+71 s=n44=0,p=n70=1 -> n71=1.
+72 s=n21=1,p=n71=1 -> n72=0.
+73 s=n44=0,p=n72=0 -> n73=1.
+74 s=n28=1,p=n73=1 -> n74=0.
+75 s=x10=1,p=n74=0 -> n75=1.
+76 s=n46=0,p=n75=1 -> n76=1.
+77 s=n20=0,p=n76=1 -> n77=1.
+78 s=n36=1,p=n77=1 -> n78=0.
+79 s=n57=1,p=n78=0 -> n79=1.
+80 s=n10=1,p=n79=1 -> n80=0.
+81 s=n70=1,p=n80=0 -> n81=1.
+82 s=n34=1,p=n81=1 -> n82=0.
+83 s=n58=0,p=n82=0 -> n83=1.
+84 s=n52=1,p=n83=1 -> n84=0.
+85 s=n37=0,p=n84=0 -> n85=1.
+86 s=n64=1,p=n85=1 -> n86=0.
+87 s=n74=0,p=n86=0 -> n87=1.
+88 s=n44=0,p=n87=1 -> n88=1.
+89 s=n62=1,p=n88=1 -> n89=0.
+90 s=n40=1,p=n89=0 -> n90=1.
+91 s=n37=0,p=n90=1 -> n91=1.
+92 s=n68=1,p=n91=1 -> n92=0.
+93 s=B=0,p=n92=0 -> n93=1.
+94 s=n10=1,p=n93=1 -> n94=0.
+95 s=n26=1,p=n94=0 -> n95=1.
+96 s=n88=1,p=n95=1 -> n96=0.
+97 s=n67=0,p=n96=0 -> n97=1.
+98 s=n32=1,p=n97=1 -> n98=0.
+99 s=n85=1,p=n98=0 -> n99=1.
+Cycle21 n99=1. Outputs t21: n99=1,q11=x11=1,q6=x6=1,q8=x8=0. Next S22: q0=n77=1;q1=n88=1;q2=n99=1;q3=n79=1;q4=1;q5=n82=0;q6=1;q7=n81=1;q8=n90=1;q9=n78=0;q10=n89=0;q11=n84=0.
+S22: [1,1,1,1,1,0,1,1,1,0,0,0]. Check q5=0,q9=0,q10=0,q11=0; others 1. New.
+
+Cycle22: S22 [1,1,1,1,1,0,1,1,1,0,0,0], inputs A=0,B=0. Compute.
+n0=NAND(x5=0,A=0)=1 (since x5 0). 
+1 s=x3=1,p1 -> n1=0.
+2 s=x8=1,p=n1=0 -> n2=1.
+3 s=x0=1,p=n2=1 -> n3=0.
+4 s=n1=0,p=n3=0 -> n4=1.
+5 n5=0.
+6 s=x1=1,p0 -> n6=1.
+7 s=x11=0,p=n6=1 -> n7=1.
+8 s=x2=1,p=n7=1 -> n8=0.
+9 s=x1=1,p=n8=0 -> n9=1.
+10 s=n1=0,p=n9=1 -> n10=1.
+11 s=B=0,p=n10=1 -> n11=1.
+12 s=x9=0,p=n11=1 -> n12=1.
+13 s=n10=1,p=n12=1 -> n13=0.
+14 s=n2=1,p=n13=0 -> n14=1.
+15 s=n6=1,p=n14=1 -> n15=0.
+16 s=x8=1,p=n15=0 -> n16=1.
+17 s=n12=1,p=n16=1 -> n17=0.
+18 s=x7=1,p=n17=0 -> n18=1.
+19 s=n5=0,p=n18=1 -> n19=1.
+20 s=x0=1,p=n19=1 -> n20=0.
+21 s=n4=1,p=n20=0 -> n21=1.
+22 s=n14=1,p=n21=1 -> n22=0.
+23 s=n21=1,p=n22=0 -> n23=1.
+24 s=x3=1,p=n23=1 -> n24=0.
+25 s=n7=1,p=n24=0 -> n25=1.
+26 s=n9=1,p=n25=1 -> n26=0.
+27 s=x4=1,p=n26=0 -> n27=1.
+28 s=x1=1,p=n27=1 -> n28=0.
+29 s=x10=0,p=n28=0 -> n29=1.
+30 s=x4=1,p=n29=1 -> n30=0.
+31 s=n23=1,p=n30=0 -> n31=1.
+32 s=x7=1,p=n31=1 -> n32=0.
+33 s=n17=0,p=n32=0 -> n33=1.
+34 s=x0=1,p=n33=1 -> n34=0.
+35 s=n2=1,p=n34=0 -> n35=1.
+36 s=n24=0,p=n35=1 -> n36=1.
+37 s=n31=1,p=n36=1 -> n37=0.
+38 s=n6=1,p=n37=0 -> n38=1.
+39 s=n24=0,p=n38=1 -> n39=1.
+40 s=n20=0,p=n39=1 -> n40=1.
+41 s=x0=1,p=n40=1 -> n41=0.
+42 s=n32=0,p=n41=0 -> n42=1.
+43 s=n23=1,p=n42=1 -> n43=0.
+44 s=n4=1,p=n43=0 -> n44=1.
+45 s=n30=0,p=n44=1 -> n45=1.
+46 s=n19=1,p=n45=1 -> n46=0.
+47 s=n38=1,p=n46=0 -> n47=1.
+48 s=n12=1,p=n47=1 -> n48=0.
+49 s=x5=0,p=n48=0 -> n49=1.
+50 s=n28=0,p=n49=1 -> n50=1.
+51 s=n10=1,p=n50=1 -> n51=0.
+52 s=n24=0,p=n51=0 -> n52=1.
+53 s=n0=1,p=n52=1 -> n53=0.
+54 self -> n54=1.
+55 s=n24=0,p=n54=1 -> n55=1.
+56 s=n48=0,p=n55=1 -> n56=1.
+57 s=x8=1,p=n56=1 -> n57=0.
+58 s=n32=0,p=n57=0 -> n58=1.
+59 s=n50=1,p=n58=1 -> n59=0.
+60 s=x3=1,p=n59=0 -> n60=1.
+61 s=n43=0,p=n60=1 -> n61=1.
+62 s=x6=1,p=n61=1 -> n62=0.
+63 s=n17=0,p=n62=0 -> n63=1.
+64 s=n56=1,p=n63=1 -> n64=0.
+65 s=n44=1,p=n64=0 -> n65=1.
+66 s=n63=1,p=n65=1 -> n66=0.
+67 s=n52=1,p=n66=0 -> n67=1.
+68 s=n9=1,p=n67=1 -> n68=0.
+69 s=n47=1,p=n68=0 -> n69=1.
+70 s=n66=0,p=n69=1 -> n70=1.
+71 s=n44=1,p=n70=1 -> n71=0.
+72 s=n21=1,p=n71=0 -> n72=1.
+73 s=n44=1,p=n72=1 -> n73=0.
+74 s=n28=0,p=n73=0 -> n74=1.
+75 s=x10=0,p=n74=1 -> n75=1.
+76 s=n46=0,p=n75=1 -> n76=1.
+77 s=n20=0,p=n76=1 -> n77=1.
+78 s=n36=1,p=n77=1 -> n78=0.
+79 s=n57=0,p=n78=0 -> n79=1.
+80 s=n10=1,p=n79=1 -> n80=0.
+81 s=n70=1,p=n80=0 -> n81=1.
+82 s=n34=0,p=n81=1 -> n82=1.
+83 s=n58=1,p=n82=1 -> n83=0.
+84 s=n52=1,p=n83=0 -> n84=1.
+85 s=n37=0,p=n84=1 -> n85=1.
+86 s=n64=0,p=n85=1 -> n86=1.
+87 s=n74=1,p=n86=1 -> n87=0.
+88 s=n44=1,p=n87=0 -> n88=1.
+89 s=n62=0,p=n88=1 -> n89=1.
+90 s=n40=1,p=n89=1 -> n90=0.
+91 s=n37=0,p=n90=0 -> n91=1.
+92 s=n68=0,p=n91=1 -> n92=1.
+93 s=B=0,p=n92=1 -> n93=1.
+94 s=n10=1,p=n93=1 -> n94=0.
+95 s=n26=0,p=n94=0 -> n95=1.
+96 s=n88=1,p=n95=1 -> n96=0.
+97 s=n67=1,p=n96=0 -> n97=1.
+98 s=n32=0,p=n97=1 -> n98=1.
+99 s=n85=1,p=n98=1 -> n99=0.
+Cycle22 n99=0. Outputs t22: n99=0,q11=x11=0,q6=x6=1,q8=x8=1. Next S23: q0=1;q1=n88=1;q2=0;q3=n79=1;q4=0;q5=n82=1;q6=0;q7=n81=1;q8=n90=0;q9=n78=0;q10=n89=1;q11=n84=1.
+S23: [1,1,0,1,0,1,0,1,0,0,1,1] = S3. Inputs t23 A=0,B=0. S3 with A0B1 was cycle3; with A0B0? Need compute cycle23 (not same as cycle3 because B differs; not same as? S3 with A0B0 not computed; cycle? S9 maybe [1,1,0,1,0,1,0,0,0,0,1,1] differs x7/x8/x10. So compute cycle23.
+
+Cycle23: S=S3 [1,1,0,1,0,1,0,1,0,0,1,1], A=0,B=0. We have computed S3 with A0B1 (cycle3) and A1B0 (cycle11), but not A0B0. Let's compute carefully. It may resemble cycle9 but x7=1,x8=0,x10=1 (cycle9 S9 had x7=0,x8=0,x10=1 and A0B0). Actually cycle9 state S9 = [1,1,0,1,0,1,0,0,0,0,1,1], A0B0. Cycle23 S3 differs only x7=1 (vs0). Also x8=0 same, x10=1 same, x11=1. So we can adapt cycle9 with x7 changed from0 to1. In cycle9, changing x7 affects gates with s=x7: n18 (s=x7), n32 (s=x7). In cycle9 x7=0 caused n18=1 (p n17=0 anyway) and n32=NAND(n31=0,0)=1. With x7=1, n18 = NAND(n17=0,1)=1 still (p0) so no change at n18. n32 = NAND(n31, x7=1). In cycle9 n31=0, so n32=1 regardless (p0); with x7=1 still n32=1. So changing x7 may not affect row? Need check n18 p=n17=0 so n18=1 yes; n32 p=n31=0 so n32=1. Thus row identical to cycle9? Wait cycle9 n31=0; yes. So cycle23 might have same n row as cycle9 (A0B0) and same n99=1, next state? In cycle9 next S10=[1,1,1,1,1,1,1,1,1,0,0,0]. But cycle23 state S3 has x7=1; if row same, d values same as cycle9? Need compare cycle9 d: n77=1,n88=1,n99=1,n79=1,n82=1,n81=1,n90=1,n78=0,n89=0,n84=0 -> S10 all ones except x9,x10,x11=0. For cycle23 if same d, next S24 would same S10. But need be cautious: cycle9 row maybe had n32=1 due n31=0; yes x7 irrelevant. n18 p0. So row same. However S3 has x8=0 same as S9, x10=1 same, x11=1 same; only x7 differs and it seems not used because p zeros at those gates. Need verify gate18 s=x7 with p=n17. In cycle9 n17=0, so n18=1 independent. Gate32 s=x7 with p=n31=0, n32=1 independent. Any other s=x7? only n18 and n32. So yes row same as cycle9. Let's still maybe compute key targets: For S3 A0B0, we can use cycle9 row and outputs: n99=1, n84=0, n90=1, etc. But wait cycle9 row had n0=1 (A=0,x5=1) yes; B=0. S3 x5=1. Good. The difference x7 (S3=1 vs S9=0) truly irrelevant. Let's confirm n7 in cycle9 with x11=1,n6=1 -> n7=0. In S3 same. n25 s=n7=0. Good. n18 = NAND(n17=0,x7) =1. n32=NAND(n31=0,x7)=1. No downstream difference. So cycle23 = cycle9 row. Therefore n99_23=1; outputs t23: n99=1, q11=state S3 x11=1, q6=x6=0, q8=x8=0. Next state after edge (not needed for outputs because cycles end at 23, but maybe for q outputs? no) = S24 same as S10 if row same: [1,1,1,1,1,1,1,1,1,0,0,0]. Not needed. But need ensure q11/q6/q8 at t23 use current S23 S3: q11=1,q6=0,q8=0. Yes.
+
+Now we have tentative output traces:
+n99_t for t0..23:
+t0 0
+t1 1
+t2 0
+t3 0
+t4 1
+t5 0
+t6 = cycle3 0
+t7 = cycle4 1
+t8 0
+t9 1
+t10 0
+t11 1
+t12 = cycle2 0
+t13 = cycle11 1
+t14 0
+t15 0
+t16 1
+t17 1
+t18 1
+t19 1
+t20 1
+t21 1
+t22 0
+t23 1
+So n99 list: [0,1,0,0,1,0,0,1,0,1,0,1,0,1,0,0,1,1,1,1,1,1,0,1]. Need verify t14/t15 etc.
+
+q6 output list = state x6 each cycle. We can list from states S0..S23:
+S0 x6=0
+S1 x6=0
+S2 x6=1
+S3 x6=0
+S4 x6=0
+S5 x6=1
+S6 x6=0 (S3)
+S7 x6=0 (S4)
+S8 x6=1 (S5)
+S9 x6=0 (S9 [..x6=0])
+S10 x6=1 (S2)
+S11 x6=0 (S3)
+S12 x6=1 (S2)
+S13 x6=0 (S3)
+S14 x6=1 (S2)
+S15 x6=0 (S9)
+S16 x6=0 (S4) [S4 x6=0]
+S17 x6=1 (S17 x6=1)
+S18 x6=1 (S18 x6=1)
+S19 x6=1 (S19)
+S20 x6=1
+S21 x6=1
+S22 x6=1 (S22 x6=1)
+S23 x6=0 (S3)
+List q6: [0,0,1,0,0,1,0,0,1,0,1,0,1,0,1,0,0,1,1,1,1,1,1,0]. Also q6 should equal shift of n99: [init0, n99_0..n99_22] = [0,0,1,0,0,1,0,0,1,0,1,0,1,0,1,0,0,1,1,1,1,1,1,0]? Let's check n99_0..22: 0,1,0,0,1,0,0,1,0,1,0,1,0,1,0,0,1,1,1,1,1,1,0. Shift with leading0: [0,0,1,0,0,1,0,0,1,0,1,0,1,0,1,0,0,1,1,1,1,1,1,0]. Yes matches. Good consistency! Nice. This also validates n99 and q6. Note at t16 q6 from S16=S4 x6=0, and shifted n99_15=0 yes. t17 q6 = n99_16=1 yes.
+
+q8 output list = state x8_t. List from states:
+S0 x8=0
+S1 x8=0
+S2 x8=1
+S3 x8=0
+S4 x8=1
+S5 x8=1
+S6=S3 x8=0
+S7=S4 x8=1
+S8=S5 x8=1
+S9 x8=0
+S10=S2 x8=1
+S11=S3 x8=0
+S12=S2 x8=1
+S13=S3 x8=0
+S14=S2 x8=1
+S15=S9 x8=0
+S16=S4 x8=1
+S17 x8=0
+S18 x8=0
+S19 x8=0
+S20 x8=0
+S21 x8=0
+S22 x8=1 (S22 [.. x8=1])
+S23=S3 x8=0
+List q8: [0,0,1,0,1,1,0,1,1,0,1,0,1,0,1,0,1,0,0,0,0,0,1,0]. q8 update d=n90. We can check q8_{t+1}=n90_t. Our computed n90 values: t0 n90=0 -> q8_1=0 yes. t1 n90=1 -> q8_2=1. t2 n90=0 -> q8_3=0. t3 n90=1 -> q8_4=1. t4 n90=1 -> q8_5=1. t5 n90=0 -> q8_6=0. t6=cycle3 n90=1 -> q8_7=1. t7=cycle4 n90=1 -> q8_8=1. t8 n90=0 -> q8_9=0. t9 n90=1 -> q8_10=1. t10 n90=0 -> q8_11=0. t11 n90=1 -> q8_12=1. t12=cycle2 n90=0 -> q8_13=0. t13=cycle11 n90=1 -> q8_14=1. t14 n90=0 -> q8_15=0. t15 n90=1 -> q8_16=1. t16 n90=0 -> q8_17=0. t17 n90=0 -> q8_18=0. t18 n90=0 -> q8_19=0. t19 n90=0 -> q8_20=0. t20 n90=0 -> q8_21=0. t21 n90=1 -> q8_22=1. t22 n90=0 -> q8_23=0. Matches list. Good.
+
+q11 output list = state x11_t. List:
+S0 x11=1
+S1 x11=1
+S2 x11=0
+S3 x11=1
+S4 x11=0
+S5 x11=1
+S6=S3 x11=1
+S7=S4 x11=0
+S8=S5 x11=1
+S9 x11=1
+S10=S2 x11=0
+S11=S3 x11=1
+S12=S2 x11=0
+S13=S3 x11=1
+S14=S2 x11=0
+S15=S9 x11=1
+S16=S4 x11=0
+S17 x11=0
+S18 x11=0
+S19 x11=1
+S20 x11=1
+S21 x11=1
+S22 x11=0
+S23=S3 x11=1
+List q11: [1,1,0,1,0,1,1,0,1,1,0,1,0,1,0,1,0,0,0,1,1,1,0,1]. Check update q11_{t+1}=n84_t. n84 values computed: t0=1 -> q11_1=1; t1=0 -> q11_2=0; t2=1 -> q11_3=1; t3=0 -> q11_4=0; t4=1 -> q11_5=1; t5=1 -> q11_6=1 (S6 x11=1 yes); t6=cycle3 n84=0 -> q11_7=0; t7=cycle4 n84=1 -> q11_8=1; t8 n84=1 -> q11_9=1; t9 n84=0 -> q11_10=0; t10 n84=1 -> q11_11=1; t11 n84=0 -> q11_12=0; t12=cycle2 n84=1 -> q11_13=1; t13=cycle11 n84=0 -> q11_14=0; t14 n84=1 -> q11_15=1; t15 n84=0 -> q11_16=0; t16 n84=0 -> q11_17=0; t17 n84=0 -> q11_18=0; t18 n84=1 -> q11_19=1; t19 n84=1 -> q11_20=1; t20 n84=1 -> q11_21=1; t21 n84=0 -> q11_22=0; t22 n84=1 -> q11_23=1. Matches. Good.
+
+Need be absolutely certain cycles with reuse are valid and computations for cycles 14-23 correct. There may be mistakes in manual rows. Let's rigorously verify using additional methods: derive simplified expressions for next-state signals maybe and check key cycles. Since output q6 list matched n99 shift by construction (because q6 d=n99). If our n99 list has an error, q6 list would still be consistent if we used states, but states derived from n99. Need verify n99 via independent checks for each cycle maybe using targeted recomputation from current state for n99 and DFF inputs. We can exploit the chain recurrence and maybe compute only the subchain relevant to n99 with memo and validate some cycles. But we already did full rows. Need cross-check for possible mistakes in cycles where we reused states. Let's verify state transitions and cycles thoroughly.
+
+Potential sources of error:
+- Input trace indexing, especially t14-t23. Let's recopy traces: in0: indices:0 0;1 1;2 0;3 0;4 0;5 0;6 0;7 0;8 1;9 0;10 0;11 1;12 0;13 1;14 1;15 1;16 1;17 1;18 1;19 0;20 1;21 0;22 0;23 0. Wait earlier for t18 we set A=1 (yes), t19 A=0, t20 A=1. Good. in1: 0 0;1 1;2 1;3 1;4 0;5 0;6 1;7 0;8 0;9 0;10 0;11 0;12 1;13 0;14 1;15 1;16 1;17 1;18 0;19 1;20 1;21 0;22 0;23 0. Good.
+- DFF init and mapping: q4/q9/q10/q11 init1. Yes.
+- Gate list mapping: Need ensure s_i list matches JSON. Let's recheck gates around targets and any possible misread: The gates are a chain? Need verify each gate's "a" indeed previous n. From JSON: n0 a q5 b in0. n1 a n0 b q3. n2 a n1 b q8. n3 a n2 b q0. n4 a n3 b n1. n5 a n4 b n4. n6 a n5 b q1. n7 a n6 b q11. n8 a n7 b q2. n9 a n8 b q1. n10 a n9 b n1. n11 a n10 b in1. n12 a n11 b q9. n13 a n12 b n10. n14 a n13 b n2. n15 a n14 b n6. n16 a n15 b q8. n17 a n16 b n12. n18 a n17 b q7. n19 a n18 b n5. n20 a n19 b q0. n21 a n20 b n4. n22 a n21 b n14. n23 a n22 b n21. n24 a n23 b q3. n25 a n24 b n7. n26 a n25 b n9. n27 a n26 b q4. n28 a n27 b q1. n29 a n28 b q10. n30 a n29 b q4. n31 a n30 b n23. n32 a n31 b q7. n33 a n32 b n17. n34 a n33 b q0. n35 a n34 b n2. n36 a n35 b n24. n37 a n36 b n31. n38 a n37 b n6. n39 a n38 b n24. n40 a n39 b n20. n41 a n40 b q0. n42 a n41 b n32. n43 a n42 b n23. n44 a n43 b n4. n45 a n44 b n30. n46 a n45 b n19. n47 a n46 b n38. n48 a n47 b n12. n49 a n48 b q5. n50 a n49 b n28. n51 a n50 b n10. n52 a n51 b n24. n53 a n52 b n0. n54 a n53 b n53. n55 a n54 b n24. n56 a n55 b n48. n57 a n56 b q8. n58 a n57 b n32. n59 a n58 b n50. n60 a n59 b q3. n61 a n60 b n43. n62 a n61 b q6. n63 a n62 b n17. n64 a n63 b n56. n65 a n64 b n44. n66 a n65 b n63. n67 a n66 b n52. n68 a n67 b n9. n69 a n68 b n47. n70 a n69 b n66. n71 a n70 b n44. n72 a n71 b n21. n73 a n72 b n44. n74 a n73 b n28. n75 a n74 b q10. n76 a n75 b n46. n77 a n76 b n20. n78 a n77 b n36. n79 a n78 b n57. n80 a n79 b n10. n81 a n80 b n70. n82 a n81 b n34. n83 a n82 b n58. n84 a n83 b n52. n85 a n84 b n37. n86 a n85 b n64. n87 a n86 b n74. n88 a n87 b n44. n89 a n88 b n62. n90 a n89 b n40. n91 a n90 b n37. n92 a n91 b n68. n93 a n92 b in1. n94 a n93 b n10. n95 a n94 b n26. n96 a n95 b n88. n97 a n96 b n67. n98 a n97 b n32. n99 a n98 b n85. Yes.
+DFF mapping recheck: q0 d n77, q1 n88, q2 n99, q3 n79, q4 n99 init1, q5 n82, q6 n99, q7 n81, q8 n90, q9 n78 init1, q10 n89 init1, q11 n84 init1. Yes.
+
+We should verify cycle0 especially, because initial state and n99 maybe. Let's recompute cycle0 with a possibly more algebraic spot check. S0: x=[0,0,0,0,1,0,0,0,0,1,1,1], A=0,B=0. Since x5=0 or A=0 -> n0=1. x3=0 -> n1=1. x8=0 -> n2=1. x0=0 -> n3=1. n4=NAND(n3=1,n1=1)=0. n5=1. n6=NAND(1,x1=0)=1. n7=NAND(n6=1,x11=1)=0. n8=NAND(0,x2=0)=1. n9=NAND(1,x1=0)=1. n10=NAND(n9=1,n1=1)=0. n11=NAND(0,B=0)=1. n12=NAND(1,x9=1)=0. n13=NAND(n12=0,n10=0)=1. n14=NAND(1,n2=1)=0. n15=NAND(n14=0,n6=1)=1. n16=NAND(1,x8=0)=1. n17=NAND(n16=1,n12=0)=1. n18=NAND(1,x7=0)=1. n19=NAND(n18=1,n5=1)=0. n20=NAND(n19=0,x0=0)=1. n21=NAND(n20=1,n4=0)=1. n22=NAND(n21=1,n14=0)=1. n23=NAND(n22=1,n21=1)=0. n24=NAND(n23=0,x3=0)=1. n25=NAND(n24=1,n7=0)=1. n26=NAND(n25=1,n9=1)=0. n27=NAND(n26=0,x4=1)=1. n28=NAND(1,x1=0)=1. n29=NAND(1,x10=1)=0. n30=NAND(0,x4=1)=1. n31=NAND(n30=1,n23=0)=1. n32=NAND(1,x7=0)=1. n33=NAND(n32=1,n17=1)=0. n34=NAND(n33=0,x0=0)=1. n35=NAND(1,n2=1)=0. n36=NAND(n35=0,n24=1)=1. n37=NAND(n36=1,n31=1)=0. n38=NAND(n37=0,n6=1)=1. n39=NAND(n38=1,n24=1)=0. n40=NAND(n39=0,n20=1)=1. n41=NAND(n40=1,x0=0)=1. n42=NAND(n41=1,n32=1)=0. n43=NAND(n42=0,n23=0)=1. n44=NAND(n43=1,n4=0)=1. n45=NAND(n44=1,n30=1)=0. n46=NAND(n45=0,n19=0)=1. n47=NAND(n46=1,n38=1)=0. n48=NAND(n47=0,n12=0)=1. n49=NAND(n48=1,x5=0)=1. n50=NAND(n49=1,n28=1)=0. n51=NAND(n50=0,n10=0)=1. n52=NAND(n51=1,n24=1)=0. n53=NAND(n52=0,n0=1)=1. n54=0. n55=NAND(n54=0,n24=1)=1. n56=NAND(n55=1,n48=1)=0. n57=NAND(n56=0,x8=0)=1. n58=NAND(n57=1,n32=1)=0. n59=NAND(n58=0,n50=0)=1. n60=NAND(n59=1,x3=0)=1. n61=NAND(n60=1,n43=1)=0. n62=NAND(n61=0,x6=0)=1. n63=NAND(n62=1,n17=1)=0. n64=NAND(n63=0,n56=0)=1. n65=NAND(n64=1,n44=1)=0. n66=NAND(n65=0,n63=0)=1. n67=NAND(n66=1,n52=0)=1. n68=NAND(n67=1,n9=1)=0. n69=NAND(n68=0,n47=0)=1. n70=NAND(n69=1,n66=1)=0. n71=NAND(n70=0,n44=1)=1. n72=NAND(n71=1,n21=1)=0. n73=NAND(n72=0,n44=1)=1. n74=NAND(n73=1,n28=1)=0. n75=NAND(n74=0,x10=1)=1. n76=NAND(n75=1,n46=1)=0. n77=NAND(n76=0,n20=1)=1. n78=NAND(n77=1,n36=1)=0. n79=NAND(n78=0,n57=1)=1. n80=NAND(n79=1,n10=0)=1. n81=NAND(n80=1,n70=0)=1. n82=NAND(n81=1,n34=1)=0. n83=NAND(n82=0,n58=0)=1. n84=NAND(n83=1,n52=0)=1. n85=NAND(n84=1,n37=0)=1. n86=NAND(n85=1,n64=1)=0. n87=NAND(n86=0,n74=0)=1. n88=NAND(n87=1,n44=1)=0. n89=NAND(n88=0,n62=1)=1. n90=NAND(n89=1,n40=1)=0. n91=NAND(n90=0,n37=0)=1. n92=NAND(n91=1,n68=0)=1. n93=NAND(n92=1,B=0)=1. n94=NAND(n93=1,n10=0)=1. n95=NAND(n94=1,n26=0)=1. n96=NAND(n95=1,n88=0)=1. n97=NAND(n96=1,n67=1)=0. n98=NAND(n97=0,n32=1)=1. n99=NAND(n98=1,n85=1)=0. Good.
+
+Cycle1 re-evaluate maybe with a shortcut: S1 [1,0,0,1,0,0,0,1,0,0,1,1], A=1,B=1. n0=1 (x5=0). n1=NAND(1,x3=1)=0. n2=NAND(n1=0,x8=0)=1. n3=NAND(n2=1,x0=1)=0. n4=NAND(n3=0,n1=0)=1. n5=0. n6=NAND(0,x1=0)=1. n7=NAND(1,x11=1)=0. n8=NAND(0,x2=0)=1. n9=NAND(1,x1=0)=1. n10=NAND(n9=1,n1=0)=1. n11=NAND(n10=1,B=1)=0. n12=NAND(n11=0,x9=0)=1. n13=NAND(n12=1,n10=1)=0. n14=NAND(n13=0,n2=1)=1. n15=NAND(n14=1,n6=1)=0. n16=NAND(n15=0,x8=0)=1. n17=NAND(n16=1,n12=1)=0. n18=NAND(n17=0,x7=1)=1. n19=NAND(n18=1,n5=0)=1. n20=NAND(n19=1,x0=1)=0. n21=NAND(n20=0,n4=1)=1. n22=NAND(n21=1,n14=1)=0. n23=NAND(n22=0,n21=1)=1. n24=NAND(n23=1,x3=1)=0. n25=NAND(n24=0,n7=0)=1. n26=NAND(n25=1,n9=1)=0. n27=NAND(n26=0,x4=0)=1. n28=NAND(n27=1,x1=0)=1. n29=NAND(n28=1,x10=1)=0. n30=NAND(n29=0,x4=0)=1. n31=NAND(n30=1,n23=1)=0. n32=NAND(n31=0,x7=1)=1. n33=NAND(n32=1,n17=0)=1. n34=NAND(n33=1,x0=1)=0. n35=NAND(n34=0,n2=1)=1. n36=NAND(n35=1,n24=0)=1. n37=NAND(n36=1,n31=0)=1. n38=NAND(n37=1,n6=1)=0. n39=NAND(n38=0,n24=0)=1. n40=NAND(n39=1,n20=0)=1. n41=NAND(n40=1,x0=1)=0. n42=NAND(n41=0,n32=1)=1. n43=NAND(n42=1,n23=1)=0. n44=NAND(n43=0,n4=1)=1. n45=NAND(n44=1,n30=1)=0. n46=NAND(n45=0,n19=1)=1. n47=NAND(n46=1,n38=0)=1. n48=NAND(n47=1,n12=1)=0. n49=NAND(n48=0,x5=0)=1. n50=NAND(n49=1,n28=1)=0. n51=NAND(n50=0,n10=1)=1. n52=NAND(n51=1,n24=0)=1. n53=NAND(n52=1,n0=1)=0. n54=1. n55=NAND(n54=1,n24=0)=1. n56=NAND(n55=1,n48=0)=1. n57=NAND(n56=1,x8=0)=1. n58=NAND(n57=1,n32=1)=0. n59=NAND(n58=0,n50=0)=1. n60=NAND(n59=1,x3=1)=0. n61=NAND(n60=0,n43=0)=1. n62=NAND(n61=1,x6=0)=1. n63=NAND(n62=1,n17=0)=1. n64=NAND(n63=1,n56=1)=0. n65=NAND(n64=0,n44=1)=1. n66=NAND(n65=1,n63=1)=0. n67=NAND(n66=0,n52=1)=1. n68=NAND(n67=1,n9=1)=0. n69=NAND(n68=0,n47=1)=1. n70=NAND(n69=1,n66=0)=1. n71=NAND(n70=1,n44=1)=0. n72=NAND(n71=0,n21=1)=1. n73=NAND(n72=1,n44=1)=0. n74=NAND(n73=0,n28=1)=1. n75=NAND(n74=1,x10=1)=0. n76=NAND(n75=0,n46=1)=1. n77=NAND(n76=1,n20=0)=1. n78=NAND(n77=1,n36=1)=0. n79=NAND(n78=0,n57=1)=1. n80=NAND(n79=1,n10=1)=0. n81=NAND(n80=0,n70=1)=1. n82=NAND(n81=1,n34=0)=1. n83=NAND(n82=1,n58=0)=1. n84=NAND(n83=1,n52=1)=0. n85=NAND(n84=0,n37=1)=1. n86=NAND(n85=1,n64=0)=1. n87=NAND(n86=1,n74=1)=0. n88=NAND(n87=0,n44=1)=1. n89=NAND(n88=1,n62=1)=0. n90=NAND(n89=0,n40=1)=1. n91=NAND(n90=1,n37=1)=0. n92=NAND(n91=0,n68=0)=1. n93=NAND(n92=1,B=1)=0. n94=NAND(n93=0,n10=1)=1. n95=NAND(n94=1,n26=0)=1. n96=NAND(n95=1,n88=1)=0. n97=NAND(n96=0,n67=1)=1. n98=NAND(n97=1,n32=1)=0. n99=NAND(n98=0,n85=1)=1. Good.
+
+Now we should verify the reuse cycles: S6=S3, S7=S4, S8=S5, S10=S2, S11=S3, S12=S2, S13=S3, S14=S2, S15=S9, S16=S4. Let's check transitions around cycles 2-8 to ensure no mistake.
+Cycle2 S2 (all ones except x9=x10=x11=0), A=0,B=1 produced S3 [1,1,0,1,0,1,0,1,0,0,1,1]. Let's verify key DFF d from cycle2 row: n77=1,n88=1,n99=0,n79=1,n82=1,n81=1,n90=0,n78=0,n89=1,n84=1. So S3 q0=1,q1=1,q2=0,q3=1,q4=0,q5=1,q6=0,q7=1,q8=0,q9=0,q10=1,q11=1. Yes.
+Cycle3 S3 A0B1 produced S4 [1,1,0,1,0,1,0,1,1,0,0,0]. DFF d from cycle3: n77=1,n88=1,n99=0,n79=1,n82=1,n81=1,n90=1,n78=0,n89=0,n84=0. yes q8=1,q10=0,q11=0. Good.
+Cycle4 S4 A0B0 produced S5 [1,1,1,1,1,1,1,1,1,0,0,1]. d: n77=1,n88=1,n99=1,n79=1,n82=1,n81=1,n90=1,n78=0,n89=0,n84=1. yes. Wait q4/q2/q6 = n99=1; q5=1; q8=1; q11=1; q10=0; q9=0. Good.
+Cycle5 S5 A0B0 produced S6 = S3? d from cycle5: n77=1,n88=1,n99=0,n79=1,n82=1,n81=1,n90=0,n78=0,n89=1,n84=1 -> [1,1,0,1,0,1,0,1,0,0,1,1] yes. Good. Notice cycle5 with S5 and A0B0 produced n99=0 whereas cycle4 S4 A0B0 produced n99=1. okay.
+Cycle6 = S3 A0B1 -> S4; cycle7=S4 A0B0 -> S5. Good. Cycle8 S5 A1B0 produced S9 [1,1,0,1,0,1,0,0,0,0,1,1]. Let's verify some d for cycle8 because state S5 all ones except x9,x10=0,x11=1; A1B0. We computed n81=0 (so q7 next 0) whereas in many cycles n81=1. Check cycle8 n80=1,n70=1 -> n81=NAND(1,1)=0 yes. n82=NAND(n81=0,n34=0)=1. n84=NAND(n83=0? Wait n83=0, n52=1) = NAND(0,1)=1 yes. n89=NAND(n88=1,n62=0)=1, so q10 next1. n90=0, q8 next0. n99=0. Good. S9 has x7=0. Good.
+Cycle9 S9 A0B0 produced S10=S2. Verify d: n77=1,n88=1,n99=1,n79=1,n82=1,n81=1,n90=1,n78=0,n89=0,n84=0. Wait if n99=1, q2/q4/q6 next=1; n90=1 q8=1; n84=0 q11=0; n89=0 q10=0. S10 [1,1,1,1,1,1,1,1,1,0,0,0]. yes. But cycle9 row had n84=0; then S10 x11=0. Good.
+Cycle10 S2 A0B0 produced S11=S3. We computed d: n77=1,n88=1,n99=0,n79=1,n82=1,n81=1,n90=0,n78=0,n89=1,n84=1 -> S3. yes. Note S2 with A0B1 (cycle2) also produced S3; with A0B0 produced same next S3? We computed cycle10 next S3. Interesting: cycle2 and cycle10 both S3 though B differs. Let's verify cycle10 n89=1 (q10 next1), n84=1, same as cycle2; yes. B affected n11/n12 etc but final same. plausible.
+Cycle11 S3 A1B0 produced S12=S2. d: n77=1,n88=1,n99=1,n79=1,n82=1,n81=1,n90=1,n78=0,n89=0,n84=0. Yes S2. Cycle13 same. Cycle12 S2 A0B1 = cycle2 -> S3. Good. So sequence S11=S3 -(A1B0)-> S2 -(A0B1)-> S3 -(A1B0)-> S2 ... for cycles 11-14? Let's map: S11=S3 at t11 input (1,0) -> S12=S2. t12 S2 input(0,1)->S13=S3. t13 S3 input(1,0)->S14=S2. t14 S2 input(1,1)->S15=S9 (we computed). Good.
+Cycle14 S2 A1B1 produced S15=S9. Let's verify because S2 with A1B1 maybe. We computed n0=0; n81=0 causing q7 next0; n89=1 q10 next1; n84=1 q11 next1; n90=0 q8 next0; n99=0; n79=1; n78=0; n82=1. S15 [1,1,0,1,0,1,0,0,0,0,1,1]. Yes. Good.
+Cycle15 S9 A1B1 produced S16=S4. Wait S9 [1,1,0,1,0,1,0,0,0,0,1,1], A1B1. We computed d: n77=1,n88=1,n99=0,n79=1,n82=1,n81=1,n90=1,n78=0,n89=0,n84=0 => S4 [1,1,0,1,0,1,0,1,1,0,0,0]. Yes. Good. Note n99=0 for t15. Good.
+Cycle16 S4 A1B1 produced S17 [1,0,1,1,1,0,1,1,0,0,1,0]. Let's scrutinize cycle16 because many values differ and q1/q5 become 0, q4/q6=1. S4 [1,1,0,1,0,1,0,1,1,0,0,0], A=1,B=1. We computed n0=0; n1=1; n2=0 (since x8=1 and n1=1) yes; n3=1; n4=0; n5=1; n6=0; n7=1 (x11=0); n8=1 (x2=0); n9=0; n10=1; n11=0; n12=1; n13=0; n14=1; n15=1 (n14=1,n6=0 ->1); n16=0 (x8=1,n15=1); n17=1 (n16=0,n12=1); n18=0 (x7=1,n17=1); n19=1 (n18=0,n5=1 -> NAND0,1=1); n20=0 (x0=1,n19=1); n21=1 (n20=0,n4=0); n22=0 (n21=1,n14=1); n23=1 (n22=0,n21=1); n24=0 (x3=1,n23=1); n25=1 (n24=0,n7=1); n26=1 (n25=1,n9=0); n27=1 (x4=0); n28=0 (x1=1,n27=1); n29=1 (x10=0); n30=1 (x4=0); n31=0 (n30=1,n23=1); n32=1 (x7=1,n31=0 ->1); n33=0 (n32=1,n17=1); n34=1 (n33=0,x0=1 ->1); n35=1 (n34=1,n2=0 ->1); n36=1 (n35=1,n24=0); n37=1 (n36=1,n31=0); n38=1 (n37=1,n6=0); n39=1 (n38=1,n24=0); n40=1 (n39=1,n20=0); n41=0 (x0=1,n40=1); n42=1 (n41=0,n32=1); n43=0 (n42=1,n23=1); n44=1 (n43=0,n4=0); n45=0 (n44=1,n30=1); n46=1 (n45=0,n19=1); n47=0 (n46=1,n38=1); n48=1 (n47=0,n12=1); n49=0 (n48=1,x5=1); n50=1 (n49=0,n28=0); n51=0 (n50=1,n10=1); n52=1 (n51=0,n24=0); n53=1 (n52=1,n0=0 -> NAND1,0=1); n54=0; n55=1 (n54=0,n24=0); n56=0 (n55=1,n48=1); n57=1 (n56=0,x8=1 ->1); n58=0 (n57=1,n32=1); n59=1 (n58=0,n50=1); n60=0 (n59=1,x3=1); n61=1 (n60=0,n43=0); n62=1 (n61=1,x6=0); n63=0 (n62=1,n17=1); n64=1 (n63=0,n56=0); n65=0 (n64=1,n44=1); n66=1 (n65=0,n63=0); n67=0 (n66=1,n52=1); n68=1 (n67=0,n9=0); n69=1 (n68=1,n47=0); n70=0 (n69=1,n66=1); n71=1 (n70=0,n44=1); n72=0 (n71=1,n21=1); n73=1 (n72=0,n44=1); n74=1 (n73=1,n28=0); n75=1 (x10=0); n76=0 (n75=1,n46=1); n77=1 (n76=0,n20=0); n78=0 (n77=1,n36=1); n79=1 (n78=0,n57=1); n80=0 (n79=1,n10=1); n81=1 (n80=0,n70=0); n82=0 (n81=1,n34=1); n83=1 (n82=0,n58=0); n84=0 (n83=1,n52=1); n85=1 (n84=0,n37=1); n86=0 (n85=1,n64=1); n87=1 (n86=0,n74=1); n88=0 (n87=1,n44=1); n89=1 (n88=0,n62=1); n90=0 (n89=1,n40=1); n91=1 (n90=0,n37=1); n92=0 (n91=1,n68=1); n93=1 (n92=0,B=1 -> NAND0,1=1); n94=0 (n93=1,n10=1); n95=1 (n94=0,n26=1); n96=1 (n95=1,n88=0); n97=1 (n96=1,n67=0); n98=0 (n97=1,n32=1); n99=1 (n98=0,n85=1). Good. DFF S17: q0=n77=1; q1=n88=0; q2=n99=1; q3=n79=1; q4=1; q5=n82=0; q6=1; q7=n81=1; q8=n90=0; q9=n78=0; q10=n89=1; q11=n84=0. yes. Note q1 becomes0, q5 becomes0. Good.
+
+Cycle17 S17 A1B1 produced S18 [1,1,1,1,1,1,1,1,0,0,1,0]? Let's verify n88=1 (q1 next1), n82=1 (q5 next1), n99=1, n81=1, n90=0, n78=0,n89=1,n84=0. Yes S18 [1,1,1,1,1,1,1,1,0,0,1,0]. We should check cycle17 n99=1 and n90=0. It had S17 with x5=0 so n0=1 even A=1; x1=0 causing n6=1 (since n5=0), n28=1, n50=0 etc. Seems okay. Let's spot check n82 in cycle17: n80=NAND(n79=1,n10=1)=0; n70=1; n81=NAND(n80=0,n70=1)=1; n34=0; n82=NAND(n81=1,n34=0)=1. yes. n84=NAND(n83=1,n52=1)=0. n88=NAND(n87=0,n44=1)=1. n89=NAND(n88=1,n62=0)=1. n90=NAND(n89=1,n40=1)=0. n98=0,n85=1 -> n99=1. Good.
+
+Cycle18 S18 A1B0 produced S19 [1,1,1,0,1,1,1,0,0,1,1,1]. This is a bigger change: q3=0,q7=0,q9=1,q11=1. Let's verify cycle18 carefully because n79=0 (q3 next0) and n78=1 (q9 next1), n81=0 (q7 next0), n84=1 (q11 next1), n99=1. S18 [x0=1,x1=1,x2=1,x3=1,x4=1,x5=1,x6=1,x7=1,x8=0,x9=0,x10=1,x11=0], A=1,B=0. We computed n0=0. Let's recalc critical chain:
+n0=0 (x5&A=1). n1=NAND(n0=0,x3=1)=1 (yes because a=0). n2=NAND(n1=1,x8=0)=1. n3=NAND(n2=1,x0=1)=0. n4=NAND(n3=0,n1=1)=1. n5=0. n6=NAND(n5=0,x1=1)=1. n7=NAND(n6=1,x11=0)=1. n8=NAND(n7=1,x2=1)=0. n9=NAND(n8=0,x1=1)=1. n10=NAND(n9=1,n1=1)=0. n11=NAND(n10=0,B=0)=1. n12=NAND(n11=1,x9=0)=1. n13=NAND(n12=1,n10=0)=1. n14=NAND(n13=1,n2=1)=0. n15=NAND(n14=0,n6=1)=1. n16=NAND(n15=1,x8=0)=1. n17=NAND(n16=1,n12=1)=0. n18=NAND(n17=0,x7=1)=1. n19=NAND(n18=1,n5=0)=1. n20=NAND(n19=1,x0=1)=0. n21=NAND(n20=0,n4=1)=1. n22=NAND(n21=1,n14=0)=1. n23=NAND(n22=1,n21=1)=0. n24=NAND(n23=0,x3=1)=1. n25=NAND(n24=1,n7=1)=0. n26=NAND(n25=0,n9=1)=1. n27=NAND(n26=1,x4=1)=0. n28=NAND(n27=0,x1=1)=1. n29=NAND(n28=1,x10=1)=0. n30=NAND(n29=0,x4=1)=1. n31=NAND(n30=1,n23=0)=1. n32=NAND(n31=1,x7=1)=0. n33=NAND(n32=0,n17=0)=1. n34=NAND(n33=1,x0=1)=0. n35=NAND(n34=0,n2=1)=1. n36=NAND(n35=1,n24=1)=0. n37=NAND(n36=0,n31=1)=1. n38=NAND(n37=1,n6=1)=0. n39=NAND(n38=0,n24=1)=1. n40=NAND(n39=1,n20=0)=1. n41=NAND(n40=1,x0=1)=0. n42=NAND(n41=0,n32=0)=1. n43=NAND(n42=1,n23=0)=1. n44=NAND(n43=1,n4=1)=0. n45=NAND(n44=0,n30=1)=1. n46=NAND(n45=1,n19=1)=0. n47=NAND(n46=0,n38=0)=1. n48=NAND(n47=1,n12=1)=0. n49=NAND(n48=0,x5=1)=1. n50=NAND(n49=1,n28=1)=0. n51=NAND(n50=0,n10=0)=1. n52=NAND(n51=1,n24=1)=0. n53=NAND(n52=0,n0=0)=1. n54=0. n55=NAND(n54=0,n24=1)=1. n56=NAND(n55=1,n48=0)=1. n57=NAND(n56=1,x8=0)=1. n58=NAND(n57=1,n32=0)=1. n59=NAND(n58=1,n50=0)=1. n60=NAND(n59=1,x3=1)=0. n61=NAND(n60=0,n43=1)=1. n62=NAND(n61=1,x6=1)=0. n63=NAND(n62=0,n17=0)=1. n64=NAND(n63=1,n56=1)=0. n65=NAND(n64=0,n44=0)=1. n66=NAND(n65=1,n63=1)=0. n67=NAND(n66=0,n52=0)=1. n68=NAND(n67=1,n9=1)=0. n69=NAND(n68=0,n47=1)=1. n70=NAND(n69=1,n66=0)=1. n71=NAND(n70=1,n44=0)=1. n72=NAND(n71=1,n21=1)=0. n73=NAND(n72=0,n44=0)=1. n74=NAND(n73=1,n28=1)=0. n75=NAND(n74=0,x10=1)=1. n76=NAND(n75=1,n46=0)=1. n77=NAND(n76=1,n20=0)=1. n78=NAND(n77=1,n36=0)=1. n79=NAND(n78=1,n57=1)=0. n80=NAND(n79=0,n10=0)=1. n81=NAND(n80=1,n70=1)=0. n82=NAND(n81=0,n34=0)=1. n83=NAND(n82=1,n58=1)=0. n84=NAND(n83=0,n52=0)=1. n85=NAND(n84=1,n37=1)=0. n86=NAND(n85=0,n64=0)=1. n87=NAND(n86=1,n74=0)=1. n88=NAND(n87=1,n44=0)=1. n89=NAND(n88=1,n62=0)=1. n90=NAND(n89=1,n40=1)=0. n91=NAND(n90=0,n37=1)=1. n92=NAND(n91=1,n68=0)=1. n93=NAND(n92=1,B=0)=1. n94=NAND(n93=1,n10=0)=1. n95=NAND(n94=1,n26=1)=0. n96=NAND(n95=0,n88=1)=1. n97=NAND(n96=1,n67=1)=0. n98=NAND(n97=0,n32=0)=1. n99=NAND(n98=1,n85=0)=1. Good. S19 as above.
+
+Cycle19 S19 A0B1 produced fixed S20. We should verify n79=0 and n84=1 etc. S19 [1,1,1,0,1,1,1,0,0,1,1,1]. A0B1. Critical: n0=1 (A0), n1=NAND(n0=1,x3=0)=1 (since x3=0). n2=NAND(n1=1,x8=0)=1. n3=NAND(n2=1,x0=1)=0. n4=NAND(n3=0,n1=1)=1. n5=0. n6=1 (x1=1 but n5=0 ->1). n7=NAND(n6=1,x11=1)=0. n8=NAND(n7=0,x2=1)=1. n9=NAND(n8=1,x1=1)=0. n10=NAND(n9=0,n1=1)=1. n11=NAND(n10=1,B=1)=0. n12=NAND(n11=0,x9=1)=1. n13=NAND(n12=1,n10=1)=0. n14=NAND(n13=0,n2=1)=1. n15=NAND(n14=1,n6=1)=0. n16=NAND(n15=0,x8=0)=1. n17=NAND(n16=1,n12=1)=0. n18=NAND(n17=0,x7=0)=1. n19=1. n20=NAND(n19=1,x0=1)=0. n21=1. n22=NAND(n21=1,n14=1)=0. n23=NAND(n22=0,n21=1)=1. n24=NAND(n23=1,x3=0)=1. n25=NAND(n24=1,n7=0)=1. n26=NAND(n25=1,n9=0)=1. n27=NAND(n26=1,x4=1)=0. n28=NAND(n27=0,x1=1)=1. n29=NAND(n28=1,x10=1)=0. n30=NAND(n29=0,x4=1)=1. n31=NAND(n30=1,n23=1)=0. n32=NAND(n31=0,x7=0)=1. n33=NAND(n32=1,n17=0)=1. n34=NAND(n33=1,x0=1)=0. n35=NAND(n34=0,n2=1)=1. n36=NAND(n35=1,n24=1)=0. n37=NAND(n36=0,n31=0)=1. n38=NAND(n37=1,n6=1)=0. n39=NAND(n38=0,n24=1)=1. n40=NAND(n39=1,n20=0)=1. n41=0. n42=NAND(n41=0,n32=1)=1. n43=NAND(n42=1,n23=1)=0. n44=1. n45=NAND(n44=1,n30=1)=0. n46=1. n47=NAND(n46=1,n38=0)=1. n48=NAND(n47=1,n12=1)=0. n49=NAND(n48=0,x5=1)=1. n50=NAND(n49=1,n28=1)=0. n51=NAND(n50=0,n10=1)=1. n52=NAND(n51=1,n24=1)=0. n53=NAND(n52=0,n0=1)=1. n54=0. n55=NAND(n54=0,n24=1)=1. n56=NAND(n55=1,n48=0)=1. n57=NAND(n56=1,x8=0)=1. n58=NAND(n57=1,n32=1)=0. n59=NAND(n58=0,n50=0)=1. n60=NAND(n59=1,x3=0)=1. n61=NAND(n60=1,n43=0)=1. n62=NAND(n61=1,x6=1)=0. n63=NAND(n62=0,n17=0)=1. n64=NAND(n63=1,n56=1)=0. n65=NAND(n64=0,n44=1)=1. n66=NAND(n65=1,n63=1)=0. n67=NAND(n66=0,n52=0)=1. n68=NAND(n67=1,n9=0)=1. n69=NAND(n68=1,n47=1)=0. n70=NAND(n69=0,n66=0)=1. n71=NAND(n70=1,n44=1)=0. n72=NAND(n71=0,n21=1)=1. n73=NAND(n72=1,n44=1)=0. n74=NAND(n73=0,n28=1)=1. n75=NAND(n74=1,x10=1)=0. n76=NAND(n75=0,n46=1)=1. n77=NAND(n76=1,n20=0)=1. n78=NAND(n77=1,n36=0)=1. n79=NAND(n78=1,n57=1)=0. n80=NAND(n79=0,n10=1)=1. n81=NAND(n80=1,n70=1)=0. n82=NAND(n81=0,n34=0)=1. n83=NAND(n82=1,n58=0)=1. n84=NAND(n83=1,n52=0)=1. n85=NAND(n84=1,n37=1)=0. n86=NAND(n85=0,n64=0)=1. n87=NAND(n86=1,n74=1)=0. n88=NAND(n87=0,n44=1)=1. n89=NAND(n88=1,n62=0)=1. n90=NAND(n89=1,n40=1)=0. n91=NAND(n90=0,n37=1)=1. n92=NAND(n91=1,n68=1)=0. n93=NAND(n92=0,B=1)=1. n94=NAND(n93=1,n10=1)=0. n95=NAND(n94=0,n26=1)=1. n96=NAND(n95=1,n88=1)=0. n97=NAND(n96=0,n67=1)=1. n98=NAND(n97=1,n32=1)=0. n99=NAND(n98=0,n85=0)=1. Good. S20 same: q0=1,q1=n88=1,q2=1,q3=n79=0,q4=1,q5=n82=1,q6=1,q7=n81=0,q8=n90=0,q9=n78=1,q10=n89=1,q11=n84=1. yes.
+
+Cycle20 S19 A1B1 produced same S21. We computed. Compare with cycle19 A0B1: only A changed from0 to1. Does A affect final? A enters n0: cycle19 n0=1, cycle20 n0=0. n1: cycle19 NAND(n0=1,x3=0)=1; cycle20 NAND(n0=0,x3=0)=1. Same n1=1. Therefore entire downstream same. Great, so S21 same, n99 same. Good. This is a strong validation: with x3=0,x8=0, n0 doesn't affect n1? n1=NAND(n0,0)=1 always. Yes.
+
+Cycle21 S19 A0B0 produced S22 [1,1,1,1,1,0,1,1,1,0,0,0]. Need scrutinize; it differs from fixed point: q3 becomes1, q5=0, q7=1,q8=1,q9=0,q10=0,q11=0. Let's verify key parts. S19 [1,1,1,0,1,1,1,0,0,1,1,1], A0B0. n0=1. n1=NAND(1,x3=0)=1. n2=NAND(n1=1,x8=0)=1. n3=0. n4=1,n5=0,n6=1,n7=NAND(n6=1,x11=1)=0,n8=NAND(n7=0,x2=1)=1,n9=NAND(n8=1,x1=1)=0,n10=NAND(n9=0,n1=1)=1,n11=NAND(n10=1,B=0)=1,n12=NAND(n11=1,x9=1)=0,n13=NAND(n12=0,n10=1)=1,n14=NAND(n13=1,n2=1)=0,n15=NAND(n14=0,n6=1)=1,n16=NAND(n15=1,x8=0)=1,n17=NAND(n16=1,n12=0)=1,n18=NAND(n17=1,x7=0)=1,n19=NAND(n18=1,n5=0)=1,n20=0,n21=1,n22=NAND(n21=1,n14=0)=1,n23=NAND(n22=1,n21=1)=0,n24=NAND(n23=0,x3=0)=1,n25=NAND(n24=1,n7=0)=1,n26=NAND(n25=1,n9=0)=1,n27=NAND(n26=1,x4=1)=0,n28=1,n29=0,n30=1,n31=NAND(n30=1,n23=0)=1,n32=NAND(n31=1,x7=0)=1 (since s=0; yes n32=1; note earlier in cycle19 with B=1, n31=0,n32=1; here n31=1 but x7=0 so still n32=1), n33=NAND(n32=1,n17=1)=0,n34=NAND(n33=0,x0=1)=1,n35=NAND(n34=1,n2=1)=0,n36=NAND(n35=0,n24=1)=1,n37=NAND(n36=1,n31=1)=0,n38=NAND(n37=0,n6=1)=1,n39=NAND(n38=1,n24=1)=0,n40=NAND(n39=0,n20=0)=1,n41=0,n42=NAND(n41=0,n32=1)=1,n43=NAND(n42=1,n23=0)=1,n44=NAND(n43=1,n4=1)=0,n45=NAND(n44=0,n30=1)=1,n46=NAND(n45=1,n19=1)=0,n47=NAND(n46=0,n38=1)=1,n48=NAND(n47=1,n12=0)=1,n49=NAND(n48=1,x5=1)=0,n50=NAND(n49=0,n28=1)=1,n51=NAND(n50=1,n10=1)=0,n52=NAND(n51=0,n24=1)=1,n53=NAND(n52=1,n0=1)=0,n54=1,n55=NAND(n54=1,n24=1)=0,n56=NAND(n55=0,n48=1)=1,n57=NAND(n56=1,x8=0)=1,n58=NAND(n57=1,n32=1)=0,n59=NAND(n58=0,n50=1)=1,n60=NAND(n59=1,x3=0)=1,n61=NAND(n60=1,n43=1)=0,n62=NAND(n61=0,x6=1)=1,n63=NAND(n62=1,n17=1)=0,n64=NAND(n63=0,n56=1)=1,n65=NAND(n64=1,n44=0)=1,n66=NAND(n65=1,n63=0)=1,n67=NAND(n66=1,n52=1)=0,n68=NAND(n67=0,n9=0)=1,n69=NAND(n68=1,n47=1)=0,n70=NAND(n69=0,n66=1)=1,n71=NAND(n70=1,n44=0)=1,n72=NAND(n71=1,n21=1)=0,n73=NAND(n72=0,n44=0)=1,n74=NAND(n73=1,n28=1)=0,n75=NAND(n74=0,x10=1)=1,n76=NAND(n75=1,n46=0)=1,n77=NAND(n76=1,n20=0)=1,n78=NAND(n77=1,n36=1)=0,n79=NAND(n78=0,n57=1)=1,n80=NAND(n79=1,n10=1)=0,n81=NAND(n80=0,n70=1)=1,n82=NAND(n81=1,n34=1)=0,n83=NAND(n82=0,n58=0)=1,n84=NAND(n83=1,n52=1)=0,n85=NAND(n84=0,n37=0)=1,n86=NAND(n85=1,n64=1)=0,n87=NAND(n86=0,n74=0)=1,n88=NAND(n87=1,n44=0)=1,n89=NAND(n88=1,n62=1)=0,n90=NAND(n89=0,n40=1)=1,n91=NAND(n90=1,n37=0)=1,n92=NAND(n91=1,n68=1)=0,n93=NAND(n92=0,B=0)=1,n94=NAND(n93=1,n10=1)=0,n95=NAND(n94=0,n26=1)=1,n96=NAND(n95=1,n88=1)=0,n97=NAND(n96=0,n67=0)=1,n98=NAND(n97=1,n32=1)=0,n99=NAND(n98=0,n85=1)=1. Good. DFF S22: q0=1,q1=n88=1,q2=1,q3=n79=1,q4=1,q5=n82=0,q6=1,q7=n81=1,q8=n90=1,q9=n78=0,q10=n89=0,q11=n84=0. yes. Note n99=1. Good.
+
+Cycle22 S22 A0B0 produced S23=S3. We computed. Let's verify because S22 [1,1,1,1,1,0,1,1,1,0,0,0], A0B0. n0=NAND(x5=0,A0)=1. n1=NAND(1,x3=1)=0. n2=NAND(n1=0,x8=1)=1. n3=NAND(n2=1,x0=1)=0. n4=1,n5=0,n6=NAND(n5=0,x1=1)=1,n7=NAND(n6=1,x11=0)=1,n8=NAND(n7=1,x2=1)=0,n9=NAND(n8=0,x1=1)=1,n10=NAND(n9=1,n1=0)=1,n11=1 (B0),n12=NAND(n11=1,x9=0)=1,n13=NAND(n12=1,n10=1)=0,n14=NAND(n13=0,n2=1)=1,n15=NAND(n14=1,n6=1)=0,n16=NAND(n15=0,x8=1)=1,n17=NAND(n16=1,n12=1)=0,n18=NAND(n17=0,x7=1)=1,n19=1,n20=0,n21=1,n22=0,n23=1,n24=NAND(n23=1,x3=1)=0,n25=NAND(n24=0,n7=1)=1,n26=NAND(n25=1,n9=1)=0,n27=NAND(n26=0,x4=1)=1,n28=NAND(n27=1,x1=1)=0,n29=NAND(n28=0,x10=0)=1,n30=NAND(n29=1,x4=1)=0,n31=NAND(n30=0,n23=1)=1,n32=NAND(n31=1,x7=1)=0,n33=1,n34=0,n35=1,n36=1 (n24=0),n37=NAND(n36=1,n31=1)=0,n38=1,n39=1,n40=1,n41=0,n42=1,n43=0,n44=1,n45=NAND(n44=1,n30=0)=1,n46=NAND(n45=1,n19=1)=0,n47=1,n48=NAND(n47=1,n12=1)=0,n49=NAND(n48=0,x5=0)=1,n50=NAND(n49=1,n28=0)=1,n51=NAND(n50=1,n10=1)=0,n52=NAND(n51=0,n24=0)=1,n53=NAND(n52=1,n0=1)=0,n54=1,n55=1,n56=NAND(n55=1,n48=0)=1,n57=NAND(n56=1,x8=1)=0,n58=NAND(n57=0,n32=0)=1,n59=NAND(n58=1,n50=1)=0,n60=NAND(n59=0,x3=1)=1,n61=NAND(n60=1,n43=0)=1,n62=NAND(n61=1,x6=1)=0,n63=1,n64=0,n65=1,n66=0,n67=1,n68=NAND(n67=1,n9=1)=0,n69=1,n70=1,n71=0,n72=1,n73=0,n74=NAND(n73=0,n28=0)=1,n75=1 (x10=0),n76=NAND(n75=1,n46=0)=1,n77=NAND(n76=1,n20=0)=1,n78=NAND(n77=1,n36=1)=0,n79=NAND(n78=0,n57=0)=1,n80=NAND(n79=1,n10=1)=0,n81=1,n82=NAND(n81=1,n34=0)=1,n83=NAND(n82=1,n58=1)=0,n84=NAND(n83=0,n52=1)=1,n85=NAND(n84=1,n37=0)=1,n86=NAND(n85=1,n64=0)=1,n87=NAND(n86=1,n74=1)=0,n88=1,n89=NAND(n88=1,n62=0)=1,n90=NAND(n89=1,n40=1)=0,n91=1,n92=NAND(n91=1,n68=0)=1,n93=1,n94=NAND(n93=1,n10=1)=0,n95=NAND(n94=0,n26=0)=1,n96=0,n97=1,n98=NAND(n97=1,n32=0)=1,n99=NAND(n98=1,n85=1)=0. Good. Next S23: q0=1,q1=n88=1,q2=n99=0,q3=n79=1,q4=0,q5=n82=1,q6=0,q7=n81=1,q8=n90=0,q9=n78=0,q10=n89=1,q11=n84=1 = S3. yes.
+
+Cycle23 S3 A0B0. We argued same as cycle9 because only x7 differs from S9 and irrelevant. Let's prove: S3 = [1,1,0,1,0,1,0,1,0,0,1,1]; S9 = [1,1,0,1,0,1,0,0,0,0,1,1]. Difference x7: S3=1,S9=0. Also x? S3 vs S9: x0 same1,x1 1,x2 0,x3 1,x4 0,x5 1,x6 0,x7 diff,x8 0,x9 0,x10 1,x11 1. Yes only x7. Inputs A0B0 same as cycle9. x7 is referenced at gate18 (b=q7) and gate32 (b=q7). In cycle9, what were n17 and n31? Cycle9 row: n17=0, n31=0. If x7 changes, n18=NAND(n17=0,x7)=1 regardless; n32=NAND(n31=0,x7)=1 regardless. Need ensure n17/n31 in cycle23 with S3 A0B0 remain 0. Since x7 only feeds n18/n32, and n17/n31 are before gate18/32? n17 before gate18, so x7 cannot affect n17. n31 after gate18 but depends on n23,n30; could x7 via n18 affect n19..n31? Yes! Wait x7 feeds n18; n18 affects n19, n20, ..., n31. In cycle9, n17=0 so n18=1 independent of x7. If n18 remains 1 even when x7=1 (because n17=0), then downstream n19.. same. Need ensure n17=0 in cycle23. n17 depends on n16,n12; not on x7. Compute cycle23 S3 A0B0 early: n0=1; n1=NAND(1,x3=1)=0; n2=NAND(n1=0,x8=0)=1; n3=NAND(n2=1,x0=1)=0; n4=NAND(n3=0,n1=0)=1; n5=0; n6=NAND(n5=0,x1=1)=1; n7=NAND(n6=1,x11=1)=0; n8=NAND(n7=0,x2=0)=1; n9=NAND(n8=1,x1=1)=0; n10=NAND(n9=0,n1=0)=1; n11=NAND(n10=1,B=0)=1; n12=NAND(n11=1,x9=0)=1; n13=NAND(n12=1,n10=1)=0; n14=NAND(n13=0,n2=1)=1; n15=NAND(n14=1,n6=1)=0; n16=NAND(n15=0,x8=0)=1; n17=NAND(n16=1,n12=1)=0. yes. n18=NAND(n17=0,x7=1)=1. Same. n31? Continue same as cycle9: n19=1,n20=0,n21=1,n22=0,n23=1,n24=NAND(n23=1,x3=1)=0,n25=NAND(n24=0,n7=0)=1,n26=NAND(n25=1,n9=0)=1,n27=NAND(n26=1,x4=0)=1,n28=NAND(n27=1,x1=1)=0,n29=NAND(n28=0,x10=1)=1,n30=NAND(n29=1,x4=0)=1,n31=NAND(n30=1,n23=1)=0. yes n31=0. n32=NAND(n31=0,x7=1)=1. Same as cycle9. Therefore entire row same as cycle9. Good. Cycle9 next S10 = [1,1,1,1,1,1,1,1,1,0,0,0]. But hold on cycle9 state S9 had x7=0 and x8=0; next S10 set q8=n90. In cycle9 n90=1? Let's check cycle9 we computed n90=1, n99=1, n84=0, n89=0. Yes S10 all ones except x9=0,x10=0,x11=0, including x8=1. Good. If cycle23 same row, n90=1,n84=0,n99=1. Outputs at t23 use current S3 x11=1,x6=0,x8=0 and n99=1. Good.
+
+Thus final outputs as above. But let's further verify n99 list by an independent high-level check: We can derive q6 list from state and compare to n99 shift; done. q8/q11 checked against n90/n84 values for transitions. But those n90/n84 values came from same rows. Still consistency. Need maybe verify n99 list using relation q2/q4/q6. Since q6 output is state and also d=n99, if q6 list and n99 list are consistent, good. q8/q11 similar. All good.
+
+However, I should consider if the evaluator records outputs after gates settle but before clock edge; yes we did. DFF q nets hold current state at step1. Good.
+
+Potential issue: The circuit has input in2 in trace but not used; semantics require every net referenced driven; in2 driven but unused. Fine. Outputs include q11,q6,q8; q6 is driven by DFF. Good.
+
+Now final response: User requested "Work through simulation carefully, cycle by cycle. You cannot run code; do it by reasoning. End your reply with a single fenced json code block containing exactly one object ... Put no other json code block after it." We can include concise explanation and then final JSON. Need ensure final fenced code block is the only JSON code block and at end. The object must map each output net name to list of 24 integers. Order can be as outputs ["n99","q11","q6","q8"]. Need ensure lists exactly 24. Let's count each list.
+
+n99 list: [0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 1]
+Count: group maybe 24: indices
+0 0
+1 1
+2 0
+3 0
+4 1
+5 0
+6 0
+7 1
+8 0
+9 1
+10 0
+11 1
+12 0
+13 1
+14 0
+15 0
+16 1
+17 1
+18 1
+19 1
+20 1
+21 1
+22 0
+23 1. Count 24.
+Wait check n99 t16=1,t17=1,t18=1,t19=1,t20=1,t21=1. That's six consecutive 1s from t16-t21? List positions 16-21 = 1,1,1,1,1,1 yes. t15=0,t22=0. Good.
+
+q11 list: [1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 1, 1, 0, 1]
+Count: t0 1,t1 1,t2 0,t3 1,t4 0,t5 1,t6 1,t7 0,t8 1,t9 1,t10 0,t11 1,t12 0,t13 1,t14 0,t15 1,t16 0,t17 0,t18 0,t19 1,t20 1,t21 1,t22 0,t23 1. Good. Note q11 t6=1 (because S6=S3 x11=1), t7=0. okay.
+
+q6 list: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0]
+Count 24. Let's verify q6 t5=1 (S5 x6=1), t6=0 (S6=S3 x6=0), t7=0 (S4), t8=1 (S5). yes. t15=0 (S9 x6=0); t16=0 (S4); t17=1; t22=1; t23=0. Good.
+
+q8 list: [0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0]
+Count 24. Check q8 t4=1 (S4 x8=1), t5=1 (S5), t6=0 (S3), t7=1 (S4), t8=1(S5), t9=0(S9), t15=0(S9), t16=1(S4), t17=0(S17), t22=1(S22), t23=0. Good.
+
+Let's see if q8 list maybe should be shift of n90 with init0. We can compute n90 list from transitions: q8_{t+1}; q8 list = [init0, n90_0..n90_22]. n90 list inferred = q8[1..23] = [0,1,0,1,1,0,1,1,0,1,0,1,0,1,0,1,0,0,0,0,0,1,0] length23. Did we compute n90_22=0? yes. Good.
+
+q11 list = [init1, n84_0..n84_22]; inferred n84 list = q11[1..23]=[1,0,1,0,1,1,0,1,1,0,1,0,1,0,1,0,0,0,1,1,1,0,1]. At t5 n84=1, t6 n84=0. We computed cycle5 n84=1 and cycle6 (cycle3) n84=0. Good. At t18 n84=1 -> q11_19=1; t21 n84=0 -> q11_22=0; t22 n84=1 -> q11_23=1. Good.
+
+Let's consider if DFF q4 init1 with d n99 could influence n27/n30; yes we included x4. At cycle0 x4=1; after edge q4=n99_0=0. Good.
+
+Could there be an issue with gates settling "instantly" in acyclic graph but the gate-only graph must be acyclic. We evaluated in listed order. Good. We can say I treated in2 as unused and evaluated NAND chain in listed order each cycle; then final JSON. But maybe the user specifically wants work through carefully; final answer can include a short note. The final fenced JSON code block must be at end and no other JSON code block after it. We can include text before. Need not include all 100 gate rows; desired overbrevity 5. Maybe provide a compact cycle table of outputs and next state? But final answer should end with JSON. They asked "Work through the simulation carefully, cycle by cycle." We should show some work, perhaps a table with cycle, inputs, state before edge (q0..q11), and recorded outputs. That is a lot but manageable. Then final JSON. However if we include a table, ensure no extra fenced JSON after final. A Markdown table is okay. The final code block must contain exactly one object. We can include text and table before it. Need not put JSON earlier. Avoid inline JSON? They said no other json code block after; inline maybe okay but to be safe no other code blocks. We can have one fenced code block at end.
+
+Maybe a concise cycle table with outputs only and note q6 follows n99 delayed by one cycle. But to demonstrate careful work, a table of recorded outputs per cycle is useful. Let's include a table: cycle, (in0,in1), recorded n99 q11 q6 q8. Maybe also state q0..q11? That may be too much. Since final JSON has all outputs, a table of outputs is redundant. But user asked work through; include a compact table of output tuples and mention q6/q8/q11 are current DFF states before edge. Then final JSON. Keep not too long. We must ensure final code block is last.
+
+Let's formulate table from our output lists:
+t0 in00: n99=0 q11=1 q6=0 q8=0 -> tuple (0,1,0,0)
+t1 in11: (1,1,0,0)
+t2 in01: (0,0,1,1)
+t3 in01: (0,1,0,0) [q11=1,q6=0,q8=0]
+t4 in00: (1,0,0,1)
+t5 in00: (0,1,1,1)
+t6 in01: (0,1,0,0)
+t7 in00: (1,0,0,1)
+t8 in10: (0,1,1,1)
+t9 in00: (1,1,0,0)
+t10 in00: (0,0,1,1)
+t11 in10: (1,1,0,0)
+t12 in01: (0,0,1,1)
+t13 in10: (1,1,0,0)
+t14 in11: (0,0,1,1)
+t15 in11: (0,1,0,0)
+t16 in11: (1,0,0,1)
+t17 in11: (1,0,1,0)
+t18 in10: (1,0,1,0)
+t19 in01: (1,1,1,0)
+t20 in11: (1,1,1,0)
+t21 in00: (1,1,1,0)
+t22 in00: (0,0,1,1)
+t23 in00: (1,1,0,0)
+Let's verify table tuple order n99,q11,q6,q8. For t15 outputs n99=0,q11=1,q6=0,q8=0 yes (0,1,0,0). t16 (1,0,0,1); t17 (1,0,1,0); t18 (1,0,1,0); t19 (1,1,1,0); t22 (0,0,1,1). Good.
+
+Maybe q11 t6=1 while tuple t6 (0,1,0,0). yes.
+
+Before final, maybe mention "in2 is never referenced, so it does not affect the result." Good.
+
+Let's ensure final JSON list q11 matches table: table q11 column: t0 1,t1 1,t2 0,t3 1,t4 0,t5 1,t6 1,t7 0,t8 1,t9 1,t10 0,t11 1,t12 0,t13 1,t14 0,t15 1,t16 0,t17 0,t18 0,t19 1,t20 1,t21 1,t22 0,t23 1. List as above. Good.
+
+Let's produce final with a brief note and the JSON block. Ensure the JSON block is single fenced and contains exactly one object. No trailing code block. The object formatting can be one line or pretty. Use double quotes, arrays. Exactly outputs. Need no comments inside JSON. Good.
+
+One more thought: The final answer's table if included could be considered not ending with JSON? It will end with JSON. Fine.
+
+Let's ensure no accidental additional fenced code block. The final JSON block is the only fenced block. Table in Markdown not fenced. Good.
+
+Let's now craft final answer: maybe:
+"I evaluated the gates in listed order each cycle (the gate graph is a chain). in2 is unused. Recorded (n99,q11,q6,q8) by cycle: ..." Then table. Then "Final recorded traces:" and code block.
+
+Need be concise enough. Since final code block must be at end, put it after table.
+
+Let's write table compactly with columns t, in0/in1, n99,q11,q6,q8. That's fine.
+
+Double-check table t3: inputs in0=0,in1=1; outputs (0,1,0,0). At cycle3 state S3 q11=1 q6=0 q8=0. yes. t4 inputs 00 outputs (1,0,0,1). yes. t5 inputs 00 outputs (0,1,1,1). Wait q11 at t5 = S5 x11=1, q6=1,q8=1. yes.
+
+Could there be a mistake in q11 t8: S8=S5 x11=1, yes tuple t8 (0,1,1,1). Good.
+
+Ok final. Ensure JSON lists are exactly 24. Use no spaces? Spaces okay. Final object maybe one line. Let's produce pretty printed JSON within fence; exactly one object. Good. (The instruction "single fenced json code block containing exactly one object" satisfied.)
+
+Final answer.
+
+=== response ===
+`in2` is never referenced, so it does not affect the circuit. I evaluated the NAND chain in listed order each cycle, with DFF outputs holding their pre-edge state.
+
+Recorded `(n99, q11, q6, q8)` per cycle:
+
+| t | in0 in1 | n99 q11 q6 q8 |
+|---|---|---|
+| 0 | 0 0 | 0 1 0 0 |
+| 1 | 1 1 | 1 1 0 0 |
+| 2 | 0 1 | 0 0 1 1 |
+| 3 | 0 1 | 0 1 0 0 |
+| 4 | 0 0 | 1 0 0 1 |
+| 5 | 0 0 | 0 1 1 1 |
+| 6 | 0 1 | 0 1 0 0 |
+| 7 | 0 0 | 1 0 0 1 |
+| 8 | 1 0 | 0 1 1 1 |
+| 9 | 0 0 | 1 1 0 0 |
+| 10 | 0 0 | 0 0 1 1 |
+| 11 | 1 0 | 1 1 0 0 |
+| 12 | 0 1 | 0 0 1 1 |
+| 13 | 1 0 | 1 1 0 0 |
+| 14 | 1 1 | 0 0 1 1 |
+| 15 | 1 1 | 0 1 0 0 |
+| 16 | 1 1 | 1 0 0 1 |
+| 17 | 1 1 | 1 0 1 0 |
+| 18 | 1 0 | 1 0 1 0 |
+| 19 | 0 1 | 1 1 1 0 |
+| 20 | 1 1 | 1 1 1 0 |
+| 21 | 0 0 | 1 1 1 0 |
+| 22 | 0 0 | 0 0 1 1 |
+| 23 | 0 0 | 1 1 0 0 |
+
+```json
+{"n99": [0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 1], "q11": [1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 1, 1, 0, 1], "q6": [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0], "q8": [0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0]}
+```

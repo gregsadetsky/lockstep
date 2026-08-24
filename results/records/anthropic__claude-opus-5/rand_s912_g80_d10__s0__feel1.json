@@ -1,0 +1,40 @@
+{
+ "model": "anthropic/claude-opus-5",
+ "circuit": "rand_s912_g80_d10",
+ "sample": 0,
+ "gates": 80,
+ "dffs": 10,
+ "cycles": 32,
+ "elapsed_s": 190.1,
+ "finish": "stop",
+ "response": "## Simulation approach\n\nOnly a subset of nets matters: outputs `n24, n33, n5, q4` plus the DFF drivers `n70, n52, n48, n42, n73, n54, n50, q6`. Tracing back, the needed cone is:\n\n`n0,n1,n2,n3,n4,n5,n7,n10,n13,n16(=n24),n19,n20,n21,n24,n26,n27,n28,n30,n33,n36,n37,n40,n42,n45,n48,n50,n52,n54,n66,n70,n73`\n\nNote `q0` and `q3` share driver `n70` and share init 1 \u2192 always equal; `q5`,`q6` share `n73` and become equal from cycle 1; `q8` = previous `q6`.\n\nCycle-by-cycle state (q0..q9) and outputs:\n\n| t | state q0..q9 | n24 | n33 | n5 | q4 |\n|---|---|---|---|---|---|\n|0|1010 0 1011 1|1|1|1|0|\n|1|1011 1 1110|1|1|1|1|\n|2|1010 1 1011|1|1|0|0|\n|3|0110 1 0011|1|1|1|1|\n|4|1001 0 1110|1|1|1|0|\n|5|1010 1 1011|1|1|0|0|\n|6|0110 1 0011|0|1|0|1|\n|7|1101 0 1110|1|1|1|0|\n|8|1010 1 1011|1|1|0|0|\n|9|0110 1 0011|1|1|1|1|\n|10|1101 0 1110|0|1|1|0|\n|11|1101 0 0011|1|0|1|0|\n|12|1010 1 1100|1|1|0|0|\n|13|1111 1 0011|0|1|0|1|\n|14|0100 0 1100|0|1|1|0|\n|15|1111 1 0011|0|1|0|1|\n|16|1101 0 1101|0|1|1|0|\n|17|1101 0 0011|0|0|1|0|\n|18|1111 0 0010|0|1|0|0|\n|19|1101 0 1100|1|1|1|0|\n|20|1011 1 0011|1|1|1|1|\n|21|1101 0 1100|1|1|1|0|\n|22|1011 1 0011|1|1|1|1|\n|23|1101 0 1100|1|1|1|0|\n|24|1011 1 0011|1|1|0|1|\n|25|1101 0 1110|1|1|1|0|\n|26|1010 1 1111|1|1|1|0|\n|27|1011 1 1111|1|1|0|1|\n|28|1011 1 1111|1|1|1|1|\n|29|1111 1 1011|1|1|1|1|\n|30|1111 1 1011|1|1|1|1|\n|31|1011 1 1011|1|1|1|1|\n\n```json\n{\"n24\": [1,1,1,1,1,1,0,1,1,1,0,1,1,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1],\n \"n33\": [1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1],\n \"n5\":  [1,1,0,1,1,0,0,1,0,1,1,1,0,0,1,0,1,1,0,1,1,1,1,1,0,1,1,0,1,1,1,1],\n \"q4\":  [0,1,0,1,0,0,1,0,0,1,0,0,0,1,0,1,0,0,0,0,1,0,1,0,1,0,0,1,1,1,1,1]}\n```",
+ "usage": {
+  "prompt_tokens": 5299,
+  "completion_tokens": 24080,
+  "total_tokens": 29379,
+  "cost": 0.628495,
+  "is_byok": false,
+  "prompt_tokens_details": {
+   "cached_tokens": 0,
+   "cache_write_tokens": 0,
+   "audio_tokens": 0,
+   "video_tokens": 0
+  },
+  "cost_details": {
+   "upstream_inference_cost": 0.628495,
+   "upstream_inference_prompt_cost": 0.026495,
+   "upstream_inference_completions_cost": 0.602
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 22829,
+   "image_tokens": 0,
+   "audio_tokens": 0
+  }
+ },
+ "score": {
+  "status": "ok",
+  "prefix_cycles": 32,
+  "pointwise": 1.0,
+  "exact": true
+ }
+}

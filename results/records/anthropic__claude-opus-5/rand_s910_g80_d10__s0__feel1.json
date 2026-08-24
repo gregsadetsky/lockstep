@@ -1,0 +1,40 @@
+{
+ "model": "anthropic/claude-opus-5",
+ "circuit": "rand_s910_g80_d10",
+ "sample": 0,
+ "gates": 80,
+ "dffs": 10,
+ "cycles": 32,
+ "elapsed_s": 151.9,
+ "finish": "stop",
+ "response": "## Setup\n\nOnly a small cone matters for the four outputs plus the DFF next-state functions:\n\n- `n1 = NAND(q4,q9)`, `n4 = NAND(q0,n1)`, `n7 = NAND(q3,n4)`, `n11 = NAND(q6,in2)`, `n37 = NAND(n7,n11)`\n- `n50 = NAND(n4,n37)`\n- `n14 = NAND(q4,in0)`, `n47 = NAND(in1,n14)`, `n56 = NAND(n37,q2)`, `n57 = NAND(n56,n47)`\n- `n8 = NAND(in1,q7)`, `n21 = NOT n8`, `n27 = NAND(n1,n8)`, `n12 = NAND(q9,q5)`, `n43 = NAND(q6,n12)`, `n59 = NAND(n27,n43)`\n- `n60 = NAND(q9,n21)`\n- state: `n6 = NAND(q2,q3)`, `n17 = NAND(n6,n14)`, `n55 = NAND(q8,n17)`, `n18 = NAND(q4,q8)`, `n63 = NAND(q0,n18)`; then q0\u2190n63, q1\u2190n55, q2\u2190q4, q3\u2190q1, q4\u2190n21, q5\u2190in2, q6\u2190in0, q7\u2190n55, q8\u2190n1, q9\u2190q0.\n\n## Cycle-by-cycle (state q0..q9 at start of cycle \u2192 outputs)\n\n| t | q0..q9 | n50 n57 n59 n60 |\n|---|---|---|\n|0|0111 0 11 000|0 1 1 1|\n|1|1101 0 10 110|1 1 0 1|\n|2|0101 1 01 111|0 0 1 1|\n|3|1011 0 01 100|1 1 1 1|\n|4|0100 0 11 111|1 0 1 1|\n|5|1101 0 01 110|1 1 1 1|\n|6|0101 1 01 111|0 1 1 0|\n|7|1111 1 00 100|1 0 0 1|\n|8|0111 1 01 111|0 1 1 1|\n|9|1011 0 11 000|1 0 1 1|\n|10|0100 0 00 111|1 0 1 1|\n|11|1101 0 10 110|1 0 1 1|\n|12|0101 0 11 111|0 1 0 0|\n|13|1101 1 01 110|1 0 1 1|\n|14|1111 0 00 111|1 0 1 1|\n|15|0001 0 01 011|0 1 1 1|\n|16|1100 0 11 110|1 1 1 1|\n|17|0101 1 00 111|0 0 0 1|\n|18|1011 0 01 000|1 1 1 1|\n|19|0100 0 10 111|1 1 0 0|\n|20|1101 1 00 110|1 0 0 1|\n|21|1011 1 01 011|0 1 1 1|\n|22|1010 0 10 001|1 1 1 1|\n|23|0100 0 00 111|1 0 1 1|\n|24|1101 0 01 110|1 0 1 1|\n|25|0101 0 00 111|0 0 1 1|\n|26|1101 0 01 110|1 0 1 1|\n|27|0101 0 11 111|0 1 0 0|\n|28|1101 1 11 110|1 0 1 1|\n|29|1011 1 11 011|0 1 0 1|\n|30|1010 0 11 001|1 1 1 1|\n|31|0100 0 11 111|0 1 0 0|\n\n```json\n{\"n50\": [0,1,0,1,1,1,0,1,0,1,1,1,0,1,1,0,1,0,1,1,1,0,1,1,1,0,1,0,1,0,1,0],\n \"n57\": [1,1,0,1,0,1,1,0,1,0,0,0,1,0,0,1,1,0,1,1,0,1,1,0,0,0,0,1,0,1,1,1],\n \"n59\": [1,0,1,1,1,1,1,0,1,1,1,1,0,1,1,1,1,0,1,0,0,1,1,1,1,1,1,0,1,0,1,0],\n \"n60\": [1,1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1,1,1,0]}\n```",
+ "usage": {
+  "prompt_tokens": 5299,
+  "completion_tokens": 19427,
+  "total_tokens": 24726,
+  "cost": 0.51217,
+  "is_byok": false,
+  "prompt_tokens_details": {
+   "cached_tokens": 0,
+   "cache_write_tokens": 0,
+   "audio_tokens": 0,
+   "video_tokens": 0
+  },
+  "cost_details": {
+   "upstream_inference_cost": 0.51217,
+   "upstream_inference_prompt_cost": 0.026495,
+   "upstream_inference_completions_cost": 0.485675
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 17930,
+   "image_tokens": 0,
+   "audio_tokens": 0
+  }
+ },
+ "score": {
+  "status": "ok",
+  "prefix_cycles": 32,
+  "pointwise": 1.0,
+  "exact": true
+ }
+}

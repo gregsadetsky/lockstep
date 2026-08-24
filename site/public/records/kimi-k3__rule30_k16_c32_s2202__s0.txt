@@ -1,0 +1,1612 @@
+model: moonshotai/kimi-k3
+circuit: rule30_k16_c32_s2202
+score: {'status': 'ok', 'prefix_cycles': 32, 'pointwise': 1.0, 'exact': True}
+
+=== reasoning ===
+Let me analyze this circuit carefully.
+
+We have 16 DFFs: c0..c15 with initial values:
+- c0=0, c1=0, c2=0, c3=0, c4=0, c5=0, c6=1, c7=1, c8=1, c9=0, c10=0, c11=0, c12=1, c13=1, c14=1, c15=1
+
+The gates implement, for each i, a function producing x_i from three cells. Let me understand the logic.
+
+For x0: 
+- nm0 = NAND(c0,c0) = NOT c0
+- nr0 = NAND(c1,c1) = NOT c1
+- or0 = NAND(nm0, nr0) = NOT(NOT c0 AND NOT c1) = c0 OR c1. Wait: NAND(a,b) = 1 - (a&b). So NAND(NOT c0, NOT c1) = NOT((NOT c0) AND (NOT c1)) = c0 OR c1. Yes, or0 = c0 OR c1.
+
+Then:
+- t1_0 = NAND(c15, or0) = NOT(c15 AND or0)
+- t2_0 = NAND(c15, t1_0) = NOT(c15 AND t1_0)
+- t3_0 = NAND(or0, t1_0) = NOT(or0 AND t1_0)
+- x0 = NAND(t2_0, t3_0) = NOT(t2_0 AND t3_0)
+
+Let me simplify. Let L = c15 (left neighbor?), R = or0 = (c0 OR c1). Actually let me define for cell i: the three inputs are left = c_{i-1}, mid = c_i, right = c_{i+1} (with wraparound). 
+
+For x_i: nm_i = NOT c_i, nr_i = NOT c_{i+1}, or_i = c_i OR c_{i+1}. Then:
+- t1 = NAND(c_{i-1}, or_i) = NOT(c_{i-1} AND or_i)
+- t2 = NAND(c_{i-1}, t1) 
+- t3 = NAND(or_i, t1)
+- x = NAND(t2, t3)
+
+Let me compute x as a function of A = c_{i-1}, B = or_i = (c_i OR c_{i+1}).
+
+t1 = NOT(A AND B) = 1 - AB.
+t2 = NOT(A AND t1) = 1 - A*t1 = 1 - A(1-AB) = 1 - A + A^2 B = 1 - A + AB (since A^2=A) = 1 - A(1 - B) = 1 - A + AB.
+
+Hmm let me just enumerate over A, B.
+
+A=0,B=0: t1 = NAND(0,0)=1. t2 = NAND(0,1)=1. t3 = NAND(0,1)=1. x = NAND(1,1)=0.
+A=0,B=1: t1 = NAND(0,1)=1. t2 = NAND(0,1)=1. t3 = NAND(1,1)=0. x = NAND(1,0)=1.
+A=1,B=0: t1 = NAND(1,0)=1. t2 = NAND(1,1)=0. t3 = NAND(0,1)=1. x = NAND(0,1)=1.
+A=1,B=1: t1 = NAND(1,1)=0. t2 = NAND(1,0)=1. t3 = NAND(1,0)=1. x = NAND(1,1)=0.
+
+So x = 1 iff (A,B) in {(0,1),(1,0)} i.e. A XOR B. So x_i = c_{i-1} XOR (c_i OR c_{i+1}).
+
+Wait let me double check: A=0,B=0 -> x=0. A=0,B=1 -> x=1. A=1,B=0 -> x=1. A=1,B=1 -> x=0. Yes, x = A XOR B.
+
+So x_i = c_{i-1} XOR (c_i OR c_{i+1}), where indices are mod 16.
+
+Let me verify the mapping of left/mid/right for each i.
+
+For x0: uses c15 (as A=c_{i-1}), and or0 = c0 OR c1 (B = c_i OR c_{i+1}). Yes. So x0 = c15 XOR (c0 OR c1). Good, with wraparound: left of c0 is c15.
+
+For x1: nm1 = NOT c1, nr1 = NOT c2, or1 = c1 OR c2; A input is c0. So x1 = c0 XOR (c1 OR c2). Good.
+
+In general x_i = c_{i-1} XOR (c_i OR c_{i+1}) for i=0..15, indices mod 16.
+
+Hmm, the name says "rule30". Rule 30 is: new = left XOR (mid OR right). Yes! Exactly rule 30. With left = c_{i-1}, mid = c_i, right = c_{i+1}. Wait standard rule 30: new_cell = left XOR (center OR right). Where the neighborhood is (left, center, right) and the rule number 30 = binary 00011110. Let me verify: rule 30 binary is 00011110 (8 bits for patterns 111,110,101,100,011,010,001,000). The outputs for patterns:
+111 -> 0
+110 -> 0
+101 -> 0
+100 -> 1
+011 -> 1
+010 -> 1
+001 -> 1
+000 -> 0
+
+Let's check with formula left XOR (center OR right):
+111: 1 XOR (1 OR 1)=1 XOR 1=0. ✓
+110: 1 XOR (1 OR 0)=1 XOR 1=0. ✓
+101: 1 XOR (0 OR 1)=1 XOR 1=0. ✓
+100: 1 XOR (0 OR 0)=1 XOR 0=1. ✓
+011: 0 XOR (1 OR 1)=0 XOR 1=1. ✓
+010: 0 XOR (1 OR 0)=0 XOR 1=1. ✓
+001: 0 XOR (0 OR 1)=0 XOR 1=1. ✓
+000: 0 XOR (0 OR 0)=0. ✓
+
+So new c_i = c_{i-1} XOR (c_i OR c_{i+1}). With indices mod 16 (since x0 uses c15, c0, c1 and x15 uses c14, c15, c0). Let me confirm x15: nm15=NOT c15, nr15=NOT c0, or15 = c15 OR c0; A input = c14. So x15 = c14 XOR (c15 OR c0). Yes, left=c14, mid=c15, right=c0. Good. So it's a ring of 16 cells.
+
+Initial state (cycle -1 effectively, i.e. before cycle 0):
+c = [c0..c15] = [0,0,0,0,0,0,1,1,1,0,0,0,1,1,1,1]
+
+Let me write as string index 0..15:
+0:0
+1:0
+2:0
+3:0
+4:0
+5:0
+6:1
+7:1
+8:1
+9:0
+10:0
+11:0
+12:1
+13:1
+14:1
+15:1
+
+So bits: 0 0 0 0 0 0 1 1 1 0 0 0 1 1 1 1
+
+The outputs recorded at cycle t (step 3) are the values of c0,c2,c4,c6,c8,c10,c12,c14 BEFORE the clock edge of cycle t (i.e. the current state during cycle t). At cycle 0, outputs = initial values of those DFFs. Then clock edge loads x values, becoming state for cycle 1.
+
+Wait need to be careful: At cycle t, step 1: inputs take trace (none), dff q hold current state. Step 2 gates settle (x computed from current c). Step 3 record outputs (the c values). Step 4 clock edge: c <= x. So the recorded output at cycle t is the state at the beginning of cycle t (before update). The state at beginning of cycle 0 = init. Then after edge, state for cycle 1 = x computed from init.
+
+So outputs[net][t] = c_net at start of cycle t. We need 32 cycles: record states S_0, S_1, ..., S_31 where S_0 = init, S_{t+1} = f(S_t) (rule 30). The recorded value for output c_k at cycle t is S_t[k].
+
+So I need to compute S_0..S_31 and extract even indices 0,2,4,6,8,10,12,14.
+
+Let me denote state as a 16-bit string. I'll write c0 c1 ... c15.
+
+S_0 = 0 0 0 0 0 0 1 1 1 0 0 0 1 1 1 1
+
+Let me compute f: new[i] = c[i-1] XOR (c[i] OR c[i+1]). Indices mod 16.
+
+I'll be very careful. Let me represent state as list of 16.
+
+S0: index: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15
+       val:  0 0 0 0 0 0 1 1 1 0 0  0  1  1  1  1
+
+Compute S1[i] = S0[i-1] XOR (S0[i] OR S0[i+1]).
+
+Let me make a helper: for each i, L=S0[(i-1) mod16], M=S0[i], R=S0[(i+1) mod16]; B = M OR R; new = L XOR B.
+
+i=0: L=S0[15]=1, M=S0[0]=0, R=S0[1]=0. B=0 OR 0=0. new=1 XOR 0=1.
+i=1: L=S0[0]=0, M=S0[1]=0, R=S0[2]=0. B=0. new=0 XOR 0=0.
+i=2: L=S0[1]=0, M=0, R=S0[3]=0. B=0. new=0.
+i=3: L=S0[2]=0, M=0, R=S0[4]=0. B=0. new=0.
+i=4: L=S0[3]=0, M=0, R=S0[5]=0. B=0. new=0.
+i=5: L=S0[4]=0, M=S0[5]=0, R=S0[6]=1. B=0 OR 1=1. new=0 XOR 1=1.
+i=6: L=S0[5]=0, M=S0[6]=1, R=S0[7]=1. B=1 OR 1=1. new=0 XOR 1=1.
+i=7: L=S0[6]=1, M=S0[7]=1, R=S0[8]=1. B=1. new=1 XOR 1=0.
+i=8: L=S0[7]=1, M=S0[8]=1, R=S0[9]=0. B=1 OR 0=1. new=1 XOR 1=0.
+i=9: L=S0[8]=1, M=S0[9]=0, R=S0[10]=0. B=0. new=1 XOR 0=1.
+i=10: L=S0[9]=0, M=S0[10]=0, R=S0[11]=0. B=0. new=0.
+i=11: L=S0[10]=0, M=S0[11]=0, R=S0[12]=1. B=0 OR 1=1. new=0 XOR 1=1.
+i=12: L=S0[11]=0, M=S0[12]=1, R=S0[13]=1. B=1. new=0 XOR 1=1.
+i=13: L=S0[12]=1, M=S0[13]=1, R=S0[14]=1. B=1. new=1 XOR 1=0.
+i=14: L=S0[13]=1, M=S0[14]=1, R=S0[15]=1. B=1. new=1 XOR 1=0.
+i=15: L=S0[14]=1, M=S0[15]=1, R=S0[0]=0. B=1 OR 0=1. new=1 XOR 1=0.
+
+S1: i: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15
+       1 0 0 0 0 1 1 0 0 1 0  1  1  0  0  0
+
+Let me write S1 = [1,0,0,0,0,1,1,0,0,1,0,1,1,0,0,0].
+
+Let me double check a couple. Rule 30 on a ring. Actually, let me reconsider whether new = left XOR (center OR right) gives the "rule30" name. The name rule30_k16_c32_s2202: k16 = 16 cells, c32 = 32 cycles, s2202 = seed? Initial has c6,c7,c8 and c12,c13,c14,c15 set. Seed 2202? 2202 in binary = 100010011010? Let's check: 2202 = 2048 + 154 = 2048 + 128 + 26 = 2048+128+16+8+2 = 100010011010_2. That's 12 bits. Hmm, not directly. Anyway, doesn't matter.
+
+Let me proceed carefully. I'll recompute using a systematic approach. For each state, I'll compute the OR of (M,R) and XOR with L.
+
+Actually, maybe easier: new[i] = L XOR (M OR R). Note M OR R = NOT( (NOT M) AND (NOT R) ). But enumeration is fine.
+
+Let me define a function step(state) returning new state. I'll track states S0..S31. I only need even indices for output, but I need full state to evolve.
+
+Let me be systematic and careful. I'll write state as 16 chars.
+
+S0 = 0000001110001111
+Let me index: position p0..p15.
+S0: p0=0,p1=0,p2=0,p3=0,p4=0,p5=0,p6=1,p7=1,p8=1,p9=0,p10=0,p11=0,p12=1,p13=1,p14=1,p15=1.
+String: "0000001110001111". Let me count: 0(0)0(1)0(2)0(3)0(4)0(5)1(6)1(7)1(8)0(9)0(10)0(11)1(12)1(13)1(14)1(15). Yes "0000001110001111" length 16. Good.
+
+S1 computed: [1,0,0,0,0,1,1,0,0,1,0,1,1,0,0,0] = "1000011001011000".
+Let me verify string: p0=1,p1=0,p2=0,p3=0,p4=0,p5=1,p6=1,p7=0,p8=0,p9=1,p10=0,p11=1,p12=1,p13=0,p14=0,p15=0 -> "1000011001011000". Count: 1 0 0 0 0 1 1 0 0 1 0 1 1 0 0 0. Yes 16.
+
+Now compute S2 from S1.
+S1: p0=1,p1=0,p2=0,p3=0,p4=0,p5=1,p6=1,p7=0,p8=0,p9=1,p10=0,p11=1,p12=1,p13=0,p14=0,p15=0.
+
+For each i: L=p[i-1], M=p[i], R=p[i+1]; B=M OR R; new=L XOR B.
+
+i=0: L=p15=0, M=p0=1, R=p1=0. B=1 OR 0=1. new=0 XOR 1=1.
+i=1: L=p0=1, M=p1=0, R=p2=0. B=0. new=1 XOR 0=1.
+i=2: L=p1=0, M=p2=0, R=p3=0. B=0. new=0.
+i=3: L=p2=0, M=p3=0, R=p4=0. B=0. new=0.
+i=4: L=p3=0, M=p4=0, R=p5=1. B=1. new=0 XOR 1=1.
+i=5: L=p4=0, M=p5=1, R=p6=1. B=1. new=0 XOR 1=1.
+i=6: L=p5=1, M=p6=1, R=p7=0. B=1 OR 0=1. new=1 XOR 1=0.
+i=7: L=p6=1, M=p7=0, R=p8=0. B=0. new=1 XOR 0=1.
+i=8: L=p7=0, M=p8=0, R=p9=1. B=1. new=0 XOR 1=1.
+i=9: L=p8=0, M=p9=1, R=p10=0. B=1 OR 0=1. new=0 XOR 1=1.
+i=10: L=p9=1, M=p10=0, R=p11=1. B=0 OR 1=1. new=1 XOR 1=0.
+i=11: L=p10=0, M=p11=1, R=p12=1. B=1. new=0 XOR 1=1.
+i=12: L=p11=1, M=p12=1, R=p13=0. B=1. new=1 XOR 1=0.
+i=13: L=p12=1, M=p13=0, R=p14=0. B=0. new=1 XOR 0=1.
+i=14: L=p13=0, M=p14=0, R=p15=0. B=0. new=0.
+i=15: L=p14=0, M=p15=0, R=p0=1. B=0 OR 1=1. new=0 XOR 1=1.
+
+S2: [1,1,0,0,1,1,0,1,1,1,0,1,0,1,0,1]
+String: p0=1,p1=1,p2=0,p3=0,p4=1,p5=1,p6=0,p7=1,p8=1,p9=1,p10=0,p11=1,p12=0,p13=1,p14=0,p15=1
+= "1100110111010101". Let me concatenate: 1 1 0 0 1 1 0 1 1 1 0 1 0 1 0 1 -> "1100110111010101". Count 16. Good.
+
+Compute S3 from S2.
+S2 = [1,1,0,0,1,1,0,1,1,1,0,1,0,1,0,1]
+Index: 0:1 1:1 2:0 3:0 4:1 5:1 6:0 7:1 8:1 9:1 10:0 11:1 12:0 13:1 14:0 15:1.
+
+i=0: L=p15=1, M=p0=1, R=p1=1. B=1 OR1=1. new=1 XOR1=0.
+i=1: L=p0=1, M=p1=1, R=p2=0. B=1 OR0=1. new=1 XOR1=0.
+i=2: L=p1=1, M=p2=0, R=p3=0. B=0. new=1 XOR0=1.
+i=3: L=p2=0, M=p3=0, R=p4=1. B=1. new=0 XOR1=1.
+i=4: L=p3=0, M=p4=1, R=p5=1. B=1. new=0 XOR1=1.
+i=5: L=p4=1, M=p5=1, R=p6=0. B=1 OR0=1. new=1 XOR1=0.
+i=6: L=p5=1, M=p6=0, R=p7=1. B=0 OR1=1. new=1 XOR1=0.
+i=7: L=p6=0, M=p7=1, R=p8=1. B=1. new=0 XOR1=1.
+i=8: L=p7=1, M=p8=1, R=p9=1. B=1. new=1 XOR1=0.
+i=9: L=p8=1, M=p9=1, R=p10=0. B=1. new=1 XOR1=0.
+i=10: L=p9=1, M=p10=0, R=p11=1. B=1. new=1 XOR1=0.
+i=11: L=p10=0, M=p11=1, R=p12=0. B=1 OR0=1. new=0 XOR1=1.
+i=12: L=p11=1, M=p12=0, R=p13=1. B=0 OR1=1. new=1 XOR1=0.
+i=13: L=p12=0, M=p13=1, R=p14=0. B=1 OR0=1. new=0 XOR1=1.
+i=14: L=p13=1, M=p14=0, R=p15=1. B=0 OR1=1. new=1 XOR1=0.
+i=15: L=p14=0, M=p15=1, R=p0=1. B=1 OR1=1. new=0 XOR1=1.
+
+S3: [0,0,1,1,1,0,0,1,0,0,0,1,0,1,0,1]
+String: 0 0 1 1 1 0 0 1 0 0 0 1 0 1 0 1 = "0011100100010101".
+Check: p0=0,p1=0,p2=1,p3=1,p4=1,p5=0,p6=0,p7=1,p8=0,p9=0,p10=0,p11=1,p12=0,p13=1,p14=0,p15=1. String "0011100100010101". Count: 0011 1001 0001 0101 = 16. Good.
+
+Compute S4 from S3.
+S3 = [0,0,1,1,1,0,0,1,0,0,0,1,0,1,0,1]
+p0=0,p1=0,p2=1,p3=1,p4=1,p5=0,p6=0,p7=1,p8=0,p9=0,p10=0,p11=1,p12=0,p13=1,p14=0,p15=1.
+
+i=0: L=p15=1, M=p0=0, R=p1=0. B=0 OR0=0. new=1 XOR0=1.
+i=1: L=p0=0, M=p1=0, R=p2=1. B=0 OR1=1. new=0 XOR1=1.
+i=2: L=p1=0, M=p2=1, R=p3=1. B=1. new=0 XOR1=1.
+i=3: L=p2=1, M=p3=1, R=p4=1. B=1. new=1 XOR1=0.
+i=4: L=p3=1, M=p4=1, R=p5=0. B=1 OR0=1. new=1 XOR1=0.
+i=5: L=p4=1, M=p5=0, R=p6=0. B=0. new=1 XOR0=1.
+i=6: L=p5=0, M=p6=0, R=p7=1. B=1. new=0 XOR1=1.
+i=7: L=p6=0, M=p7=1, R=p8=0. B=1 OR0=1. new=0 XOR1=1.
+i=8: L=p7=1, M=p8=0, R=p9=0. B=0. new=1 XOR0=1.
+i=9: L=p8=0, M=p9=0, R=p10=0. B=0. new=0.
+i=10: L=p9=0, M=p10=0, R=p11=1. B=1. new=0 XOR1=1.
+i=11: L=p10=0, M=p11=1, R=p12=0. B=1 OR0=1. new=0 XOR1=1.
+i=12: L=p11=1, M=p12=0, R=p13=1. B=0 OR1=1. new=1 XOR1=0.
+i=13: L=p12=0, M=p13=1, R=p14=0. B=1 OR0=1. new=0 XOR1=1.
+i=14: L=p13=1, M=p14=0, R=p15=1. B=0 OR1=1. new=1 XOR1=0.
+i=15: L=p14=0, M=p15=1, R=p0=0. B=1 OR0=1. new=0 XOR1=1.
+
+S4: [1,1,1,0,0,1,1,1,1,0,1,1,0,1,0,1]
+String: 1 1 1 0 0 1 1 1 1 0 1 1 0 1 0 1 = "1110011110110101".
+Check grouping: 1110 0111 1011 0101 = "1110011110110101". Count 16. Good.
+
+Compute S5 from S4.
+S4: p0=1,p1=1,p2=1,p3=0,p4=0,p5=1,p6=1,p7=1,p8=1,p9=0,p10=1,p11=1,p12=0,p13=1,p14=0,p15=1.
+
+i=0: L=p15=1, M=p0=1, R=p1=1. B=1. new=1 XOR1=0.
+i=1: L=p0=1, M=p1=1, R=p2=1. B=1. new=1 XOR1=0.
+i=2: L=p1=1, M=p2=1, R=p3=0. B=1 OR0=1. new=1 XOR1=0.
+i=3: L=p2=1, M=p3=0, R=p4=0. B=0. new=1 XOR0=1.
+i=4: L=p3=0, M=p4=0, R=p5=1. B=1. new=0 XOR1=1.
+i=5: L=p4=0, M=p5=1, R=p6=1. B=1. new=0 XOR1=1.
+i=6: L=p5=1, M=p6=1, R=p7=1. B=1. new=1 XOR1=0.
+i=7: L=p6=1, M=p7=1, R=p8=1. B=1. new=1 XOR1=0.
+i=8: L=p7=1, M=p8=1, R=p9=0. B=1 OR0=1. new=1 XOR1=0.
+i=9: L=p8=1, M=p9=0, R=p10=1. B=0 OR1=1. new=1 XOR1=0.
+i=10: L=p9=0, M=p10=1, R=p11=1. B=1. new=0 XOR1=1.
+i=11: L=p10=1, M=p11=1, R=p12=0. B=1 OR0=1. new=1 XOR1=0.
+i=12: L=p11=1, M=p12=0, R=p13=1. B=0 OR1=1. new=1 XOR1=0.
+i=13: L=p12=0, M=p13=1, R=p14=0. B=1 OR0=1. new=0 XOR1=1.
+i=14: L=p13=1, M=p14=0, R=p15=1. B=0 OR1=1. new=1 XOR1=0.
+i=15: L=p14=0, M=p15=1, R=p0=1. B=1. new=0 XOR1=1.
+
+S5: [0,0,0,1,1,1,0,0,0,0,1,0,0,1,0,1]
+String: 0 0 0 1 1 1 0 0 0 0 1 0 0 1 0 1 = "0001110000100101".
+Grouping: 0001 1100 0010 0101 = "0001110000100101". Count 16. Good.
+
+Compute S6 from S5.
+S5: p0=0,p1=0,p2=0,p3=1,p4=1,p5=1,p6=0,p7=0,p8=0,p9=0,p10=1,p11=0,p12=0,p13=1,p14=0,p15=1.
+
+i=0: L=p15=1, M=p0=0, R=p1=0. B=0. new=1 XOR0=1.
+i=1: L=p0=0, M=p1=0, R=p2=0. B=0. new=0.
+i=2: L=p1=0, M=p2=0, R=p3=1. B=1. new=0 XOR1=1.
+i=3: L=p2=0, M=p3=1, R=p4=1. B=1. new=0 XOR1=1.
+i=4: L=p3=1, M=p4=1, R=p5=1. B=1. new=1 XOR1=0.
+i=5: L=p4=1, M=p5=1, R=p6=0. B=1 OR0=1. new=1 XOR1=0.
+i=6: L=p5=1, M=p6=0, R=p7=0. B=0. new=1 XOR0=1.
+i=7: L=p6=0, M=p7=0, R=p8=0. B=0. new=0.
+i=8: L=p7=0, M=p8=0, R=p9=0. B=0. new=0.
+i=9: L=p8=0, M=p9=0, R=p10=1. B=1. new=0 XOR1=1.
+i=10: L=p9=0, M=p10=1, R=p11=0. B=1 OR0=1. new=0 XOR1=1.
+i=11: L=p10=1, M=p11=0, R=p12=0. B=0. new=1 XOR0=1.
+i=12: L=p11=0, M=p12=0, R=p13=1. B=1. new=0 XOR1=1.
+i=13: L=p12=0, M=p13=1, R=p14=0. B=1 OR0=1. new=0 XOR1=1.
+i=14: L=p13=1, M=p14=0, R=p15=1. B=0 OR1=1. new=1 XOR1=0.
+i=15: L=p14=0, M=p15=1, R=p0=0. B=1 OR0=1. new=0 XOR1=1.
+
+S6: [1,0,1,1,0,0,1,0,0,1,1,1,1,1,0,1]
+String: 1 0 1 1 0 0 1 0 0 1 1 1 1 1 0 1 = "1011001001111101".
+Grouping: 1011 0010 0111 1101 = "1011001001111101". Count 16. Good.
+
+Compute S7 from S6.
+S6: p0=1,p1=0,p2=1,p3=1,p4=0,p5=0,p6=1,p7=0,p8=0,p9=1,p10=1,p11=1,p12=1,p13=1,p14=0,p15=1.
+
+i=0: L=p15=1, M=p0=1, R=p1=0. B=1 OR0=1. new=1 XOR1=0.
+i=1: L=p0=1, M=p1=0, R=p2=1. B=0 OR1=1. new=1 XOR1=0.
+i=2: L=p1=0, M=p2=1, R=p3=1. B=1. new=0 XOR1=1.
+i=3: L=p2=1, M=p3=1, R=p4=0. B=1 OR0=1. new=1 XOR1=0.
+i=4: L=p3=1, M=p4=0, R=p5=0. B=0. new=1 XOR0=1.
+i=5: L=p4=0, M=p5=0, R=p6=1. B=1. new=0 XOR1=1.
+i=6: L=p5=0, M=p6=1, R=p7=0. B=1 OR0=1. new=0 XOR1=1.
+i=7: L=p6=1, M=p7=0, R=p8=0. B=0. new=1 XOR0=1.
+i=8: L=p7=0, M=p8=0, R=p9=1. B=1. new=0 XOR1=1.
+i=9: L=p8=0, M=p9=1, R=p10=1. B=1. new=0 XOR1=1.
+i=10: L=p9=1, M=p10=1, R=p11=1. B=1. new=1 XOR1=0.
+i=11: L=p10=1, M=p11=1, R=p12=1. B=1. new=1 XOR1=0.
+i=12: L=p11=1, M=p12=1, R=p13=1. B=1. new=1 XOR1=0.
+i=13: L=p12=1, M=p13=1, R=p14=0. B=1 OR0=1. new=1 XOR1=0.
+i=14: L=p13=1, M=p14=0, R=p15=1. B=0 OR1=1. new=1 XOR1=0.
+i=15: L=p14=0, M=p15=1, R=p0=1. B=1. new=0 XOR1=1.
+
+S7: [0,0,1,0,1,1,1,1,1,1,0,0,0,0,0,1]
+String: 0 0 1 0 1 1 1 1 1 1 0 0 0 0 0 1 = "0010111111000001".
+Grouping: 0010 1111 1100 0001 = "0010111111000001". Count 16. Good.
+
+Compute S8 from S7.
+S7: p0=0,p1=0,p2=1,p3=0,p4=1,p5=1,p6=1,p7=1,p8=1,p9=1,p10=0,p11=0,p12=0,p13=0,p14=0,p15=1.
+
+i=0: L=p15=1, M=p0=0, R=p1=0. B=0. new=1 XOR0=1.
+i=1: L=p0=0, M=p1=0, R=p2=1. B=1. new=0 XOR1=1.
+i=2: L=p1=0, M=p2=1, R=p3=0. B=1 OR0=1. new=0 XOR1=1.
+i=3: L=p2=1, M=p3=0, R=p4=1. B=0 OR1=1. new=1 XOR1=0.
+i=4: L=p3=0, M=p4=1, R=p5=1. B=1. new=0 XOR1=1.
+i=5: L=p4=1, M=p5=1, R=p6=1. B=1. new=1 XOR1=0.
+i=6: L=p5=1, M=p6=1, R=p7=1. B=1. new=1 XOR1=0.
+i=7: L=p6=1, M=p7=1, R=p8=1. B=1. new=1 XOR1=0.
+i=8: L=p7=1, M=p8=1, R=p9=1. B=1. new=1 XOR1=0.
+i=9: L=p8=1, M=p9=1, R=p10=0. B=1 OR0=1. new=1 XOR1=0.
+i=10: L=p9=1, M=p10=0, R=p11=0. B=0. new=1 XOR0=1.
+i=11: L=p10=0, M=p11=0, R=p12=0. B=0. new=0.
+i=12: L=p11=0, M=p12=0, R=p13=0. B=0. new=0.
+i=13: L=p12=0, M=p13=0, R=p14=0. B=0. new=0.
+i=14: L=p13=0, M=p14=0, R=p15=1. B=1. new=0 XOR1=1.
+i=15: L=p14=0, M=p15=1, R=p0=0. B=1 OR0=1. new=0 XOR1=1.
+
+S8: [1,1,1,0,1,0,0,0,0,0,1,0,0,0,1,1]
+String: 1 1 1 0 1 0 0 0 0 0 1 0 0 0 1 1 = "1110100000100011".
+Grouping: 1110 1000 0010 0011 = "1110100000100011". Count 16. Good.
+
+Compute S9 from S8.
+S8: p0=1,p1=1,p2=1,p3=0,p4=1,p5=0,p6=0,p7=0,p8=0,p9=0,p10=1,p11=0,p12=0,p13=0,p14=1,p15=1.
+
+i=0: L=p15=1, M=p0=1, R=p1=1. B=1. new=1 XOR1=0.
+i=1: L=p0=1, M=p1=1, R=p2=1. B=1. new=1 XOR1=0.
+i=2: L=p1=1, M=p2=1, R=p3=0. B=1 OR0=1. new=1 XOR1=0.
+i=3: L=p2=1, M=p3=0, R=p4=1. B=0 OR1=1. new=1 XOR1=0.
+i=4: L=p3=0, M=p4=1, R=p5=0. B=1 OR0=1. new=0 XOR1=1.
+i=5: L=p4=1, M=p5=0, R=p6=0. B=0. new=1 XOR0=1.
+i=6: L=p5=0, M=p6=0, R=p7=0. B=0. new=0.
+i=7: L=p6=0, M=p7=0, R=p8=0. B=0. new=0.
+i=8: L=p7=0, M=p8=0, R=p9=0. B=0. new=0.
+i=9: L=p8=0, M=p9=0, R=p10=1. B=1. new=0 XOR1=1.
+i=10: L=p9=0, M=p10=1, R=p11=0. B=1 OR0=1. new=0 XOR1=1.
+i=11: L=p10=1, M=p11=0, R=p12=0. B=0. new=1 XOR0=1.
+i=12: L=p11=0, M=p12=0, R=p13=0. B=0. new=0.
+i=13: L=p12=0, M=p13=0, R=p14=1. B=1. new=0 XOR1=1.
+i=14: L=p13=0, M=p14=1, R=p15=1. B=1. new=0 XOR1=1.
+i=15: L=p14=1, M=p15=1, R=p0=1. B=1. new=1 XOR1=0.
+
+S9: [0,0,0,0,1,1,0,0,0,1,1,1,0,1,1,0]
+String: 0 0 0 0 1 1 0 0 0 1 1 1 0 1 1 0 = "0000110001110110".
+Grouping: 0000 1100 0111 0110 = "0000110001110110". Count 16. Good.
+
+Compute S10 from S9.
+S9: p0=0,p1=0,p2=0,p3=0,p4=1,p5=1,p6=0,p7=0,p8=0,p9=1,p10=1,p11=1,p12=0,p13=1,p14=1,p15=0.
+
+i=0: L=p15=0, M=p0=0, R=p1=0. B=0. new=0.
+i=1: L=p0=0, M=p1=0, R=p2=0. B=0. new=0.
+i=2: L=p1=0, M=p2=0, R=p3=0. B=0. new=0.
+i=3: L=p2=0, M=p3=0, R=p4=1. B=1. new=0 XOR1=1.
+i=4: L=p3=0, M=p4=1, R=p5=1. B=1. new=0 XOR1=1.
+i=5: L=p4=1, M=p5=1, R=p6=0. B=1 OR0=1. new=1 XOR1=0.
+i=6: L=p5=1, M=p6=0, R=p7=0. B=0. new=1 XOR0=1.
+i=7: L=p6=0, M=p7=0, R=p8=0. B=0. new=0.
+i=8: L=p7=0, M=p8=0, R=p9=1. B=1. new=0 XOR1=1.
+i=9: L=p8=0, M=p9=1, R=p10=1. B=1. new=0 XOR1=1.
+i=10: L=p9=1, M=p10=1, R=p11=1. B=1. new=1 XOR1=0.
+i=11: L=p10=1, M=p11=1, R=p12=0. B=1 OR0=1. new=1 XOR1=0.
+i=12: L=p11=1, M=p12=0, R=p13=1. B=0 OR1=1. new=1 XOR1=0.
+i=13: L=p12=0, M=p13=1, R=p14=1. B=1. new=0 XOR1=1.
+i=14: L=p13=1, M=p14=1, R=p15=0. B=1 OR0=1. new=1 XOR1=0.
+i=15: L=p14=1, M=p15=0, R=p0=0. B=0. new=1 XOR0=1.
+
+S10: [0,0,0,1,1,0,1,0,1,1,0,0,0,1,0,1]
+String: 0 0 0 1 1 0 1 0 1 1 0 0 0 1 0 1 = "0001101011000101".
+Grouping: 0001 1010 1100 0101 = "0001101011000101". Count 16. Good.
+
+Compute S11 from S10.
+S10: p0=0,p1=0,p2=0,p3=1,p4=1,p5=0,p6=1,p7=0,p8=1,p9=1,p10=0,p11=0,p12=0,p13=1,p14=0,p15=1.
+
+i=0: L=p15=1, M=p0=0, R=p1=0. B=0. new=1.
+i=1: L=p0=0, M=p1=0, R=p2=0. B=0. new=0.
+i=2: L=p1=0, M=p2=0, R=p3=1. B=1. new=1.
+i=3: L=p2=0, M=p3=1, R=p4=1. B=1. new=1.
+i=4: L=p3=1, M=p4=1, R=p5=0. B=1 OR0=1. new=1 XOR1=0.
+i=5: L=p4=1, M=p5=0, R=p6=1. B=0 OR1=1. new=1 XOR1=0.
+i=6: L=p5=0, M=p6=1, R=p7=0. B=1 OR0=1. new=0 XOR1=1.
+i=7: L=p6=1, M=p7=0, R=p8=1. B=0 OR1=1. new=1 XOR1=0.
+i=8: L=p7=0, M=p8=1, R=p9=1. B=1. new=0 XOR1=1.
+i=9: L=p8=1, M=p9=1, R=p10=0. B=1 OR0=1. new=1 XOR1=0.
+i=10: L=p9=1, M=p10=0, R=p11=0. B=0. new=1 XOR0=1.
+i=11: L=p10=0, M=p11=0, R=p12=0. B=0. new=0.
+i=12: L=p11=0, M=p12=0, R=p13=1. B=1. new=0 XOR1=1.
+i=13: L=p12=0, M=p13=1, R=p14=0. B=1 OR0=1. new=0 XOR1=1.
+i=14: L=p13=1, M=p14=0, R=p15=1. B=0 OR1=1. new=1 XOR1=0.
+i=15: L=p14=0, M=p15=1, R=p0=0. B=1 OR0=1. new=0 XOR1=1.
+
+S11: [1,0,1,1,0,0,1,0,1,0,1,0,1,1,0,1]
+String: 1 0 1 1 0 0 1 0 1 0 1 0 1 1 0 1 = "1011001010101101".
+Grouping: 1011 0010 1010 1101 = "1011001010101101". Count 16. Good.
+
+Compute S12 from S11.
+S11: p0=1,p1=0,p2=1,p3=1,p4=0,p5=0,p6=1,p7=0,p8=1,p9=0,p10=1,p11=0,p12=1,p13=1,p14=0,p15=1.
+
+i=0: L=p15=1, M=p0=1, R=p1=0. B=1 OR0=1. new=0.
+i=1: L=p0=1, M=p1=0, R=p2=1. B=0 OR1=1. new=1 XOR1=0.
+i=2: L=p1=0, M=p2=1, R=p3=1. B=1. new=0 XOR1=1.
+i=3: L=p2=1, M=p3=1, R=p4=0. B=1 OR0=1. new=1 XOR1=0.
+i=4: L=p3=1, M=p4=0, R=p5=0. B=0. new=1 XOR0=1.
+i=5: L=p4=0, M=p5=0, R=p6=1. B=1. new=0 XOR1=1.
+i=6: L=p5=0, M=p6=1, R=p7=0. B=1 OR0=1. new=0 XOR1=1.
+i=7: L=p6=1, M=p7=0, R=p8=1. B=0 OR1=1. new=1 XOR1=0.
+i=8: L=p7=0, M=p8=1, R=p9=0. B=1 OR0=1. new=0 XOR1=1.
+i=9: L=p8=1, M=p9=0, R=p10=1. B=0 OR1=1. new=1 XOR1=0.
+i=10: L=p9=0, M=p10=1, R=p11=0. B=1 OR0=1. new=0 XOR1=1.
+i=11: L=p10=1, M=p11=0, R=p12=1. B=0 OR1=1. new=1 XOR1=0.
+i=12: L=p11=0, M=p12=1, R=p13=1. B=1. new=0 XOR1=1.
+i=13: L=p12=1, M=p13=1, R=p14=0. B=1 OR0=1. new=1 XOR1=0.
+i=14: L=p13=1, M=p14=0, R=p15=1. B=0 OR1=1. new=1 XOR1=0.
+i=15: L=p14=0, M=p15=1, R=p0=1. B=1. new=0 XOR1=1.
+
+S12: [0,0,1,0,1,1,1,0,1,0,1,0,1,0,0,1]
+String: 0 0 1 0 1 1 1 0 1 0 1 0 1 0 0 1 = "0010111010101001".
+Grouping: 0010 1110 1010 1001 = "0010111010101001". Count 16. Good.
+
+Compute S13 from S12.
+S12: p0=0,p1=0,p2=1,p3=0,p4=1,p5=1,p6=1,p7=0,p8=1,p9=0,p10=1,p11=0,p12=1,p13=0,p14=0,p15=1.
+
+i=0: L=p15=1, M=p0=0, R=p1=0. B=0. new=1.
+i=1: L=p0=0, M=p1=0, R=p2=1. B=1. new=1.
+i=2: L=p1=0, M=p2=1, R=p3=0. B=1 OR0=1. new=0 XOR1=1.
+i=3: L=p2=1, M=p3=0, R=p4=1. B=0 OR1=1. new=1 XOR1=0.
+i=4: L=p3=0, M=p4=1, R=p5=1. B=1. new=0 XOR1=1.
+i=5: L=p4=1, M=p5=1, R=p6=1. B=1. new=1 XOR1=0.
+i=6: L=p5=1, M=p6=1, R=p7=0. B=1 OR0=1. new=1 XOR1=0.
+i=7: L=p6=1, M=p7=0, R=p8=1. B=0 OR1=1. new=1 XOR1=0.
+i=8: L=p7=0, M=p8=1, R=p9=0. B=1 OR0=1. new=0 XOR1=1.
+i=9: L=p8=1, M=p9=0, R=p10=1. B=0 OR1=1. new=1 XOR1=0.
+i=10: L=p9=0, M=p10=1, R=p11=0. B=1 OR0=1. new=0 XOR1=1.
+i=11: L=p10=1, M=p11=0, R=p12=1. B=0 OR1=1. new=1 XOR1=0.
+i=12: L=p11=0, M=p12=1, R=p13=0. B=1 OR0=1. new=0 XOR1=1.
+i=13: L=p12=1, M=p13=0, R=p14=0. B=0. new=1 XOR0=1.
+i=14: L=p13=0, M=p14=0, R=p15=1. B=1. new=0 XOR1=1.
+i=15: L=p14=0, M=p15=1, R=p0=0. B=1 OR0=1. new=0 XOR1=1.
+
+S13: [1,1,1,0,1,0,0,0,1,0,1,0,1,1,1,1]
+String: 1 1 1 0 1 0 0 0 1 0 1 0 1 1 1 1 = "1110100010101111".
+Grouping: 1110 1000 1010 1111 = "1110100010101111". Count 16. Good.
+
+Compute S14 from S13.
+S13: p0=1,p1=1,p2=1,p3=0,p4=1,p5=0,p6=0,p7=0,p8=1,p9=0,p10=1,p11=0,p12=1,p13=1,p14=1,p15=1.
+
+i=0: L=p15=1, M=p0=1, R=p1=1. B=1. new=0.
+i=1: L=p0=1, M=p1=1, R=p2=1. B=1. new=0.
+i=2: L=p1=1, M=p2=1, R=p3=0. B=1 OR0=1. new=0.
+i=3: L=p2=1, M=p3=0, R=p4=1. B=0 OR1=1. new=0.
+i=4: L=p3=0, M=p4=1, R=p5=0. B=1 OR0=1. new=0 XOR1=1.
+i=5: L=p4=1, M=p5=0, R=p6=0. B=0. new=1 XOR0=1.
+i=6: L=p5=0, M=p6=0, R=p7=0. B=0. new=0.
+i=7: L=p6=0, M=p7=0, R=p8=1. B=1. new=0 XOR1=1.
+i=8: L=p7=0, M=p8=1, R=p9=0. B=1 OR0=1. new=0 XOR1=1.
+i=9: L=p8=1, M=p9=0, R=p10=1. B=0 OR1=1. new=1 XOR1=0.
+i=10: L=p9=0, M=p10=1, R=p11=0. B=1 OR0=1. new=0 XOR1=1.
+i=11: L=p10=1, M=p11=0, R=p12=1. B=0 OR1=1. new=1 XOR1=0.
+i=12: L=p11=0, M=p12=1, R=p13=1. B=1. new=0 XOR1=1.
+i=13: L=p12=1, M=p13=1, R=p14=1. B=1. new=1 XOR1=0.
+i=14: L=p13=1, M=p14=1, R=p15=1. B=1. new=1 XOR1=0.
+i=15: L=p14=1, M=p15=1, R=p0=1. B=1. new=1 XOR1=0.
+
+S14: [0,0,0,0,1,1,0,1,1,0,1,0,1,0,0,0]
+String: 0 0 0 0 1 1 0 1 1 0 1 0 1 0 0 0 = "0000110110101000".
+Grouping: 0000 1101 1010 1000 = "0000110110101000". Count 16. Good.
+
+Compute S15 from S14.
+S14: p0=0,p1=0,p2=0,p3=0,p4=1,p5=1,p6=0,p7=1,p8=1,p9=0,p10=1,p11=0,p12=1,p13=0,p14=0,p15=0.
+
+i=0: L=p15=0, M=p0=0, R=p1=0. B=0. new=0.
+i=1: L=p0=0, M=p1=0, R=p2=0. B=0. new=0.
+i=2: L=p1=0, M=p2=0, R=p3=0. B=0. new=0.
+i=3: L=p2=0, M=p3=0, R=p4=1. B=1. new=1.
+i=4: L=p3=0, M=p4=1, R=p5=1. B=1. new=1.
+i=5: L=p4=1, M=p5=1, R=p6=0. B=1 OR0=1. new=1 XOR1=0.
+i=6: L=p5=1, M=p6=0, R=p7=1. B=0 OR1=1. new=1 XOR1=0.
+i=7: L=p6=0, M=p7=1, R=p8=1. B=1. new=0 XOR1=1.
+i=8: L=p7=1, M=p8=1, R=p9=0. B=1 OR0=1. new=1 XOR1=0.
+i=9: L=p8=1, M=p9=0, R=p10=1. B=0 OR1=1. new=1 XOR1=0.
+i=10: L=p9=0, M=p10=1, R=p11=0. B=1 OR0=1. new=0 XOR1=1.
+i=11: L=p10=1, M=p11=0, R=p12=1. B=0 OR1=1. new=1 XOR1=0.
+i=12: L=p11=0, M=p12=1, R=p13=0. B=1 OR0=1. new=0 XOR1=1.
+i=13: L=p12=1, M=p13=0, R=p14=0. B=0. new=1 XOR0=1.
+i=14: L=p13=0, M=p14=0, R=p15=0. B=0. new=0.
+i=15: L=p14=0, M=p15=0, R=p0=0. B=0. new=0.
+
+S15: [0,0,0,1,1,0,0,1,0,0,1,0,1,1,0,0]
+String: 0 0 0 1 1 0 0 1 0 0 1 0 1 1 0 0 = "0001100100101100".
+Grouping: 0001 1001 0010 1100 = "0001100100101100". Count 16. Good.
+
+Compute S16 from S15.
+S15: p0=0,p1=0,p2=0,p3=1,p4=1,p5=0,p6=0,p7=1,p8=0,p9=0,p10=1,p11=0,p12=1,p13=1,p14=0,p15=0.
+
+i=0: L=p15=0, M=p0=0, R=p1=0. B=0. new=0.
+i=1: L=p0=0, M=p1=0, R=p2=0. B=0. new=0.
+i=2: L=p1=0, M=p2=0, R=p3=1. B=1. new=1.
+i=3: L=p2=0, M=p3=1, R=p4=1. B=1. new=1.
+i=4: L=p3=1, M=p4=1, R=p5=0. B=1 OR0=1. new=1 XOR1=0.
+i=5: L=p4=1, M=p5=0, R=p6=0. B=0. new=1 XOR0=1.
+i=6: L=p5=0, M=p6=0, R=p7=1. B=1. new=0 XOR1=1.
+i=7: L=p6=0, M=p7=1, R=p8=0. B=1 OR0=1. new=0 XOR1=1.
+i=8: L=p7=1, M=p8=0, R=p9=0. B=0. new=1 XOR0=1.
+i=9: L=p8=0, M=p9=0, R=p10=1. B=1. new=0 XOR1=1.
+i=10: L=p9=0, M=p10=1, R=p11=0. B=1 OR0=1. new=0 XOR1=1.
+i=11: L=p10=1, M=p11=0, R=p12=1. B=0 OR1=1. new=1 XOR1=0.
+i=12: L=p11=0, M=p12=1, R=p13=1. B=1. new=0 XOR1=1.
+i=13: L=p12=1, M=p13=1, R=p14=0. B=1 OR0=1. new=1 XOR1=0.
+i=14: L=p13=1, M=p14=0, R=p15=0. B=0. new=1 XOR0=1.
+i=15: L=p14=0, M=p15=0, R=p0=0. B=0. new=0.
+
+S16: [0,0,1,1,0,1,1,1,1,1,1,0,1,0,1,0]
+String: 0 0 1 1 0 1 1 1 1 1 1 0 1 0 1 0 = "0011011111101010".
+Grouping: 0011 0111 1110 1010 = "0011011111101010". Count 16. Good.
+
+Compute S17 from S16.
+S16: p0=0,p1=0,p2=1,p3=1,p4=0,p5=1,p6=1,p7=1,p8=1,p9=1,p10=1,p11=0,p12=1,p13=0,p14=1,p15=0.
+
+i=0: L=p15=0, M=p0=0, R=p1=0. B=0. new=0.
+i=1: L=p0=0, M=p1=0, R=p2=1. B=1. new=1.
+i=2: L=p1=0, M=p2=1, R=p3=1. B=1. new=1.
+i=3: L=p2=1, M=p3=1, R=p4=0. B=1 OR0=1. new=1 XOR1=0.
+i=4: L=p3=1, M=p4=0, R=p5=1. B=0 OR1=1. new=1 XOR1=0.
+i=5: L=p4=0, M=p5=1, R=p6=1. B=1. new=0 XOR1=1.
+i=6: L=p5=1, M=p6=1, R=p7=1. B=1. new=1 XOR1=0.
+i=7: L=p6=1, M=p7=1, R=p8=1. B=1. new=1 XOR1=0.
+i=8: L=p7=1, M=p8=1, R=p9=1. B=1. new=1 XOR1=0.
+i=9: L=p8=1, M=p9=1, R=p10=1. B=1. new=1 XOR1=0.
+i=10: L=p9=1, M=p10=1, R=p11=0. B=1 OR0=1. new=1 XOR1=0.
+i=11: L=p10=1, M=p11=0, R=p12=1. B=0 OR1=1. new=1 XOR1=0.
+i=12: L=p11=0, M=p12=1, R=p13=0. B=1 OR0=1. new=0 XOR1=1.
+i=13: L=p12=1, M=p13=0, R=p14=1. B=0 OR1=1. new=1 XOR1=0.
+i=14: L=p13=0, M=p14=1, R=p15=0. B=1 OR0=1. new=0 XOR1=1.
+i=15: L=p14=1, M=p15=0, R=p0=0. B=0. new=1 XOR0=1.
+
+S17: [0,1,1,0,0,1,0,0,0,0,0,0,1,0,1,1]
+String: 0 1 1 0 0 1 0 0 0 0 0 0 1 0 1 1 = "0110010000001011".
+Grouping: 0110 0100 0000 1011 = "0110010000001011". Count 16. Good.
+
+Compute S18 from S17.
+S17: p0=0,p1=1,p2=1,p3=0,p4=0,p5=1,p6=0,p7=0,p8=0,p9=0,p10=0,p11=0,p12=1,p13=0,p14=1,p15=1.
+
+i=0: L=p15=1, M=p0=0, R=p1=1. B=0 OR1=1. new=1 XOR1=0.
+i=1: L=p0=0, M=p1=1, R=p2=1. B=1. new=0 XOR1=1.
+i=2: L=p1=1, M=p2=1, R=p3=0. B=1 OR0=1. new=1 XOR1=0.
+i=3: L=p2=1, M=p3=0, R=p4=0. B=0. new=1 XOR0=1.
+i=4: L=p3=0, M=p4=0, R=p5=1. B=1. new=0 XOR1=1.
+i=5: L=p4=0, M=p5=1, R=p6=0. B=1 OR0=1. new=0 XOR1=1.
+i=6: L=p5=1, M=p6=0, R=p7=0. B=0. new=1 XOR0=1.
+i=7: L=p6=0, M=p7=0, R=p8=0. B=0. new=0.
+i=8: L=p7=0, M=p8=0, R=p9=0. B=0. new=0.
+i=9: L=p8=0, M=p9=0, R=p10=0. B=0. new=0.
+i=10: L=p9=0, M=p10=0, R=p11=0. B=0. new=0.
+i=11: L=p10=0, M=p11=0, R=p12=1. B=1. new=0 XOR1=1.
+i=12: L=p11=0, M=p12=1, R=p13=0. B=1 OR0=1. new=0 XOR1=1.
+i=13: L=p12=1, M=p13=0, R=p14=1. B=0 OR1=1. new=1 XOR1=0.
+i=14: L=p13=0, M=p14=1, R=p15=1. B=1. new=0 XOR1=1.
+i=15: L=p14=1, M=p15=1, R=p0=0. B=1 OR0=1. new=1 XOR1=0.
+
+S18: [0,1,0,1,1,1,1,0,0,0,0,1,1,0,1,0]
+String: 0 1 0 1 1 1 1 0 0 0 0 1 1 0 1 0 = "0101111000011010".
+Grouping: 0101 1110 0001 1010 = "0101111000011010". Count 16. Good.
+
+Compute S19 from S18.
+S18: p0=0,p1=1,p2=0,p3=1,p4=1,p5=1,p6=1,p7=0,p8=0,p9=0,p10=0,p11=1,p12=1,p13=0,p14=1,p15=0.
+
+i=0: L=p15=0, M=p0=0, R=p1=1. B=0 OR1=1. new=0 XOR1=1.
+i=1: L=p0=0, M=p1=1, R=p2=0. B=1 OR0=1. new=0 XOR1=1.
+i=2: L=p1=1, M=p2=0, R=p3=1. B=0 OR1=1. new=1 XOR1=0.
+i=3: L=p2=0, M=p3=1, R=p4=1. B=1. new=0 XOR1=1.
+i=4: L=p3=1, M=p4=1, R=p5=1. B=1. new=1 XOR1=0.
+i=5: L=p4=1, M=p5=1, R=p6=1. B=1. new=1 XOR1=0.
+i=6: L=p5=1, M=p6=1, R=p7=0. B=1 OR0=1. new=1 XOR1=0.
+i=7: L=p6=1, M=p7=0, R=p8=0. B=0. new=1 XOR0=1.
+i=8: L=p7=0, M=p8=0, R=p9=0. B=0. new=0.
+i=9: L=p8=0, M=p9=0, R=p10=0. B=0. new=0.
+i=10: L=p9=0, M=p10=0, R=p11=1. B=1. new=0 XOR1=1.
+i=11: L=p10=0, M=p11=1, R=p12=1. B=1. new=0 XOR1=1.
+i=12: L=p11=1, M=p12=1, R=p13=0. B=1 OR0=1. new=1 XOR1=0.
+i=13: L=p12=1, M=p13=0, R=p14=1. B=0 OR1=1. new=1 XOR1=0.
+i=14: L=p13=0, M=p14=1, R=p15=0. B=1 OR0=1. new=0 XOR1=1.
+i=15: L=p14=1, M=p15=0, R=p0=0. B=0. new=1 XOR0=1.
+
+S19: [1,1,0,1,0,0,0,1,0,0,1,1,0,0,1,1]
+String: 1 1 0 1 0 0 0 1 0 0 1 1 0 0 1 1 = "1101000100110011".
+Grouping: 1101 0001 0011 0011 = "1101000100110011". Count 16. Good.
+
+Compute S20 from S19.
+S19: p0=1,p1=1,p2=0,p3=1,p4=0,p5=0,p6=0,p7=1,p8=0,p9=0,p10=1,p11=1,p12=0,p13=0,p14=1,p15=1.
+
+i=0: L=p15=1, M=p0=1, R=p1=1. B=1. new=1 XOR1=0.
+i=1: L=p0=1, M=p1=1, R=p2=0. B=1 OR0=1. new=1 XOR1=0.
+i=2: L=p1=1, M=p2=0, R=p3=1. B=0 OR1=1. new=1 XOR1=0.
+i=3: L=p2=0, M=p3=1, R=p4=0. B=1 OR0=1. new=0 XOR1=1.
+i=4: L=p3=1, M=p4=0, R=p5=0. B=0. new=1 XOR0=1.
+i=5: L=p4=0, M=p5=0, R=p6=0. B=0. new=0.
+i=6: L=p5=0, M=p6=0, R=p7=1. B=1. new=0 XOR1=1.
+i=7: L=p6=0, M=p7=1, R=p8=0. B=1 OR0=1. new=0 XOR1=1.
+i=8: L=p7=1, M=p8=0, R=p9=0. B=0. new=1 XOR0=1.
+i=9: L=p8=0, M=p9=0, R=p10=1. B=1. new=0 XOR1=1.
+i=10: L=p9=0, M=p10=1, R=p11=1. B=1. new=0 XOR1=1.
+i=11: L=p10=1, M=p11=1, R=p12=0. B=1 OR0=1. new=1 XOR1=0.
+i=12: L=p11=1, M=p12=0, R=p13=0. B=0. new=1 XOR0=1.
+i=13: L=p12=0, M=p13=0, R=p14=1. B=1. new=0 XOR1=1.
+i=14: L=p13=0, M=p14=1, R=p15=1. B=1. new=0 XOR1=1.
+i=15: L=p14=1, M=p15=1, R=p0=1. B=1. new=1 XOR1=0.
+
+S20: [0,0,0,1,1,0,1,1,1,1,1,0,1,1,1,0]
+String: 0 0 0 1 1 0 1 1 1 1 1 0 1 1 1 0 = "0001101111101110".
+Grouping: 0001 1011 1110 1110 = "0001101111101110". Count 16. Good.
+
+Compute S21 from S20.
+S20: p0=0,p1=0,p2=0,p3=1,p4=1,p5=0,p6=1,p7=1,p8=1,p9=1,p10=1,p11=0,p12=1,p13=1,p14=1,p15=0.
+
+i=0: L=p15=0, M=p0=0, R=p1=0. B=0. new=0.
+i=1: L=p0=0, M=p1=0, R=p2=0. B=0. new=0.
+i=2: L=p1=0, M=p2=0, R=p3=1. B=1. new=1.
+i=3: L=p2=0, M=p3=1, R=p4=1. B=1. new=1.
+i=4: L=p3=1, M=p4=1, R=p5=0. B=1 OR0=1. new=1 XOR1=0.
+i=5: L=p4=1, M=p5=0, R=p6=1. B=0 OR1=1. new=1 XOR1=0.
+i=6: L=p5=0, M=p6=1, R=p7=1. B=1. new=0 XOR1=1.
+i=7: L=p6=1, M=p7=1, R=p8=1. B=1. new=1 XOR1=0.
+i=8: L=p7=1, M=p8=1, R=p9=1. B=1. new=1 XOR1=0.
+i=9: L=p8=1, M=p9=1, R=p10=1. B=1. new=1 XOR1=0.
+i=10: L=p9=1, M=p10=1, R=p11=0. B=1 OR0=1. new=1 XOR1=0.
+i=11: L=p10=1, M=p11=0, R=p12=1. B=0 OR1=1. new=1 XOR1=0.
+i=12: L=p11=0, M=p12=1, R=p13=1. B=1. new=0 XOR1=1.
+i=13: L=p12=1, M=p13=1, R=p14=1. B=1. new=1 XOR1=0.
+i=14: L=p13=1, M=p14=1, R=p15=0. B=1 OR0=1. new=1 XOR1=0.
+i=15: L=p14=1, M=p15=0, R=p0=0. B=0. new=1 XOR0=1.
+
+S21: [0,0,1,1,0,0,1,0,0,0,0,0,1,0,0,1]
+String: 0 0 1 1 0 0 1 0 0 0 0 0 1 0 0 1 = "0011001000001001".
+Grouping: 0011 0010 0000 1001 = "0011001000001001". Count 16. Good.
+
+Compute S22 from S21.
+S21: p0=0,p1=0,p2=1,p3=1,p4=0,p5=0,p6=1,p7=0,p8=0,p9=0,p10=0,p11=0,p12=1,p13=0,p14=0,p15=1.
+
+i=0: L=p15=1, M=p0=0, R=p1=0. B=0. new=1 XOR0=1.
+i=1: L=p0=0, M=p1=0, R=p2=1. B=1. new=0 XOR1=1.
+i=2: L=p1=0, M=p2=1, R=p3=1. B=1. new=0 XOR1=1.
+i=3: L=p2=1, M=p3=1, R=p4=0. B=1 OR0=1. new=1 XOR1=0.
+i=4: L=p3=1, M=p4=0, R=p5=0. B=0. new=1 XOR0=1.
+i=5: L=p4=0, M=p5=0, R=p6=1. B=1. new=0 XOR1=1.
+i=6: L=p5=0, M=p6=1, R=p7=0. B=1 OR0=1. new=0 XOR1=1.
+i=7: L=p6=1, M=p7=0, R=p8=0. B=0. new=1 XOR0=1.
+i=8: L=p7=0, M=p8=0, R=p9=0. B=0. new=0.
+i=9: L=p8=0, M=p9=0, R=p10=0. B=0. new=0.
+i=10: L=p9=0, M=p10=0, R=p11=0. B=0. new=0.
+i=11: L=p10=0, M=p11=0, R=p12=1. B=1. new=0 XOR1=1.
+i=12: L=p11=0, M=p12=1, R=p13=0. B=1 OR0=1. new=0 XOR1=1.
+i=13: L=p12=1, M=p13=0, R=p14=0. B=0. new=1 XOR0=1.
+i=14: L=p13=0, M=p14=0, R=p15=1. B=1. new=0 XOR1=1.
+i=15: L=p14=0, M=p15=1, R=p0=0. B=1 OR0=1. new=0 XOR1=1.
+
+S22: [1,1,1,0,1,1,1,1,0,0,0,1,1,1,1,1]
+String: 1 1 1 0 1 1 1 1 0 0 0 1 1 1 1 1 = "1110111100011111".
+Grouping: 1110 1111 0001 1111 = "1110111100011111". Count 16. Good.
+
+Compute S23 from S22.
+S22: p0=1,p1=1,p2=1,p3=0,p4=1,p5=1,p6=1,p7=1,p8=0,p9=0,p10=0,p11=1,p12=1,p13=1,p14=1,p15=1.
+
+i=0: L=p15=1, M=p0=1, R=p1=1. B=1. new=0.
+i=1: L=p0=1, M=p1=1, R=p2=1. B=1. new=0.
+i=2: L=p1=1, M=p2=1, R=p3=0. B=1 OR0=1. new=0.
+i=3: L=p2=1, M=p3=0, R=p4=1. B=0 OR1=1. new=1 XOR1=0.
+i=4: L=p3=0, M=p4=1, R=p5=1. B=1. new=0 XOR1=1.
+i=5: L=p4=1, M=p5=1, R=p6=1. B=1. new=1 XOR1=0.
+i=6: L=p5=1, M=p6=1, R=p7=1. B=1. new=1 XOR1=0.
+i=7: L=p6=1, M=p7=1, R=p8=0. B=1 OR0=1. new=1 XOR1=0.
+i=8: L=p7=1, M=p8=0, R=p9=0. B=0. new=1 XOR0=1.
+i=9: L=p8=0, M=p9=0, R=p10=0. B=0. new=0.
+i=10: L=p9=0, M=p10=0, R=p11=1. B=1. new=0 XOR1=1.
+i=11: L=p10=0, M=p11=1, R=p12=1. B=1. new=0 XOR1=1.
+i=12: L=p11=1, M=p12=1, R=p13=1. B=1. new=1 XOR1=0.
+i=13: L=p12=1, M=p13=1, R=p14=1. B=1. new=1 XOR1=0.
+i=14: L=p13=1, M=p14=1, R=p15=1. B=1. new=1 XOR1=0.
+i=15: L=p14=1, M=p15=1, R=p0=1. B=1. new=1 XOR1=0.
+
+S23: [0,0,0,0,1,0,0,0,1,0,1,1,0,0,0,0]
+String: 0 0 0 0 1 0 0 0 1 0 1 1 0 0 0 0 = "0000100010110000".
+Grouping: 0000 1000 1011 0000 = "0000100010110000". Count 16. Good.
+
+Compute S24 from S23.
+S23: p0=0,p1=0,p2=0,p3=0,p4=1,p5=0,p6=0,p7=0,p8=1,p9=0,p10=1,p11=1,p12=0,p13=0,p14=0,p15=0.
+
+i=0: L=p15=0, M=p0=0, R=p1=0. B=0. new=0.
+i=1: L=p0=0, M=p1=0, R=p2=0. B=0. new=0.
+i=2: L=p1=0, M=p2=0, R=p3=0. B=0. new=0.
+i=3: L=p2=0, M=p3=0, R=p4=1. B=1. new=0 XOR1=1.
+i=4: L=p3=0, M=p4=1, R=p5=0. B=1 OR0=1. new=0 XOR1=1.
+i=5: L=p4=1, M=p5=0, R=p6=0. B=0. new=1 XOR0=1.
+i=6: L=p5=0, M=p6=0, R=p7=0. B=0. new=0.
+i=7: L=p6=0, M=p7=0, R=p8=1. B=1. new=0 XOR1=1.
+i=8: L=p7=0, M=p8=1, R=p9=0. B=1 OR0=1. new=0 XOR1=1.
+i=9: L=p8=1, M=p9=0, R=p10=1. B=0 OR1=1. new=1 XOR1=0.
+i=10: L=p9=0, M=p10=1, R=p11=1. B=1. new=0 XOR1=1.
+i=11: L=p10=1, M=p11=1, R=p12=0. B=1 OR0=1. new=1 XOR1=0.
+i=12: L=p11=1, M=p12=0, R=p13=0. B=0. new=1 XOR0=1.
+i=13: L=p12=0, M=p13=0, R=p14=0. B=0. new=0.
+i=14: L=p13=0, M=p14=0, R=p15=0. B=0. new=0.
+i=15: L=p14=0, M=p15=0, R=p0=0. B=0. new=0.
+
+S24: [0,0,0,1,1,1,0,1,1,0,1,0,1,0,0,0]
+String: 0 0 0 1 1 1 0 1 1 0 1 0 1 0 0 0 = "0001110110101000".
+Grouping: 0001 1101 1010 1000 = "0001110110101000". Count 16.
+
+Wait, S14 was "0000110110101000". S24 is "0001110110101000". Different (S24 has p5=1 vs S14 p5=1? let me not worry). Continue.
+
+Compute S25 from S24.
+S24: p0=0,p1=0,p2=0,p3=1,p4=1,p5=1,p6=0,p7=1,p8=1,p9=0,p10=1,p11=0,p12=1,p13=0,p14=0,p15=0.
+
+Hmm interesting: S24 = [0,0,0,1,1,1,0,1,1,0,1,0,1,0,0,0]. Compare S14 = [0,0,0,0,1,1,0,1,1,0,1,0,1,0,0,0]. S24 has p3=1 (S14 p3=0) and p4=1 (S14 p4=1), p5=1 (S14 p5=1). So S24 differs from S14 at p3 (1 vs 0). OK.
+
+i=0: L=p15=0, M=p0=0, R=p1=0. B=0. new=0.
+i=1: L=p0=0, M=p1=0, R=p2=0. B=0. new=0.
+i=2: L=p1=0, M=p2=0, R=p3=1. B=1. new=1.
+i=3: L=p2=0, M=p3=1, R=p4=1. B=1. new=1.
+i=4: L=p3=1, M=p4=1, R=p5=1. B=1. new=1 XOR1=0.
+i=5: L=p4=1, M=p5=1, R=p6=0. B=1 OR0=1. new=1 XOR1=0.
+i=6: L=p5=1, M=p6=0, R=p7=1. B=0 OR1=1. new=1 XOR1=0.
+i=7: L=p6=0, M=p7=1, R=p8=1. B=1. new=0 XOR1=1.
+i=8: L=p7=1, M=p8=1, R=p9=0. B=1 OR0=1. new=1 XOR1=0.
+i=9: L=p8=1, M=p9=0, R=p10=1. B=0 OR1=1. new=1 XOR1=0.
+i=10: L=p9=0, M=p10=1, R=p11=0. B=1 OR0=1. new=0 XOR1=1.
+i=11: L=p10=1, M=p11=0, R=p12=1. B=0 OR1=1. new=1 XOR1=0.
+i=12: L=p11=0, M=p12=1, R=p13=0. B=1 OR0=1. new=0 XOR1=1.
+i=13: L=p12=1, M=p13=0, R=p14=0. B=0. new=1 XOR0=1.
+i=14: L=p13=0, M=p14=0, R=p15=0. B=0. new=0.
+i=15: L=p14=0, M=p15=0, R=p0=0. B=0. new=0.
+
+S25: [0,0,1,1,0,0,0,1,0,0,1,0,1,1,0,0]
+String: 0 0 1 1 0 0 0 1 0 0 1 0 1 1 0 0 = "0011000100101100".
+Grouping: 0011 0001 0010 1100 = "0011000100101100". Count 16. Good.
+
+Compute S26 from S25.
+S25: p0=0,p1=0,p2=1,p3=1,p4=0,p5=0,p6=0,p7=1,p8=0,p9=0,p10=1,p11=0,p12=1,p13=1,p14=0,p15=0.
+
+i=0: L=p15=0, M=p0=0, R=p1=0. B=0. new=0.
+i=1: L=p0=0, M=p1=0, R=p2=1. B=1. new=1.
+i=2: L=p1=0, M=p2=1, R=p3=1. B=1. new=1.
+i=3: L=p2=1, M=p3=1, R=p4=0. B=1 OR0=1. new=1 XOR1=0.
+i=4: L=p3=1, M=p4=0, R=p5=0. B=0. new=1 XOR0=1.
+i=5: L=p4=0, M=p5=0, R=p6=0. B=0. new=0.
+i=6: L=p5=0, M=p6=0, R=p7=1. B=1. new=0 XOR1=1.
+i=7: L=p6=0, M=p7=1, R=p8=0. B=1 OR0=1. new=0 XOR1=1.
+i=8: L=p7=1, M=p8=0, R=p9=0. B=0. new=1 XOR0=1.
+i=9: L=p8=0, M=p9=0, R=p10=1. B=1. new=0 XOR1=1.
+i=10: L=p9=0, M=p10=1, R=p11=0. B=1 OR0=1. new=0 XOR1=1.
+i=11: L=p10=1, M=p11=0, R=p12=1. B=0 OR1=1. new=1 XOR1=0.
+i=12: L=p11=0, M=p12=1, R=p13=1. B=1. new=0 XOR1=1.
+i=13: L=p12=1, M=p13=1, R=p14=0. B=1 OR0=1. new=1 XOR1=0.
+i=14: L=p13=1, M=p14=0, R=p15=0. B=0. new=1 XOR0=1.
+i=15: L=p14=0, M=p15=0, R=p0=0. B=0. new=0.
+
+S26: [0,1,1,0,1,0,1,1,1,1,1,0,1,0,1,0]
+String: 0 1 1 0 1 0 1 1 1 1 1 0 1 0 1 0 = "0110101111101010".
+Grouping: 0110 1011 1110 1010 = "0110101111101010". Count 16. Good.
+
+Compute S27 from S26.
+S26: p0=0,p1=1,p2=1,p3=0,p4=1,p5=0,p6=1,p7=1,p8=1,p9=1,p10=1,p11=0,p12=1,p13=0,p14=1,p15=0.
+
+i=0: L=p15=0, M=p0=0, R=p1=1. B=0 OR1=1. new=0 XOR1=1.
+i=1: L=p0=0, M=p1=1, R=p2=1. B=1. new=0 XOR1=1.
+i=2: L=p1=1, M=p2=1, R=p3=0. B=1 OR0=1. new=1 XOR1=0.
+i=3: L=p2=1, M=p3=0, R=p4=1. B=0 OR1=1. new=1 XOR1=0.
+i=4: L=p3=0, M=p4=1, R=p5=0. B=1 OR0=1. new=0 XOR1=1.
+i=5: L=p4=1, M=p5=0, R=p6=1. B=0 OR1=1. new=1 XOR1=0.
+i=6: L=p5=0, M=p6=1, R=p7=1. B=1. new=0 XOR1=1.
+i=7: L=p6=1, M=p7=1, R=p8=1. B=1. new=1 XOR1=0.
+i=8: L=p7=1, M=p8=1, R=p9=1. B=1. new=1 XOR1=0.
+i=9: L=p8=1, M=p9=1, R=p10=1. B=1. new=1 XOR1=0.
+i=10: L=p9=1, M=p10=1, R=p11=0. B=1 OR0=1. new=1 XOR1=0.
+i=11: L=p10=1, M=p11=0, R=p12=1. B=0 OR1=1. new=1 XOR1=0.
+i=12: L=p11=0, M=p12=1, R=p13=0. B=1 OR0=1. new=0 XOR1=1.
+i=13: L=p12=1, M=p13=0, R=p14=1. B=0 OR1=1. new=1 XOR1=0.
+i=14: L=p13=0, M=p14=1, R=p15=0. B=1 OR0=1. new=0 XOR1=1.
+i=15: L=p14=1, M=p15=0, R=p0=0. B=0. new=1 XOR0=1.
+
+S27: [1,1,0,0,1,0,1,0,0,0,0,0,1,0,1,1]
+String: 1 1 0 0 1 0 1 0 0 0 0 0 1 0 1 1 = "1100101000001011".
+Grouping: 1100 1010 0000 1011 = "1100101000001011". Count 16. Good.
+
+Compute S28 from S27.
+S27: p0=1,p1=1,p2=0,p3=0,p4=1,p5=0,p6=1,p7=0,p8=0,p9=0,p10=0,p11=0,p12=1,p13=0,p14=1,p15=1.
+
+i=0: L=p15=1, M=p0=1, R=p1=1. B=1. new=1 XOR1=0.
+i=1: L=p0=1, M=p1=1, R=p2=0. B=1 OR0=1. new=1 XOR1=0.
+i=2: L=p1=1, M=p2=0, R=p3=0. B=0. new=1 XOR0=1.
+i=3: L=p2=0, M=p3=0, R=p4=1. B=1. new=0 XOR1=1.
+i=4: L=p3=0, M=p4=1, R=p5=0. B=1 OR0=1. new=0 XOR1=1.
+i=5: L=p4=1, M=p5=0, R=p6=1. B=0 OR1=1. new=1 XOR1=0.
+i=6: L=p5=0, M=p6=1, R=p7=0. B=1 OR0=1. new=0 XOR1=1.
+i=7: L=p6=1, M=p7=0, R=p8=0. B=0. new=1 XOR0=1.
+i=8: L=p7=0, M=p8=0, R=p9=0. B=0. new=0.
+i=9: L=p8=0, M=p9=0, R=p10=0. B=0. new=0.
+i=10: L=p9=0, M=p10=0, R=p11=0. B=0. new=0.
+i=11: L=p10=0, M=p11=0, R=p12=1. B=1. new=0 XOR1=1.
+i=12: L=p11=0, M=p12=1, R=p13=0. B=1 OR0=1. new=0 XOR1=1.
+i=13: L=p12=1, M=p13=0, R=p14=1. B=0 OR1=1. new=1 XOR1=0.
+i=14: L=p13=0, M=p14=1, R=p15=1. B=1. new=0 XOR1=1.
+i=15: L=p14=1, M=p15=1, R=p0=1. B=1. new=1 XOR1=0.
+
+S28: [0,0,1,1,1,0,1,1,0,0,0,1,1,0,1,0]
+String: 0 0 1 1 1 0 1 1 0 0 0 1 1 0 1 0 = "0011101100011010".
+Grouping: 0011 1011 0001 1010 = "0011101100011010". Count 16. Good.
+
+Compute S29 from S28.
+S28: p0=0,p1=0,p2=1,p3=1,p4=1,p5=0,p6=1,p7=1,p8=0,p9=0,p10=0,p11=1,p12=1,p13=0,p14=1,p15=0.
+
+i=0: L=p15=0, M=p0=0, R=p1=0. B=0. new=0.
+i=1: L=p0=0, M=p1=0, R=p2=1. B=1. new=1.
+i=2: L=p1=0, M=p2=1, R=p3=1. B=1. new=1.
+i=3: L=p2=1, M=p3=1, R=p4=1. B=1. new=1 XOR1=0.
+i=4: L=p3=1, M=p4=1, R=p5=0. B=1 OR0=1. new=1 XOR1=0.
+i=5: L=p4=1, M=p5=0, R=p6=1. B=0 OR1=1. new=1 XOR1=0.
+i=6: L=p5=0, M=p6=1, R=p7=1. B=1. new=0 XOR1=1.
+i=7: L=p6=1, M=p7=1, R=p8=0. B=1 OR0=1. new=1 XOR1=0.
+i=8: L=p7=1, M=p8=0, R=p9=0. B=0. new=1 XOR0=1.
+i=9: L=p8=0, M=p9=0, R=p10=0. B=0. new=0.
+i=10: L=p9=0, M=p10=0, R=p11=1. B=1. new=0 XOR1=1.
+i=11: L=p10=0, M=p11=1, R=p12=1. B=1. new=0 XOR1=1.
+i=12: L=p11=1, M=p12=1, R=p13=0. B=1 OR0=1. new=1 XOR1=0.
+i=13: L=p12=1, M=p13=0, R=p14=1. B=0 OR1=1. new=1 XOR1=0.
+i=14: L=p13=0, M=p14=1, R=p15=0. B=1 OR0=1. new=0 XOR1=1.
+i=15: L=p14=1, M=p15=0, R=p0=0. B=0. new=1 XOR0=1.
+
+S29: [0,1,1,0,0,0,1,0,1,0,1,1,0,0,1,1]
+String: 0 1 1 0 0 0 1 0 1 0 1 1 0 0 1 1 = "0110001010110011".
+Grouping: 0110 0010 1011 0011 = "0110001010110011". Count 16. Good.
+
+Compute S30 from S29.
+S29: p0=0,p1=1,p2=1,p3=0,p4=0,p5=0,p6=1,p7=0,p8=1,p9=0,p10=1,p11=1,p12=0,p13=0,p14=1,p15=1.
+
+i=0: L=p15=1, M=p0=0, R=p1=1. B=0 OR1=1. new=1 XOR1=0.
+i=1: L=p0=0, M=p1=1, R=p2=1. B=1. new=0 XOR1=1.
+i=2: L=p1=1, M=p2=1, R=p3=0. B=1 OR0=1. new=1 XOR1=0.
+i=3: L=p2=1, M=p3=0, R=p4=0. B=0. new=1 XOR0=1.
+i=4: L=p3=0, M=p4=0, R=p5=0. B=0. new=0.
+i=5: L=p4=0, M=p5=0, R=p6=1. B=1. new=0 XOR1=1.
+i=6: L=p5=0, M=p6=1, R=p7=0. B=1 OR0=1. new=0 XOR1=1.
+i=7: L=p6=1, M=p7=0, R=p8=1. B=0 OR1=1. new=1 XOR1=0.
+i=8: L=p7=0, M=p8=1, R=p9=0. B=1 OR0=1. new=0 XOR1=1.
+i=9: L=p8=1, M=p9=0, R=p10=1. B=0 OR1=1. new=1 XOR1=0.
+i=10: L=p9=0, M=p10=1, R=p11=1. B=1. new=0 XOR1=1.
+i=11: L=p10=1, M=p11=1, R=p12=0. B=1 OR0=1. new=1 XOR1=0.
+i=12: L=p11=1, M=p12=0, R=p13=0. B=0. new=1 XOR0=1.
+i=13: L=p12=0, M=p13=0, R=p14=1. B=1. new=0 XOR1=1.
+i=14: L=p13=0, M=p14=1, R=p15=1. B=1. new=0 XOR1=1.
+i=15: L=p14=1, M=p15=1, R=p0=0. B=1 OR0=1. new=1 XOR1=0.
+
+S30: [0,1,0,1,0,1,1,0,1,0,1,0,1,1,1,0]
+String: 0 1 0 1 0 1 1 0 1 0 1 0 1 1 1 0 = "0101011010101110".
+Grouping: 0101 0110 1010 1110 = "0101011010101110". Count 16. Good.
+
+Compute S31 from S30.
+S30: p0=0,p1=1,p2=0,p3=1,p4=0,p5=1,p6=1,p7=0,p8=1,p9=0,p10=1,p11=0,p12=1,p13=1,p14=1,p15=0.
+
+i=0: L=p15=0, M=p0=0, R=p1=1. B=0 OR1=1. new=0 XOR1=1.
+i=1: L=p0=0, M=p1=1, R=p2=0. B=1 OR0=1. new=0 XOR1=1.
+i=2: L=p1=1, M=p2=0, R=p3=1. B=0 OR1=1. new=1 XOR1=0.
+i=3: L=p2=0, M=p3=1, R=p4=0. B=1 OR0=1. new=0 XOR1=1.
+i=4: L=p3=1, M=p4=0, R=p5=1. B=0 OR1=1. new=1 XOR1=0.
+i=5: L=p4=0, M=p5=1, R=p6=1. B=1. new=0 XOR1=1.
+i=6: L=p5=1, M=p6=1, R=p7=0. B=1 OR0=1. new=1 XOR1=0.
+i=7: L=p6=1, M=p7=0, R=p8=1. B=0 OR1=1. new=1 XOR1=0.
+i=8: L=p7=0, M=p8=1, R=p9=0. B=1 OR0=1. new=0 XOR1=1.
+i=9: L=p8=1, M=p9=0, R=p10=1. B=0 OR1=1. new=1 XOR1=0.
+i=10: L=p9=0, M=p10=1, R=p11=0. B=1 OR0=1. new=0 XOR1=1.
+i=11: L=p10=1, M=p11=0, R=p12=1. B=0 OR1=1. new=1 XOR1=0.
+i=12: L=p11=0, M=p12=1, R=p13=1. B=1. new=0 XOR1=1.
+i=13: L=p12=1, M=p13=1, R=p14=1. B=1. new=1 XOR1=0.
+i=14: L=p13=1, M=p14=1, R=p15=0. B=1 OR0=1. new=1 XOR1=0.
+i=15: L=p14=1, M=p15=0, R=p0=0. B=0. new=1 XOR0=1.
+
+S31: [1,1,0,1,0,1,0,0,1,0,1,0,1,0,0,1]
+String: 1 1 0 1 0 1 0 0 1 0 1 0 1 0 0 1 = "1101010010101001".
+Grouping: 1101 0100 1010 1001 = "1101010010101001". Count 16. Good.
+
+Now we have S0..S31. The output for cycle t is S_t[even indices]. The outputs list order: c0,c2,c4,c6,c8,c10,c12,c14.
+
+Let me extract for each t, the tuple (c0,c2,c4,c6,c8,c10,c12,c14) = (p0,p2,p4,p6,p8,p10,p12,p14).
+
+I'll make a table. For each S_t, list p0,p2,p4,p6,p8,p10,p12,p14.
+
+S0 = [0,0,0,0,0,0,1,1,1,0,0,0,1,1,1,1]
+ p0=0,p2=0,p4=0,p6=1,p8=1,p10=0,p12=1,p14=1.
+ => (c0=0,c2=0,c4=0,c6=1,c8=1,c10=0,c12=1,c14=1)
+
+S1 = [1,0,0,0,0,1,1,0,0,1,0,1,1,0,0,0]
+ p0=1,p2=0,p4=0,p6=1,p8=0,p10=0,p12=1,p14=0.
+ => (1,0,0,1,0,0,1,0)
+
+S2 = [1,1,0,0,1,1,0,1,1,1,0,1,0,1,0,1]
+ p0=1,p2=0,p4=1,p6=0,p8=1,p10=0,p12=0,p14=0.
+ => (1,0,1,0,1,0,0,0)
+
+S3 = [0,0,1,1,1,0,0,1,0,0,0,1,0,1,0,1]
+ p0=0,p2=1,p4=1,p6=0,p8=0,p10=0,p12=0,p14=0.
+ => (0,1,1,0,0,0,0,0)
+
+S4 = [1,1,1,0,0,1,1,1,1,0,1,1,0,1,0,1]
+ p0=1,p2=1,p4=0,p6=1,p8=1,p10=1,p12=0,p14=0.
+ => (1,1,0,1,1,1,0,0)
+
+S5 = [0,0,0,1,1,1,0,0,0,0,1,0,0,1,0,1]
+ p0=0,p2=0,p4=1,p6=0,p8=0,p10=1,p12=0,p14=0.
+ => (0,0,1,0,0,1,0,0)
+
+S6 = [1,0,1,1,0,0,1,0,0,1,1,1,1,1,0,1]
+ p0=1,p2=1,p4=0,p6=1,p8=0,p10=1,p12=1,p14=0.
+ => (1,1,0,1,0,1,1,0)
+
+S7 = [0,0,1,0,1,1,1,1,1,1,0,0,0,0,0,1]
+ p0=0,p2=1,p4=1,p6=1,p8=1,p10=0,p12=0,p14=0.
+ => (0,1,1,1,1,0,0,0)
+
+S8 = [1,1,1,0,1,0,0,0,0,0,1,0,0,0,1,1]
+ p0=1,p2=1,p4=1,p6=0,p8=0,p10=1,p12=0,p14=1.
+ => (1,1,1,0,0,1,0,1)
+
+S9 = [0,0,0,0,1,1,0,0,0,1,1,1,0,1,1,0]
+ p0=0,p2=0,p4=1,p6=0,p8=0,p10=1,p12=0,p14=1.
+ => (0,0,1,0,0,1,0,1)
+
+S10 = [0,0,0,1,1,0,1,0,1,1,0,0,0,1,0,1]
+ p0=0,p2=0,p4=1,p6=1,p8=1,p10=0,p12=0,p14=0.
+ => (0,0,1,1,1,0,0,0)
+
+S11 = [1,0,1,1,0,0,1,0,1,0,1,0,1,1,0,1]
+ p0=1,p2=1,p4=0,p6=1,p8=1,p10=1,p12=1,p14=0.
+ => (1,1,0,1,1,1,1,0)
+
+S12 = [0,0,1,0,1,1,1,0,1,0,1,0,1,0,0,1]
+ p0=0,p2=1,p4=1,p6=1,p8=1,p10=1,p12=1,p14=0.
+ => (0,1,1,1,1,1,1,0)
+
+S13 = [1,1,1,0,1,0,0,0,1,0,1,0,1,1,1,1]
+ p0=1,p2=1,p4=1,p6=0,p8=1,p10=1,p12=1,p14=1.
+ => (1,1,1,0,1,1,1,1)
+
+S14 = [0,0,0,0,1,1,0,1,1,0,1,0,1,0,0,0]
+ p0=0,p2=0,p4=1,p6=0,p8=1,p10=1,p12=1,p14=0.
+ => (0,0,1,0,1,1,1,0)
+
+S15 = [0,0,0,1,1,0,0,1,0,0,1,0,1,1,0,0]
+ p0=0,p2=0,p4=1,p6=0,p8=0,p10=1,p12=1,p14=0.
+ => (0,0,1,0,0,1,1,0)
+
+S16 = [0,0,1,1,0,1,1,1,1,1,1,0,1,0,1,0]
+ p0=0,p2=1,p4=0,p6=1,p8=1,p10=1,p12=1,p14=1.
+ => (0,1,0,1,1,1,1,1)
+
+S17 = [0,1,1,0,0,1,0,0,0,0,0,0,1,0,1,1]
+ p0=0,p2=1,p4=0,p6=0,p8=0,p10=0,p12=1,p14=1.
+ => (0,1,0,0,0,0,1,1)
+
+S18 = [0,1,0,1,1,1,1,0,0,0,0,1,1,0,1,0]
+ p0=0,p2=0,p4=1,p6=1,p8=0,p10=0,p12=1,p14=1.
+ => (0,0,1,1,0,0,1,1)
+
+S19 = [1,1,0,1,0,0,0,1,0,0,1,1,0,0,1,1]
+ p0=1,p2=0,p4=0,p6=0,p8=0,p10=1,p12=0,p14=1.
+ => (1,0,0,0,0,1,0,1)
+
+S20 = [0,0,0,1,1,0,1,1,1,1,1,0,1,1,1,0]
+ p0=0,p2=0,p4=1,p6=1,p8=1,p10=1,p12=1,p14=1.
+ => (0,0,1,1,1,1,1,1)
+
+S21 = [0,0,1,1,0,0,1,0,0,0,0,0,1,0,0,1]
+ p0=0,p2=1,p4=0,p6=1,p8=0,p10=0,p12=1,p14=0.
+ => (0,1,0,1,0,0,1,0)
+
+S22 = [1,1,1,0,1,1,1,1,0,0,0,1,1,1,1,1]
+ p0=1,p2=1,p4=1,p6=1,p8=0,p10=0,p12=1,p14=1.
+ => (1,1,1,1,0,0,1,1)
+
+S23 = [0,0,0,0,1,0,0,0,1,0,1,1,0,0,0,0]
+ p0=0,p2=0,p4=1,p6=0,p8=1,p10=1,p12=0,p14=0.
+ => (0,0,1,0,1,1,0,0)
+
+S24 = [0,0,0,1,1,1,0,1,1,0,1,0,1,0,0,0]
+ p0=0,p2=0,p4=1,p6=0,p8=1,p10=1,p12=1,p14=0.
+ => (0,0,1,0,1,1,1,0)
+
+Wait, S24 tuple equals S14 tuple? S14 = (0,0,1,0,1,1,1,0). S24 = (0,0,1,0,1,1,1,0). Yes same. Interesting. Let me double check S24 p values: S24=[0,0,0,1,1,1,0,1,1,0,1,0,1,0,0,0]. p0=0,p2=0,p4=1,p6=0,p8=1,p10=1,p12=1,p14=0. Yes (0,0,1,0,1,1,1,0). Same as S14. OK coincidence.
+
+S25 = [0,0,1,1,0,0,0,1,0,0,1,0,1,1,0,0]
+ p0=0,p2=1,p4=0,p6=0,p8=0,p10=1,p12=1,p14=0.
+ => (0,1,0,0,0,1,1,0)
+
+S26 = [0,1,1,0,1,0,1,1,1,1,1,0,1,0,1,0]
+ p0=0,p2=1,p4=1,p6=1,p8=1,p10=1,p12=1,p14=1.
+ => (0,1,1,1,1,1,1,1)
+
+S27 = [1,1,0,0,1,0,1,0,0,0,0,0,1,0,1,1]
+ p0=1,p2=0,p4=1,p6=1,p8=0,p10=0,p12=1,p14=1.
+ => (1,0,1,1,0,0,1,1)
+
+S28 = [0,0,1,1,1,0,1,1,0,0,0,1,1,0,1,0]
+ p0=0,p2=1,p4=1,p6=1,p8=0,p10=0,p12=1,p14=1.
+ => (0,1,1,1,0,0,1,1)
+
+S29 = [0,1,1,0,0,0,1,0,1,0,1,1,0,0,1,1]
+ p0=0,p2=1,p4=0,p6=1,p8=1,p10=1,p12=0,p14=1.
+ => (0,1,0,1,1,1,0,1)
+
+S30 = [0,1,0,1,0,1,1,0,1,0,1,0,1,1,1,0]
+ p0=0,p2=0,p4=0,p6=1,p8=1,p10=1,p12=1,p14=1.
+ => (0,0,0,1,1,1,1,1)
+
+S31 = [1,1,0,1,0,1,0,0,1,0,1,0,1,0,0,1]
+ p0=1,p2=0,p4=0,p6=0,p8=1,p10=1,p12=1,p14=0.
+ => (1,0,0,0,1,1,1,0)
+
+Now build per-output lists across t=0..31.
+
+Outputs order: c0, c2, c4, c6, c8, c10, c12, c14.
+
+Let me write the tuple for each t as [c0,c2,c4,c6,c8,c10,c12,c14]:
+
+t0: (0,0,0,1,1,0,1,1)
+t1: (1,0,0,1,0,0,1,0)
+t2: (1,0,1,0,1,0,0,0)
+t3: (0,1,1,0,0,0,0,0)
+t4: (1,1,0,1,1,1,0,0)
+t5: (0,0,1,0,0,1,0,0)
+t6: (1,1,0,1,0,1,1,0)
+t7: (0,1,1,1,1,0,0,0)
+t8: (1,1,1,0,0,1,0,1)
+t9: (0,0,1,0,0,1,0,1)
+t10: (0,0,1,1,1,0,0,0)
+t11: (1,1,0,1,1,1,1,0)
+t12: (0,1,1,1,1,1,1,0)
+t13: (1,1,1,0,1,1,1,1)
+t14: (0,0,1,0,1,1,1,0)
+t15: (0,0,1,0,0,1,1,0)
+t16: (0,1,0,1,1,1,1,1)
+t17: (0,1,0,0,0,0,1,1)
+t18: (0,0,1,1,0,0,1,1)
+t19: (1,0,0,0,0,1,0,1)
+t20: (0,0,1,1,1,1,1,1)
+t21: (0,1,0,1,0,0,1,0)
+t22: (1,1,1,1,0,0,1,1)
+t23: (0,0,1,0,1,1,0,0)
+t24: (0,0,1,0,1,1,1,0)
+t25: (0,1,0,0,0,1,1,0)
+t26: (0,1,1,1,1,1,1,1)
+t27: (1,0,1,1,0,0,1,1)
+t28: (0,1,1,1,0,0,1,1)
+t29: (0,1,0,1,1,1,0,1)
+t30: (0,0,0,1,1,1,1,1)
+t31: (1,0,0,0,1,1,1,0)
+
+Now extract column for each output.
+
+c0 (column 0): t0..t31:
+0,1,1,0,1,0,1,0,1,0,0,1,0,1,0,0,0,0,0,1,0,0,1,0,0,0,0,1,0,0,0,1
+
+Let me list carefully by reading column 0 of each tuple:
+t0:0
+t1:1
+t2:1
+t3:0
+t4:1
+t5:0
+t6:1
+t7:0
+t8:1
+t9:0
+t10:0
+t11:1
+t12:0
+t13:1
+t14:0
+t15:0
+t16:0
+t17:0
+t18:0
+t19:1
+t20:0
+t21:0
+t22:1
+t23:0
+t24:0
+t25:0
+t26:0
+t27:1
+t28:0
+t29:0
+t30:0
+t31:1
+
+c0 = [0,1,1,0,1,0,1,0,1,0,0,1,0,1,0,0,0,0,0,1,0,0,1,0,0,0,0,1,0,0,0,1]
+Count: 32. Let me count: 0(0)1(1)1(2)0(3)1(4)0(5)1(6)0(7)1(8)0(9)0(10)1(11)0(12)1(13)0(14)0(15)0(16)0(17)0(18)1(19)0(20)0(21)1(22)0(23)0(24)0(25)0(26)1(27)0(28)0(29)0(30)1(31). 32 values. Good.
+
+c2 (column 1):
+t0:0
+t1:0
+t2:0
+t3:1
+t4:1
+t5:0
+t6:1
+t7:1
+t8:1
+t9:0
+t10:0
+t11:1
+t12:1
+t13:1
+t14:0
+t15:0
+t16:1
+t17:1
+t18:0
+t19:0
+t20:0
+t21:1
+t22:1
+t23:0
+t24:0
+t25:1
+t26:1
+t27:0
+t28:1
+t29:1
+t30:0
+t31:0
+
+c2 = [0,0,0,1,1,0,1,1,1,0,0,1,1,1,0,0,1,1,0,0,0,1,1,0,0,1,1,0,1,1,0,0]
+Count: let's count: 0,0,0,1,1,0,1,1,1,0 (10), 0,1,1,1,0,0,1,1,0,0 (20), 0,1,1,0,0,1,1,0,1,1 (30), 0,0 (32). Good.
+
+c4 (column 2):
+t0:0
+t1:0
+t2:1
+t3:1
+t4:0
+t5:1
+t6:0
+t7:1
+t8:1
+t9:1
+t10:1
+t11:0
+t12:1
+t13:1
+t14:1
+t15:1
+t16:0
+t17:0
+t18:1
+t19:0
+t20:1
+t21:0
+t22:1
+t23:1
+t24:1
+t25:0
+t26:1
+t27:1
+t28:1
+t29:0
+t30:0
+t31:0
+
+c4 = [0,0,1,1,0,1,0,1,1,1,1,0,1,1,1,1,0,0,1,0,1,0,1,1,1,0,1,1,1,0,0,0]
+Count: 0,0,1,1,0,1,0,1,1,1 (10), 1,0,1,1,1,1,0,0,1,0 (20), 1,0,1,1,1,0,1,1,1,0 (30), 0,0 (32). Good.
+
+c6 (column 3):
+t0:1
+t1:1
+t2:0
+t3:0
+t4:1
+t5:0
+t6:1
+t7:1
+t8:0
+t9:0
+t10:1
+t11:1
+t12:1
+t13:0
+t14:0
+t15:0
+t16:1
+t17:0
+t18:1
+t19:0
+t20:1
+t21:1
+t22:1
+t23:0
+t24:0
+t25:0
+t26:1
+t27:1
+t28:1
+t29:1
+t30:1
+t31:0
+
+c6 = [1,1,0,0,1,0,1,1,0,0,1,1,1,0,0,0,1,0,1,0,1,1,1,0,0,0,1,1,1,1,1,0]
+Count: 1,1,0,0,1,0,1,1,0,0 (10), 1,1,1,0,0,0,1,0,1,0 (20), 1,1,1,0,0,0,1,1,1,1 (30), 1,0 (32). Good.
+
+c8 (column 4):
+t0:1
+t1:0
+t2:1
+t3:0
+t4:1
+t5:0
+t6:0
+t7:1
+t8:0
+t9:0
+t10:1
+t11:1
+t12:1
+t13:1
+t14:1
+t15:0
+t16:1
+t17:0
+t18:0
+t19:0
+t20:1
+t21:0
+t22:0
+t23:1
+t24:1
+t25:0
+t26:1
+t27:0
+t28:0
+t29:1
+t30:1
+t31:1
+
+c8 = [1,0,1,0,1,0,0,1,0,0,1,1,1,1,1,0,1,0,0,0,1,0,0,1,1,0,1,0,0,1,1,1]
+Count: 1,0,1,0,1,0,0,1,0,0 (10), 1,1,1,1,1,0,1,0,0,0 (20), 1,0,0,1,1,0,1,0,0,1 (30), 1,1 (32). Good.
+
+c10 (column 5):
+t0:0
+t1:0
+t2:0
+t3:0
+t4:1
+t5:1
+t6:1
+t7:0
+t8:1
+t9:1
+t10:0
+t11:1
+t12:1
+t13:1
+t14:1
+t15:1
+t16:1
+t17:0
+t18:0
+t19:1
+t20:1
+t21:0
+t22:0
+t23:1
+t24:1
+t25:1
+t26:1
+t27:0
+t28:0
+t29:1
+t30:1
+t31:1
+
+c10 = [0,0,0,0,1,1,1,0,1,1,0,1,1,1,1,1,1,0,0,1,1,0,0,1,1,1,1,0,0,1,1,1]
+Count: 0,0,0,0,1,1,1,0,1,1 (10), 0,1,1,1,1,1,1,0,0,1 (20), 1,0,0,1,1,1,1,0,0,1 (30), 1,1 (32). Good.
+
+c12 (column 6):
+t0:1
+t1:1
+t2:0
+t3:0
+t4:0
+t5:0
+t6:1
+t7:0
+t8:0
+t9:0
+t10:0
+t11:1
+t12:1
+t13:1
+t14:1
+t15:1
+t16:1
+t17:1
+t18:1
+t19:0
+t20:1
+t21:1
+t22:1
+t23:0
+t24:1
+t25:1
+t26:1
+t27:1
+t28:1
+t29:0
+t30:1
+t31:1
+
+c12 = [1,1,0,0,0,0,1,0,0,0,0,1,1,1,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,1]
+Count: 1,1,0,0,0,0,1,0,0,0 (10), 0,1,1,1,1,1,1,1,1,0 (20), 1,1,1,0,1,1,1,1,1,0 (30), 1,1 (32). Good.
+
+c14 (column 7):
+t0:1
+t1:0
+t2:0
+t3:0
+t4:0
+t5:0
+t6:0
+t7:0
+t8:1
+t9:1
+t10:0
+t11:0
+t12:0
+t13:1
+t14:0
+t15:0
+t16:1
+t17:1
+t18:1
+t19:1
+t20:1
+t21:0
+t22:1
+t23:0
+t24:0
+t25:0
+t26:1
+t27:1
+t28:1
+t29:1
+t30:1
+t31:0
+
+c14 = [1,0,0,0,0,0,0,0,1,1,0,0,0,1,0,0,1,1,1,1,1,0,1,0,0,0,1,1,1,1,1,0]
+Count: 1,0,0,0,0,0,0,0,1,1 (10), 0,0,0,1,0,0,1,1,1,1 (20), 1,0,1,0,0,0,1,1,1,1 (30), 1,0 (32). Good.
+
+Now, I should double-check the gate-to-x simplification once more and the very first transition, because everything depends on it. Let me re-derive x for a general cell more rigorously using the NAND definition y = 1-(a&b).
+
+For x0 specifically (to be safe): 
+nm0 = 1-(c0&c0) = 1-c0 = NOT c0.
+nr0 = 1-(c1&c1) = NOT c1.
+or0 = 1-(nm0 & nr0) = 1 - ((1-c0)(1-c1)). If c0=0,c1=0: nm0=1,nr0=1, or0=1-(1&1)=0. c0 OR c1 = 0. Good. If c0=1,c1=0: nm0=0,nr0=1, or0=1-(0&1)=1. OR=1. Good. If c0=0,c1=1: nm0=1,nr0=0, or0=1-(1&0)=1. OR=1. If c0=1,c1=1: nm0=0,nr0=0, or0=1-(0&0)=1. OR=1. Good, or0=c0 OR c1.
+
+t1_0 = 1-(c15 & or0). t2_0 = 1-(c15 & t1_0). t3_0 = 1-(or0 & t1_0). x0 = 1-(t2_0 & t3_0).
+
+Let's compute x0 = c15 XOR or0 by boolean algebra. Let A=c15, B=or0.
+t1 = 1-AB.
+t2 = 1 - A*t1 = 1 - A(1-AB) = 1 - A + A*AB. A*A = A, so A*AB = A*B (since A*A=A, then A*A*B = A*B). Wait: A*(1-AB) = A - A*AB = A - (A*A)*B = A - A*B = A(1-B). So t2 = 1 - A(1-B) = 1 - A + AB.
+t3 = 1 - B*t1 = 1 - B(1-AB) = 1 - B + A*B*B = 1 - B + AB (since B*B=B). So t3 = 1 - B + AB.
+x = 1 - t2*t3.
+Compute t2*t3 = (1 - A + AB)(1 - B + AB). Let's just trust enumeration which I did: x = A XOR B. Let me re-verify A=1,B=1 case: t1 = 1-(1&1)=0. t2 = 1-(1&0)=1-0=1. t3 = 1-(1&0)=1. x = 1-(1&1)=0. A XOR B = 0. Good. A=1,B=0: t1=1-(1&0)=1. t2=1-(1&1)=0. t3=1-(0&1)=1-0=1. x=1-(0&1)=1. A XOR B=1. Good. A=0,B=1: t1=1-(0&1)=1. t2=1-(0&1)=1. t3=1-(1&1)=0. x=1-(1&0)=1. XOR=1. Good. A=0,B=0: t1=1-0=1. t2=1-(0&1)=1. t3=1-(0&1)=1. x=1-(1&1)=0. XOR=0. Good. Confirmed x = A XOR B = c_{i-1} XOR (c_i OR c_{i+1}).
+
+This is rule 30. Good.
+
+Now, let me sanity-check the first transition S0 -> S1 using an alternative method. Rule 30 with L,M,R. The initial state S0 = 0000001110001111. Let's view in ring. I'll recompute S1 a different way: For each i, new = L XOR (M OR R). Equivalent: if (M OR R)=0 (i.e., M=0 and R=0) then new=L. Else new = NOT L.
+
+Let's list S0 with L,M,R and (M OR R):
+For each i, triple (L,M,R) = (c[i-1],c[i],c[i+1]):
+i=0: (c15,c0,c1) = (1,0,0). M OR R = 0. new=L=1. ✓ (matches S1[0]=1)
+i=1: (c0,c1,c2)=(0,0,0). MORR=0. new=L=0. ✓
+i=2: (c1,c2,c3)=(0,0,0). new=0. ✓
+i=3: (c2,c3,c4)=(0,0,0). new=0. ✓
+i=4: (c3,c4,c5)=(0,0,0). new=0. ✓
+i=5: (c4,c5,c6)=(0,0,1). MORR = 0 OR 1 =1. new = NOT L = NOT 0 =1. ✓ (S1[5]=1)
+i=6: (c5,c6,c7)=(0,1,1). MORR=1. new=NOT L=NOT0=1. ✓ (S1[6]=1)
+i=7: (c6,c7,c8)=(1,1,1). MORR=1. new=NOT1=0. ✓ (S1[7]=0)
+i=8: (c7,c8,c9)=(1,1,0). MORR=1 OR0=1. new=NOT1=0. ✓ (S1[8]=0)
+i=9: (c8,c9,c10)=(1,0,0). MORR=0. new=L=1. ✓ (S1[9]=1)
+i=10: (c9,c10,c11)=(0,0,0). new=L=0. ✓
+i=11: (c10,c11,c12)=(0,0,1). MORR=1. new=NOT0=1. ✓ (S1[11]=1)
+i=12: (c11,c12,c13)=(0,1,1). MORR=1. new=NOT0=1. ✓ (S1[12]=1)
+i=13: (c12,c13,c14)=(1,1,1). MORR=1. new=NOT1=0. ✓ (S1[13]=0)
+i=14: (c13,c14,c15)=(1,1,1). new=NOT1=0. ✓ (S1[14]=0)
+i=15: (c14,c15,c0)=(1,1,0). MORR=1 OR0=1. new=NOT1=0. ✓ (S1[15]=0)
+
+Great, S1 confirmed: positions with 1: 0,5,6,9,11,12. S1=[1,0,0,0,0,1,1,0,0,1,0,1,1,0,0,0]. Matches. 
+
+I'm fairly confident. But given the long chain, let me re-verify a later transition with the "if MORR=0 then new=L else NOT L" shortcut for a couple to catch systematic errors. Let me re-verify S3 from S2 using shortcut.
+
+S2 = [1,1,0,0,1,1,0,1,1,1,0,1,0,1,0,1].
+For each i, (L,M,R) = (p[i-1],p[i],p[i+1]).
+i=0: (p15,p0,p1)=(1,1,1). MORR=1. new=NOT L=NOT1=0. S3[0]=0 ✓.
+i=1: (p0,p1,p2)=(1,1,0). MORR=1 OR0=1. new=NOT1=0. S3[1]=0 ✓.
+i=2: (p1,p2,p3)=(1,0,0). MORR=0. new=L=1. S3[2]=1 ✓.
+i=3: (p2,p3,p4)=(0,0,1). MORR=0 OR1=1. new=NOT L=NOT0=1. S3[3]=1 ✓.
+i=4: (p3,p4,p5)=(0,1,1). MORR=1. new=NOT0=1. S3[4]=1 ✓.
+i=5: (p4,p5,p6)=(1,1,0). MORR=1 OR0=1. new=NOT1=0. S3[5]=0 ✓.
+i=6: (p5,p6,p7)=(1,0,1). MORR=0 OR1=1. new=NOT1=0. S3[6]=0 ✓.
+i=7: (p6,p7,p8)=(0,1,1). MORR=1. new=NOT0=1. S3[7]=1 ✓.
+i=8: (p7,p8,p9)=(1,1,1). MORR=1. new=NOT1=0. S3[8]=0 ✓.
+i=9: (p8,p9,p10)=(1,1,0). MORR=1 OR0=1. new=NOT1=0. S3[9]=0 ✓.
+i=10: (p9,p10,p11)=(1,0,1). MORR=0 OR1=1. new=NOT1=0. S3[10]=0 ✓.
+i=11: (p10,p11,p12)=(0,1,0). MORR=1 OR0=1. new=NOT0=1. S3[11]=1 ✓.
+i=12: (p11,p12,p13)=(1,0,1). MORR=0 OR1=1. new=NOT1=0. S3[12]=0 ✓.
+i=13: (p12,p13,p14)=(0,1,0). MORR=1 OR0=1. new=NOT0=1. S3[13]=1 ✓.
+i=14: (p13,p14,p15)=(1,0,1). MORR=0 OR1=1. new=NOT1=0. S3[14]=0 ✓.
+i=15: (p14,p15,p0)=(0,1,1). MORR=1. new=NOT0=1. S3[15]=1 ✓.
+
+S3 confirmed.
+
+Now let me re-verify one more in the middle, say S16 from S15, using shortcut.
+S15 = [0,0,0,1,1,0,0,1,0,0,1,0,1,1,0,0].
+i=0: (p15,p0,p1)=(0,0,0). MORR=0. new=L=0. S16[0]=0 ✓.
+i=1: (p0,p1,p2)=(0,0,0). new=0. ✓ S16[1]=0.
+i=2: (p1,p2,p3)=(0,0,1). MORR=1. new=NOT L=NOT0=1. S16[2]=1 ✓.
+i=3: (p2,p3,p4)=(0,1,1). MORR=1. new=NOT0=1. S16[3]=1 ✓.
+i=4: (p3,p4,p5)=(1,1,0). MORR=1 OR0=1. new=NOT1=0. S16[4]=0 ✓.
+i=5: (p4,p5,p6)=(1,0,0). MORR=0. new=L=1. S16[5]=1 ✓.
+i=6: (p5,p6,p7)=(0,0,1). MORR=1. new=NOT0=1. S16[6]=1 ✓.
+i=7: (p6,p7,p8)=(0,1,0). MORR=1 OR0=1. new=NOT0=1. S16[7]=1 ✓.
+i=8: (p7,p8,p9)=(1,0,0). MORR=0. new=L=1. S16[8]=1 ✓.
+i=9: (p8,p9,p10)=(0,0,1). MORR=1. new=NOT0=1. S16[9]=1 ✓.
+i=10: (p9,p10,p11)=(0,1,0). MORR=1 OR0=1. new=NOT0=1. S16[10]=1 ✓.
+i=11: (p10,p11,p12)=(1,0,1). MORR=0 OR1=1. new=NOT1=0. S16[11]=0 ✓.
+i=12: (p11,p12,p13)=(0,1,1). MORR=1. new=NOT0=1. S16[12]=1 ✓.
+i=13: (p12,p13,p14)=(1,1,0). MORR=1 OR0=1. new=NOT1=0. S16[13]=0 ✓.
+i=14: (p13,p14,p15)=(1,0,0). MORR=0. new=L=1. S16[14]=1 ✓.
+i=15: (p14,p15,p0)=(0,0,0). MORR=0. new=L=0. S16[15]=0 ✓.
+
+S16 confirmed: [0,0,1,1,0,1,1,1,1,1,1,0,1,0,1,0]. Matches.
+
+I'm now fairly confident in the chain. Let me also double check S31 since it's the last needed (we record S0..S31, that's 32 records t=0..31; we do NOT need S32). Good. We recorded outputs at cycles 0..31 = states S0..S31. We computed up to S31. Good, exactly 32 states.
+
+Wait, we need outputs for cycles 0..cycles-1 = 0..31, that's 32 cycles. The recorded value at cycle t is the state at start of cycle t = S_t. We have S_0..S_31 = 32 states. Good. We computed S_31 (the state at start of cycle 31). We do not need S_32. Confirmed.
+
+Let me re-verify S31 from S30 with shortcut quickly to ensure the last row is right.
+S30 = [0,1,0,1,0,1,1,0,1,0,1,0,1,1,1,0].
+i=0: (p15,p0,p1)=(0,0,1). MORR=0 OR1=1. new=NOT L=NOT0=1. S31[0]=1 ✓.
+i=1: (p0,p1,p2)=(0,1,0). MORR=1 OR0=1. new=NOT0=1. S31[1]=1 ✓.
+i=2: (p1,p2,p3)=(1,0,1). MORR=0 OR1=1. new=NOT1=0. S31[2]=0 ✓.
+i=3: (p2,p3,p4)=(0,1,0). MORR=1 OR0=1. new=NOT0=1. S31[3]=1 ✓.
+i=4: (p3,p4,p5)=(1,0,1). MORR=0 OR1=1. new=NOT1=0. S31[4]=0 ✓.
+i=5: (p4,p5,p6)=(0,1,1). MORR=1. new=NOT0=1. S31[5]=1 ✓.
+i=6: (p5,p6,p7)=(1,1,0). MORR=1 OR0=1. new=NOT1=0. S31[6]=0 ✓.
+i=7: (p6,p7,p8)=(1,0,1). MORR=0 OR1=1. new=NOT1=0. S31[7]=0 ✓.
+i=8: (p7,p8,p9)=(0,1,0). MORR=1 OR0=1. new=NOT0=1. S31[8]=1 ✓.
+i=9: (p8,p9,p10)=(1,0,1). MORR=0 OR1=1. new=NOT1=0. S31[9]=0 ✓.
+i=10: (p9,p10,p11)=(0,1,0). MORR=1. new=NOT0=1. S31[10]=1 ✓.
+i=11: (p10,p11,p12)=(1,0,1). MORR=0 OR1=1. new=NOT1=0. S31[11]=0 ✓.
+i=12: (p11,p12,p13)=(0,1,1). MORR=1. new=NOT0=1. S31[12]=1 ✓.
+i=13: (p12,p13,p14)=(1,1,1). MORR=1. new=NOT1=0. S31[13]=0 ✓.
+i=14: (p13,p14,p15)=(1,1,0). MORR=1 OR0=1. new=NOT1=0. S31[14]=0 ✓.
+i=15: (p14,p15,p0)=(1,0,0). MORR=0. new=L=1. S31[15]=1 ✓.
+
+S31 = [1,1,0,1,0,1,0,0,1,0,1,0,1,0,0,1]. Matches. 
+
+Now let me re-extract the even-index outputs directly from the confirmed states to be safe, building columns again but cross-checking with tuples. I'll trust the tuples but verify a couple columns by reading states directly.
+
+Let me verify c6 (index 6) column by reading p6 from each state string:
+S0 p6=1 (0000001... yes index6=1) ->1 ✓ (t0 c6=1)
+S1 p6: S1=1000011001011000. index:0=1,1=0,2=0,3=0,4=0,5=1,6=1 ->1 ✓ (t1 c6=1)
+S2=1100110111010101: index6=0 (1,1,0,0,1,1,0) ->0 ✓ (t2 c6=0)
+S3=0011100100010101: index6=0 (0,0,1,1,1,0,0) ->0 ✓ (t3 c6=0)
+S4=1110011110110101: index6=1 (1,1,1,0,0,1,1) ->1 ✓ (t4 c6=1)
+S5=0001110000100101: index6=0 ->0 ✓ (t5 c6=0). 
+S6=1011001001111101: index6=1 (1,0,1,1,0,0,1) ->1 ✓ (t6 c6=1).
+S7=0010111111000001: index6=1 (0,0,1,0,1,1,1) ->1 ✓ (t7 c6=1).
+S8=1110100000100011: index6=0 (1,1,1,0,1,0,0) ->0 ✓ (t8 c6=0).
+S9=0000110001110110: index6=0 ->0 ✓ (t9 c6=0).
+S10=0001101011000101: index6=1 (0,0,0,1,1,0,1) ->1 ✓ (t10 c6=1).
+S11=1011001010101101: index6=1 (1,0,1,1,0,0,1) ->1 ✓ (t11 c6=1).
+S12=0010111010101001: index6=1 (0,0,1,0,1,1,1) ->1 ✓ (t12 c6=1).
+S13=1110100010101111: index6=0 (1,1,1,0,1,0,0) ->0 ✓ (t13 c6=0).
+S14=0000110110101000: index6=0 ->0 ✓ (t14 c6=0).
+S15=0001100100101100: index6=0 ->0 ✓ (t15 c6=0).
+S16=0011011111101010: index6=1 (0,0,1,1,0,1,1) ->1 ✓ (t16 c6=1).
+S17=0110010000001011: index6=0 (0,1,1,0,0,1,0) ->0 ✓ (t17 c6=0).
+S18=0101111000011010: index6=1 (0,1,0,1,1,1,1) ->1 ✓ (t18 c6=1).
+S19=1101000100110011: index6=0 (1,1,0,1,0,0,0) ->0 ✓ (t19 c6=0).
+S20=0001101111101110: index6=1 (0,0,0,1,1,0,1) ->1 ✓ (t20 c6=1).
+S21=0011001000001001: index6=1 (0,0,1,1,0,0,1) ->1 ✓ (t21 c6=1).
+S22=1110111100011111: index6=1 (1,1,1,0,1,1,1) ->1 ✓ (t22 c6=1).
+S23=0000100010110000: index6=0 ->0 ✓ (t23 c6=0).
+S24=0001110110101000: index6=0 ->0 ✓ (t24 c6=0).
+S25=0011000100101100: index6=0 (0,0,1,1,0,0,0) ->0 ✓ (t25 c6=0).
+S26=0110101111101010: index6=1 (0,1,1,0,1,0,1) ->1 ✓ (t26 c6=1).
+S27=1100101000001011: index6=1 (1,1,0,0,1,0,1) ->1 ✓ (t27 c6=1).
+S28=0011101100011010: index6=1 (0,0,1,1,1,0,1) ->1 ✓ (t28 c6=1).
+S29=0110001010110011: index6=1 (0,1,1,0,0,0,1) ->1 ✓ (t29 c6=1).
+S30=0101011010101110: index6=1 (0,1,0,1,0,1,1) ->1 ✓ (t30 c6=1).
+S31=1101010010101001: index6=0 (1,1,0,1,0,1,0) ->0 ✓ (t31 c6=0).
+
+c6 column: [1,1,0,0,1,0,1,1,0,0,1,1,1,0,0,0,1,0,1,0,1,1,1,0,0,0,1,1,1,1,1,0]. Matches my earlier c6. 
+
+Now let me verify c14 (index 14) by reading p14:
+S0 p14=1 ✓ (t0=1)
+S1 p14=0 (S1 ... index14=0) ✓
+S2=1100110111010101: p14 = ? indices:0=1,1=1,2=0,3=0,4=1,5=1,6=0,7=1,8=1,9=1,10=0,11=1,12=0,13=1,14=0,15=1. p14=0 ✓ (t2=0).
+S3=0011100100010101: p14=0 (indices ...12=0,13=1,14=0,15=1) ✓ (t3=0).
+S4=1110011110110101: p14=0 (..12=0,13=1,14=0,15=1) ✓ t4=0.
+S5=0001110000100101: p14=0 ✓ t5=0.
+S6=1011001001111101: indices 0=1,1=0,2=1,3=1,4=0,5=0,6=1,7=0,8=0,9=1,10=1,11=1,12=1,13=1,14=0,15=1. p14=0 ✓ t6=0.
+S7=0010111111000001: p14=0 ✓ t7=0. (indices: ...12=0,13=0,14=0,15=1). yes.
+S8=1110100000100011: indices 0=1,1=1,2=1,3=0,4=1,5=0,6=0,7=0,8=0,9=0,10=1,11=0,12=0,13=0,14=1,15=1. p14=1 ✓ t8=1.
+S9=0000110001110110: indices ...12=0,13=1,14=1,15=0. p14=1 ✓ t9=1.
+S10=0001101011000101: ...12=0,13=1,14=0,15=1. p14=0 ✓ t10=0.
+S11=1011001010101101: ...12=1,13=1,14=0,15=1. p14=0 ✓ t11=0.
+S12=0010111010101001: ...12=1,13=0,14=0,15=1. p14=0 ✓ t12=0.
+S13=1110100010101111: ...12=1,13=1,14=1,15=1. p14=1 ✓ t13=1.
+S14=0000110110101000: ...12=1,13=0,14=0,15=0. p14=0 ✓ t14=0.
+S15=0001100100101100: ...12=1,13=1,14=0,15=0. p14=0 ✓ t15=0.
+S16=0011011111101010: ...12=1,13=0,14=1,15=0. p14=1 ✓ t16=1.
+S17=0110010000001011: ...12=1,13=0,14=1,15=1. p14=1 ✓ t17=1.
+S18=0101111000011010: ...12=1,13=0,14=1,15=0. p14=1 ✓ t18=1.
+S19=1101000100110011: ...12=0,13=0,14=1,15=1. p14=1 ✓ t19=1.
+S20=0001101111101110: ...12=1,13=1,14=1,15=0. p14=1 ✓ t20=1.
+S21=0011001000001001: ...12=1,13=0,14=0,15=1. p14=0 ✓ t21=0.
+S22=1110111100011111: ...12=1,13=1,14=1,15=1. p14=1 ✓ t22=1.
+S23=0000100010110000: ...12=0,13=0,14=0,15=0. p14=0 ✓ t23=0.
+S24=0001110110101000: ...12=1,13=0,14=0,15=0. p14=0 ✓ t24=0.
+S25=0011000100101100: ...12=1,13=1,14=0,15=0. p14=0 ✓ t25=0.
+S26=0110101111101010: ...12=1,13=0,14=1,15=0. p14=1 ✓ t26=1.
+S27=1100101000001011: ...12=1,13=0,14=1,15=1. p14=1 ✓ t27=1.
+S28=0011101100011010: ...12=1,13=0,14=1,15=0. p14=1 ✓ t28=1.
+S29=0110001010110011: ...12=0,13=0,14=1,15=1. p14=1 ✓ t29=1.
+S30=0101011010101110: ...12=1,13=1,14=1,15=0. p14=1 ✓ t30=1.
+S31=1101010010101001: ...12=1,13=0,14=0,15=1. p14=0 ✓ t31=0.
+
+c14 column: [1,0,0,0,0,0,0,0,1,1,0,0,0,1,0,0,1,1,1,1,1,0,1,0,0,0,1,1,1,1,1,0]. Matches. Good.
+
+I'm confident. Let me also re-verify c0 column from states directly (index0):
+S0 p0=0; S1 p0=1; S2 p0=1; S3 p0=0; S4 p0=1; S5 p0=0; S6 p0=1; S7 p0=0; S8 p0=1; S9 p0=0; S10 p0=0; S11 p0=1; S12 p0=0; S13 p0=1; S14 p0=0; S15 p0=0; S16 p0=0; S17 p0=0; S18 p0=0; S19 p0=1; S20 p0=0; S21 p0=0; S22 p0=1; S23 p0=0; S24 p0=0; S25 p0=0; S26 p0=0; S27 p0=1; S28 p0=0; S29 p0=0; S30 p0=0; S31 p0=1.
+=> [0,1,1,0,1,0,1,0,1,0,0,1,0,1,0,0,0,0,0,1,0,0,1,0,0,0,0,1,0,0,0,1]. Matches c0. Good.
+
+Now assemble final JSON. The outputs in order given: c0,c2,c4,c6,c8,c10,c12,c14. I'll produce an object with those keys.
+
+Final lists:
+
+c0:  [0,1,1,0,1,0,1,0,1,0,0,1,0,1,0,0,0,0,0,1,0,0,1,0,0,0,0,1,0,0,0,1]
+c2:  [0,0,0,1,1,0,1,1,1,0,0,1,1,1,0,0,1,1,0,0,0,1,1,0,0,1,1,0,1,1,0,0]
+c4:  [0,0,1,1,0,1,0,1,1,1,1,0,1,1,1,1,0,0,1,0,1,0,1,1,1,0,1,1,1,0,0,0]
+c6:  [1,1,0,0,1,0,1,1,0,0,1,1,1,0,0,0,1,0,1,0,1,1,1,0,0,0,1,1,1,1,1,0]
+c8:  [1,0,1,0,1,0,0,1,0,0,1,1,1,1,1,0,1,0,0,0,1,0,0,1,1,0,1,0,0,1,1,1]
+c10: [0,0,0,0,1,1,1,0,1,1,0,1,1,1,1,1,1,0,0,1,1,0,0,1,1,1,1,0,0,1,1,1]
+c12: [1,1,0,0,0,0,1,0,0,0,0,1,1,1,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,1]
+c14: [1,0,0,0,0,0,0,0,1,1,0,0,0,1,0,0,1,1,1,1,1,0,1,0,0,0,1,1,1,1,1,0]
+
+Let me double-check each list length = 32.
+
+c0: group in 8s: 
+[0,1,1,0,1,0,1,0] (8) [1,0,0,1,0,1,0,0] (16) [0,0,0,1,0,0,1,0] (24) [0,0,0,1,0,0,0,1] (32). 
+Wait let me re-group c0 from the flat list: 
+0,1,1,0,1,0,1,0 | 1,0,0,1,0,1,0,0 | 0,0,0,1,0,0,1,0 | 0,0,0,1,0,0,0,1
+Check positions 16..23 from flat: indices 16=0,17=0,18=0,19=1,20=0,21=0,22=1,23=0 -> "0,0,0,1,0,0,1,0" ✓. indices 24..31: 24=0,25=0,26=0,27=1,28=0,29=0,30=0,31=1 -> "0,0,0,1,0,0,0,1" ✓. Good, 32.
+
+c2 flat: 0,0,0,1,1,0,1,1 | 1,0,0,1,1,1,0,0 | 1,1,0,0,0,1,1,0 | 0,1,1,0,1,1,0,0
+Check indices 8..15: t8=1,t9=0,t10=0,t11=1,t12=1,t13=1,t14=0,t15=0 -> 1,0,0,1,1,1,0,0 ✓. indices16..23: t16=1,t17=1,t18=0,t19=0,t20=0,t21=1,t22=1,t23=0 ->1,1,0,0,0,1,1,0 ✓. indices24..31: t24=0,t25=1,t26=1,t27=0,t28=1,t29=1,t30=0,t31=0 ->0,1,1,0,1,1,0,0 ✓. Good.
+
+c4 flat: 0,0,1,1,0,1,0,1 | 1,1,1,0,1,1,1,1 | 0,0,1,0,1,0,1,1 | 1,0,1,1,1,0,0,0
+Check indices 8..15: t8=1,t9=1,t10=1,t11=0,t12=1,t13=1,t14=1,t15=1 ->1,1,1,0,1,1,1,1 ✓. 16..23: t16=0,t17=0,t18=1,t19=0,t20=1,t21=0,t22=1,t23=1 ->0,0,1,0,1,0,1,1 ✓. 24..31: t24=1,t25=0,t26=1,t27=1,t28=1,t29=0,t30=0,t31=0 ->1,0,1,1,1,0,0,0 ✓. Good.
+
+c6 flat: 1,1,0,0,1,0,1,1 | 0,0,1,1,1,0,0,0 | 1,0,1,0,1,1,1,0 | 0,0,1,1,1,1,1,0
+Check 8..15: t8=0,t9=0,t10=1,t11=1,t12=1,t13=0,t14=0,t15=0 ->0,0,1,1,1,0,0,0 ✓. 16..23: t16=1,t17=0,t18=1,t19=0,t20=1,t21=1,t22=1,t23=0 ->1,0,1,0,1,1,1,0 ✓. 24..31: t24=0,t25=0,t26=1,t27=1,t28=1,t29=1,t30=1,t31=0 ->0,0,1,1,1,1,1,0 ✓. Good.
+
+c8 flat: 1,0,1,0,1,0,0,1 | 0,0,1,1,1,1,1,0 | 1,0,0,0,1,0,0,1 | 1,0,1,0,0,1,1,1
+Check 8..15: t8=0,t9=0,t10=1,t11=1,t12=1,t13=1,t14=1,t15=0 ->0,0,1,1,1,1,1,0 ✓. 16..23: t16=1,t17=0,t18=0,t19=0,t20=1,t21=0,t22=0,t23=1 ->1,0,0,0,1,0,0,1 ✓. 24..31: t24=1,t25=0,t26=1,t27=0,t28=0,t29=1,t30=1,t31=1 ->1,0,1,0,0,1,1,1 ✓. Good.
+
+c10 flat: 0,0,0,0,1,1,1,0 | 1,1,0,1,1,1,1,1 | 1,0,0,1,1,0,0,1 | 1,1,1,0,0,1,1,1
+Check 8..15: t8=1,t9=1,t10=0,t11=1,t12=1,t13=1,t14=1,t15=1 ->1,1,0,1,1,1,1,1 ✓. 16..23: t16=1,t17=0,t18=0,t19=1,t20=1,t21=0,t22=0,t23=1 ->1,0,0,1,1,0,0,1 ✓. 24..31: t24=1,t25=1,t26=1,t27=0,t28=0,t29=1,t30=1,t31=1 ->1,1,1,0,0,1,1,1 ✓. Good.
+
+c12 flat: 1,1,0,0,0,0,1,0 | 0,0,0,1,1,1,1,1 | 1,1,1,0,1,1,1,0 | 1,1,1,1,1,0,1,1
+Check 0..7: t0=1,t1=1,t2=0,t3=0,t4=0,t5=0,t6=1,t7=0 ->1,1,0,0,0,0,1,0 ✓. 8..15: t8=0,t9=0,t10=0,t11=1,t12=1,t13=1,t14=1,t15=1 ->0,0,0,1,1,1,1,1 ✓. 16..23: t16=1,t17=1,t18=1,t19=0,t20=1,t21=1,t22=1,t23=0 ->1,1,1,0,1,1,1,0 ✓. 24..31: t24=1,t25=1,t26=1,t27=1,t28=1,t29=0,t30=1,t31=1 ->1,1,1,1,1,0,1,1 ✓. Good.
+
+c14 flat: 1,0,0,0,0,0,0,0 | 1,1,0,0,0,1,0,0 | 1,1,1,1,1,0,1,0 | 0,0,1,1,1,1,1,0
+Check 0..7: 1,0,0,0,0,0,0,0 ✓ (t0=1,t1..t7=0). 8..15: t8=1,t9=1,t10=0,t11=0,t12=0,t13=1,t14=0,t15=0 ->1,1,0,0,0,1,0,0 ✓. 16..23: t16=1,t17=1,t18=1,t19=1,t20=1,t21=0,t22=1,t23=0 ->1,1,1,1,1,0,1,0 ✓. 24..31: t24=0,t25=0,t26=1,t27=1,t28=1,t29=1,t30=1,t31=0 ->0,0,1,1,1,1,1,0 ✓. Good.
+
+All confirmed. Now produce final answer with a brief explanation and the JSON block. The user asked to "Work through the simulation carefully" and end with a single fenced json code block. I'll provide concise reasoning and then the JSON. Must ensure no other json code block after it.
+
+I should keep the prose moderate. Final JSON as above.
+
+
+=== response ===
+Each group of gates for `xi` computes `nm=¬ci`, `nr=¬c(i+1)`, `or = ci ∨ c(i+1)`, and the four NANDs on `c(i−1)` and `or` reduce to `xi = c(i−1) XOR (ci ∨ c(i+1))` — i.e. elementary CA rule 30 on a 16‑cell ring (indices mod 16). The DFFs make `c(t+1)=x(t)`, and outputs are sampled before each edge, so cycle t reports state S_t with S_0 = init = `0000001110001111`.
+
+Evolving rule 30 for 32 states and reading the even cells (c0,c2,c4,c6,c8,c10,c12,c14):
+
+```json
+{"c0": [0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1], "c2": [0, 0, 0, 1, 1, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1, 1, 0, 0], "c4": [0, 0, 1, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0], "c6": [1, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 0], "c8": [1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1], "c10": [0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1], "c12": [1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1], "c14": [1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 1, 1, 1, 1, 1, 0]}
+```
